@@ -48,8 +48,8 @@ demo wifi-proof: run the demo scans once with a real provider, then
 
 ## API (P0)
 
-All routes are under `/v1` and need `Authorization: Bearer <token>`. Mutating scan uploads need an
-`Idempotency-Key` header. Errors are RFC 7807 `application/problem+json`.
+All routes are under `/v1` and need `Authorization: Bearer <token>`. Scan uploads and agent wishlist
+suggestions need an `Idempotency-Key` header. Errors are RFC 7807 `application/problem+json`.
 
 | Route | What it does |
 |---|---|
@@ -63,8 +63,15 @@ All routes are under `/v1` and need `Authorization: Bearer <token>`. Mutating sc
 | `GET /inventory`, `POST /inventory` | Items with latest quantity; manual add |
 | `GET /inventory/{id}?days=30` | Daily gap-filled series + raw observations with provenance |
 | `PATCH /inventory/{id}`, `POST /inventory/{id}/observations` | Edit item; record a manual count |
-| `GET /events` | Server-Sent Events: `scan.updated`, `inventory.updated` (IDs only; refetch) |
+| `GET /wishlist`, `POST /wishlist` | Household wishlist as a priority queue (score + reasons); manual add |
+| `POST /wishlist/suggestions` | Agent suggestion (rationale + confidence, `Idempotency-Key`); refuses recent rejections |
+| `POST /wishlist/{id}/accept\|reject\|snooze\|purchased`, `PATCH`, `DELETE` | Suggestion decisions and item lifecycle |
+| `POST /wishlist/{id}/feedback`, `GET /wishlist/agent-context` | Thumbs up/down; feedback summary for the on-device agent |
+| `GET /events` | Server-Sent Events: `scan.updated`, `inventory.updated`, `wishlist.updated` (IDs only; refetch) |
 | `GET /audit`, `GET /audit/verify` | Your audit trail; hash-chain integrity check |
+
+Wishlist contract, lifecycle and scoring: [docs/api/wishlist.md](../docs/api/wishlist.md). UI work waiting on the
+frontend team: [docs/frontend-requests.md](../docs/frontend-requests.md).
 
 ## Where things live
 
@@ -73,7 +80,7 @@ app/main.py           app factory, middleware (request IDs, security headers, bo
 app/auth.py           dev HMAC tokens / OIDC JWKS verification, first-login bootstrap
 app/db.py             pool; scoped() = per-request role + row-level security; audit + notify helpers
 app/pipeline.py       scan job: frames → vision → merge → match → review/auto-commit → media purge
-app/core/             pure logic (merging, quantities, auto-accept rules), unit-tested
+app/core/             pure logic (merging, quantities, auto-accept rules, wishlist scoring), unit-tested
 app/vision/           provider contract, output validation, Perceptron / Gemini / replay, cache
 app/timeseries.py     Timescale and plain-Postgres implementations of the same queries
 app/jobs.py           Postgres job queue (SKIP LOCKED, LISTEN/NOTIFY wake-ups, backoff)

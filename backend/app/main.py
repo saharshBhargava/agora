@@ -16,7 +16,7 @@ from app.errors import Problem, handle_problem, handle_validation, problem_respo
 from app.google_calendar import GoogleCalendar
 from app.jobs import Worker
 from app.pipeline import Pipeline
-from app.routers import account, audit, calendar, events, inventory, scans
+from app.routers import account, audit, calendar, events, inventory, scans, wishlist
 from app.routers.events import Broadcaster
 from app.storage import make_storage
 from app.vision.providers import make_provider
@@ -107,7 +107,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await conn.fetchval("SELECT 1")
         return {"ok": True, "timescale": request.app.state.db.timescale, "version": app.version}
 
-    for router in (account.router, inventory.router, scans.router, events.router, audit.router, calendar.router):
+    for router in (account.router, inventory.router, scans.router, events.router, audit.router, calendar.router,
+                   wishlist.router):
         app.include_router(router)
     return app
 
