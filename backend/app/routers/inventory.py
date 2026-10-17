@@ -18,12 +18,16 @@ router = APIRouter(prefix="/v1/inventory", tags=["inventory"])
 _ITEM_SELECT = """
 SELECT i.id, i.household_id, i.display_name, i.category, i.location_id, i.unit, i.par_level::float8 AS par_level,
        i.status, i.product_id, i.preferred_merchant_id, o.quantity::float8 AS quantity, o.time AS observed_at,
-       o.source, {MERCHANT_REF}
+       o.source, pd.purchased_on AS last_purchased_on, {MERCHANT_REF}
 FROM inventory_items i
 LEFT JOIN LATERAL (SELECT quantity, time, source FROM inventory_observations
                    WHERE inventory_item_id = i.id ORDER BY time DESC LIMIT 1) o ON true
 LEFT JOIN LATERAL (SELECT merchant_id FROM inventory_purchase_origins
-                   WHERE inventory_item_id = i.id ORDER BY observed_at DESC LIMIT 1) po ON true
+                   WHERE inventory_item_id = i.id AND merchant_id IS NOT NULL
+                   ORDER BY coalesce(purchased_on, observed_at::date) DESC, observed_at DESC LIMIT 1) po ON true
+LEFT JOIN LATERAL (SELECT purchased_on FROM inventory_purchase_origins
+                   WHERE inventory_item_id = i.id AND purchased_on IS NOT NULL
+                   ORDER BY purchased_on DESC, observed_at DESC LIMIT 1) pd ON true
 LEFT JOIN merchants m ON m.id = po.merchant_id
 """.replace("{MERCHANT_REF}", MERCHANT_REF)
 
@@ -89,13 +93,16 @@ async def item_detail(item_id: UUID, request: Request, days: int = Query(default
             """SELECT time, quantity::float8 AS quantity, source, scan_id, confidence FROM inventory_observations
                WHERE inventory_item_id = $1 ORDER BY time DESC LIMIT 50""", item_id)
         origins = await conn.fetch(
-            f"""SELECT po.observed_at, po.quantity::float8 AS quantity, po.scan_id, po.scan_detection_id,
-                       {MERCHANT_REF}
-                FROM inventory_purchase_origins po JOIN merchants m ON m.id = po.merchant_id
-                WHERE po.inventory_item_id = $1 ORDER BY po.observed_at DESC LIMIT 50""", item_id)
+            f"""SELECT po.observed_at, po.purchased_on, po.quantity::float8 AS quantity, po.scan_id,
+                       po.scan_detection_id, {MERCHANT_REF}
+                FROM inventory_purchase_origins po LEFT JOIN merchants m ON m.id = po.merchant_id
+                WHERE po.inventory_item_id = $1
+                ORDER BY coalesce(po.purchased_on, po.observed_at::date) DESC, po.observed_at DESC
+                LIMIT 50""", item_id)
     return ItemDetail(**_item(row), daily=[DailyPoint(day=d, quantity=q) for d, q in daily],
                       observations=[Observation(**dict(o)) for o in observations],
-                      purchase_history=[PurchaseOrigin(merchant=ref(o, "m_"), observed_at=o["observed_at"],
+                      purchase_history=[PurchaseOrigin(merchant=ref(o, "m_"), purchased_on=o["purchased_on"],
+                                                       observed_at=o["observed_at"],
                                                        quantity=o["quantity"], scan_id=o["scan_id"],
                                                        detection_id=o["scan_detection_id"]) for o in origins],
                       series_engine="timescale" if db.timescale else "postgres")

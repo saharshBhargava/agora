@@ -1,6 +1,7 @@
-# "Purchased from": API contract
+# "Purchased from" and "Purchased on": API contract
 
-For wiring the Swift upload screen's **Purchased from** field to the backend. Every example below was captured from
+For wiring the Swift upload screen's **Purchased from** (store) and **Purchased on** (date) fields to the
+backend. Every example below was captured from
 the running server (IDs shortened only where marked).
 
 ## 1. Base URL and sign-in
@@ -53,12 +54,12 @@ Errors are always `application/problem+json`:
 | `GET /v1/merchants?q=<text>&limit=10` | Search stores by name (exact, then prefix, then fuzzy). Empty `q` lists your household's stores, then global ones |
 | `POST /v1/merchants` | Find-or-create a store. `201` = created, `200` = an equivalent store already existed (use its `id`) |
 | `GET /v1/merchants/{id}` | Fetch one store |
-| `POST /v1/scans` | Upload, with optional form field `purchased_from_merchant_id` |
+| `POST /v1/scans` | Upload, with optional form fields `purchased_from_merchant_id` and `purchased_on` |
 | `GET /v1/scans/{id}` | Scan with `purchased_from` and each detection's effective store |
-| `POST /v1/scans/{id}/review` | Each decision may carry `purchased_from_merchant_id` (a per-product override; `null` = no store) |
-| `PATCH /v1/scans/{id}` | Change or clear the whole upload's store, before or after review |
-| `PATCH /v1/scans/{id}/detections/{detection_id}` | Change, clear, or reset one product's store |
-| `GET /v1/inventory`, `GET /v1/inventory/{id}` | Items carry `last_purchased_from`; detail adds `purchase_history` |
+| `POST /v1/scans/{id}/review` | Each decision may carry `purchased_from_merchant_id` and/or `purchased_on` (per-product overrides; `null` = none) |
+| `PATCH /v1/scans/{id}` | Change or clear the whole upload's store and/or date, before or after review |
+| `PATCH /v1/scans/{id}/detections/{detection_id}` | Change, clear, or reset one product's store and/or date |
+| `GET /v1/inventory`, `GET /v1/inventory/{id}` | Items carry `last_purchased_from` and `last_purchased_on`; detail adds `purchase_history` |
 | `PATCH /v1/inventory/{id}` | `preferred_merchant_id`: the store you *want* to buy from, kept separate from history |
 
 ### Merchant object
@@ -133,6 +134,7 @@ digit, `locality` is ≤ 80 characters, and `website` must be `https://…`.
 |---|---|---|
 | `files` | yes | 1–12 photos (JPEG/PNG/WebP, ≤ 10 MB each) **or** one MP4/MOV (≤ 80 MB). Convert HEIC to JPEG first. PDFs aren't accepted |
 | `purchased_from_merchant_id` | no | Store UUID from §3 |
+| `purchased_on` | no | Purchase (receipt) date, `YYYY-MM-DD`. Not in the future, at most two years back. Separate from `captured_at`, since the photo may be taken days after shopping |
 | `location_id` | no | Fridge/Pantry ID from `GET /v1/me` → `households[].locations` |
 | `captured_at` | no | ISO-8601 **with offset**, within the last 30 days. Defaults to upload time |
 | `household_id` | no | Defaults to your first household |
@@ -151,6 +153,7 @@ a key with different content returns `422 idempotency_key_reused`.
   "frame_count": 1,
   "purchased_from_merchant_id": "4a7653b9-dad3-431a-9bf8-856f20a273a8",
   "purchased_from": {"id": "4a7653b9-…", "name": "Trader Joe's", "locality": "U District", "scope": "household"},
+  "purchased_on": "2026-10-15",
   "detections": [],
   "...": "other scan fields omitted here"
 }
@@ -160,9 +163,9 @@ Processing is asynchronous. Either poll `GET /v1/scans/{id}` until `status` is `
 `failed`, or listen on `GET /v1/events` (SSE; your `CaptionSSEByteDecoder` already parses this format) for
 `event: scan.updated` with that `id`.
 
-## 5. Per-product stores and corrections
+## 5. Per-product stores, dates and corrections
 
-Each detection reports its **effective** store:
+Each detection reports its **effective** store and date:
 
 ```json
 {
@@ -173,39 +176,44 @@ Each detection reports its **effective** store:
   "review": "proposed",
   "purchased_from_merchant_id": "4a7653b9-dad3-431a-9bf8-856f20a273a8",
   "purchased_from": {"id": "4a7653b9-…", "name": "Trader Joe's", "locality": "U District", "scope": "household"},
-  "merchant_override": false
+  "merchant_override": false,
+  "purchased_on": "2026-10-15",
+  "purchased_on_override": false
 }
 ```
 
-`merchant_override: false` means "inherits the upload's store". `true` means this product has its own value,
-which may be `null` (explicitly no store).
+`merchant_override` / `purchased_on_override`: `false` means "inherits the upload's value". `true` means this
+product has its own value, which may be `null` (explicitly none).
 
-**At review**, for a haul from two stores:
+**At review**, for a haul from two stores on two days:
 
 ```http
 POST /v1/scans/8c09ae03-…/review
 {"decisions": [
   {"detection_id": "26002cb6-…", "action": "accept"},
   {"detection_id": "a44ce7b4-…", "action": "accept",
-   "purchased_from_merchant_id": "6d5f2079-8e17-4f9a-8dba-e1c0107100d9"}
+   "purchased_from_merchant_id": "6d5f2079-8e17-4f9a-8dba-e1c0107100d9", "purchased_on": "2026-10-16"}
 ]}
 ```
 
-The response's eggs detection then has `"purchased_from": {"name": "Safeway", …}, "merchant_override": true`.
-Leave the key out to inherit; send `null` for "no store".
+The response's eggs detection then has `"purchased_from": {"name": "Safeway", …}, "merchant_override": true`
+and `"purchased_on": "2026-10-16", "purchased_on_override": true`. Leave a key out to inherit; send `null` for
+"none".
 
 **After the fact**, at any time while the scan is `needs_review` or `confirmed`:
 
 | Goal | Request |
 |---|---|
 | Change the whole upload's store | `PATCH /v1/scans/{id}` `{"purchased_from_merchant_id": "<uuid>"}` |
-| Clear the whole upload's store | `PATCH /v1/scans/{id}` `{"purchased_from_merchant_id": null}` |
-| Give one product its own store | `PATCH /v1/scans/{id}/detections/{d}` `{"purchased_from_merchant_id": "<uuid>"}` |
-| Mark one product "no store" | `PATCH /v1/scans/{id}/detections/{d}` `{"purchased_from_merchant_id": null}` |
-| Put one product back on the upload's store | `PATCH /v1/scans/{id}/detections/{d}` `{"inherit_from_scan": true}` |
+| Change the whole upload's date | `PATCH /v1/scans/{id}` `{"purchased_on": "2026-10-15"}` |
+| Clear either | `PATCH /v1/scans/{id}` `{"purchased_from_merchant_id": null}` or `{"purchased_on": null}` |
+| Give one product its own store / date | `PATCH /v1/scans/{id}/detections/{d}` `{"purchased_from_merchant_id": "<uuid>", "purchased_on": "2026-10-16"}` (either or both) |
+| Mark one product "no store" / "no date" | `PATCH /v1/scans/{id}/detections/{d}` `{"purchased_from_merchant_id": null}` / `{"purchased_on": null}` |
+| Put one product back on the upload's values | `PATCH /v1/scans/{id}/detections/{d}` `{"inherit": ["purchased_from", "purchased_on"]}` (either or both) |
 
-Both PATCHes return the full updated scan. Sending both fields, or neither, is a `422`. Changing the upload's store
-never touches products that have their own override. For confirmed scans, purchase history updates immediately.
+Send only the fields you're changing. Both PATCHes return the full updated scan. An empty body, or a field that
+is both set and listed in `inherit`, is a `422`. Upload-level changes never touch products with their own
+override. For confirmed scans, purchase history updates immediately.
 
 ## 6. On the inventory side
 
@@ -221,16 +229,19 @@ GET /v1/inventory/d41729d8-…
   "quantity": 1.5,
   "preferred_merchant_id": null,
   "last_purchased_from": {"id": "4a7653b9-…", "name": "Trader Joe's", "locality": "U District", "scope": "household"},
+  "last_purchased_on": "2026-10-15",
   "purchase_history": [
     {"merchant": {"id": "4a7653b9-…", "name": "Trader Joe's", "locality": "U District", "scope": "household"},
-     "observed_at": "2026-10-17T23:32:50.747581Z", "quantity": 1.5,
+     "purchased_on": "2026-10-15", "observed_at": "2026-10-17T23:32:50.747581Z", "quantity": 1.5,
      "scan_id": "8c09ae03-…", "detection_id": "26002cb6-…"}
   ],
   "...": "daily series, observations etc. omitted here"
 }
 ```
 
-`purchase_history` has one entry per confirmed upload where that product had a store, newest first.
+`purchase_history` has one entry per confirmed upload where that product had a store and/or a date, newest
+purchase first (by `purchased_on`, else upload time). Either `merchant` or `purchased_on` can be `null`, but not
+both. `observed_at` is when the photo was taken.
 `PATCH /v1/inventory/{id}` with `{"preferred_merchant_id": "<uuid>" | null}` sets the preference.
 
 ## 7. Permissions
@@ -251,10 +262,11 @@ GET /v1/inventory/d41729d8-…
 - `merchants`: adds `household_id` (null = global), `locality`, `created_by`, and generated `normalized_name` /
   `normalized_locality`. Adds unique indexes per scope and row-level security (`SELECT` global + own household;
   `INSERT` own household only).
-- `scans.purchased_from_merchant_id`
-- `scan_detections.purchased_from_merchant_id` + `merchant_override`
+- `scans.purchased_from_merchant_id`, `scans.purchased_on` (date)
+- `scan_detections.purchased_from_merchant_id` + `merchant_override`, `purchased_on` + `purchased_on_override`
 - `inventory_items.preferred_merchant_id`
-- New `inventory_purchase_origins` table (one row per confirmed detection with a store, household-scoped by RLS)
+- New `inventory_purchase_origins` table (one row per confirmed detection with a store and/or date, with
+  `merchant_id` and `purchased_on` columns, household-scoped by RLS)
 
 `0004_media_objects.sql` is unrelated to this feature: it lets deploys keep upload frames in Postgres so no bucket
 account is needed.
@@ -263,7 +275,8 @@ account is needed.
 
 - [ ] Store picker: `GET /v1/merchants?q=` and "Add" via `POST /v1/merchants` (accept 200 or 201, use `merchant.id`)
 - [ ] Save `merchant.id` with the local `CaptureItem` (it's stable)
-- [ ] Upload with `purchased_from_merchant_id`, `Idempotency-Key: CaptureItem.id.uuidString`, JPEG frames
-- [ ] Review screen: optional per-product store; send the key only when the user changed it
+- [ ] Purchased-on date picker (default today; send `YYYY-MM-DD` in the user's local calendar)
+- [ ] Upload with `purchased_from_merchant_id`, `purchased_on`, `Idempotency-Key: CaptureItem.id.uuidString`, JPEG frames
+- [ ] Review screen: optional per-product store/date; send a key only when the user changed it
 - [ ] Edit later: `PATCH /v1/scans/{id}` and `PATCH /v1/scans/{id}/detections/{d}`
-- [ ] Decode `purchased_from` / `last_purchased_from` as optional `MerchantRef`
+- [ ] Decode `purchased_from` / `last_purchased_from` as optional `MerchantRef`; `purchased_on` / `last_purchased_on` as optional dates

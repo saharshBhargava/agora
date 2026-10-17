@@ -1,4 +1,4 @@
--- "Purchased from": which store a scanned product came from.
+-- "Purchased from" / "Purchased on": which store a scanned product came from, and the day it was bought.
 --
 -- Merchants come in two scopes. Global merchants (household_id IS NULL) are the shared catalog; only migrations
 -- and admins write them. Household merchants are created by users, visible only to that household, and can't
@@ -46,29 +46,36 @@ CREATE POLICY merchants_household_insert ON merchants FOR INSERT
   WITH CHECK (household_id IS NOT NULL AND household_id = ANY (app_household_ids()));
 GRANT INSERT ON merchants TO agora_rw;
 
--- Store for the whole upload, plus an optional per-detection override for mixed-store uploads.
--- merchant_override = false: inherit the scan's store. true: use the detection's own value (NULL = "no store").
+-- Store and purchase date for the whole upload, plus optional per-detection overrides for mixed hauls.
+-- *_override = false: inherit the scan's value. true: use the detection's own value (NULL = "none/unknown").
+-- purchased_on is a calendar date (the receipt date), separate from captured_at: you may photograph the
+-- pantry days after shopping.
 ALTER TABLE scans
-  ADD COLUMN purchased_from_merchant_id uuid REFERENCES merchants ON DELETE SET NULL;
+  ADD COLUMN purchased_from_merchant_id uuid REFERENCES merchants ON DELETE SET NULL,
+  ADD COLUMN purchased_on date;
 ALTER TABLE scan_detections
   ADD COLUMN purchased_from_merchant_id uuid REFERENCES merchants ON DELETE SET NULL,
-  ADD COLUMN merchant_override boolean NOT NULL DEFAULT false;
+  ADD COLUMN merchant_override boolean NOT NULL DEFAULT false,
+  ADD COLUMN purchased_on date,
+  ADD COLUMN purchased_on_override boolean NOT NULL DEFAULT false;
 
 ALTER TABLE inventory_items
   ADD COLUMN preferred_merchant_id uuid REFERENCES merchants ON DELETE SET NULL;
 
--- Purchase/source history: one row per confirmed detection with a known store. A regular (mutable) table
--- rather than columns on the observations hypertable, because users can correct the store after the fact.
+-- Purchase/source history: one row per confirmed detection with a known store and/or purchase date. A regular
+-- (mutable) table rather than columns on the observations hypertable, because users can correct both later.
 CREATE TABLE inventory_purchase_origins (
   scan_detection_id  uuid PRIMARY KEY REFERENCES scan_detections ON DELETE CASCADE,
   household_id       uuid NOT NULL REFERENCES households ON DELETE CASCADE,
   inventory_item_id  uuid NOT NULL REFERENCES inventory_items ON DELETE CASCADE,
-  merchant_id        uuid NOT NULL REFERENCES merchants ON DELETE CASCADE,
+  merchant_id        uuid REFERENCES merchants ON DELETE SET NULL,
+  purchased_on       date,
   scan_id            uuid NOT NULL REFERENCES scans ON DELETE CASCADE,
   observed_at        timestamptz NOT NULL,
   quantity           numeric NOT NULL CHECK (quantity >= 0),
   recorded_by        uuid REFERENCES users ON DELETE SET NULL,
-  updated_at         timestamptz NOT NULL DEFAULT now()
+  updated_at         timestamptz NOT NULL DEFAULT now(),
+  CHECK (merchant_id IS NOT NULL OR purchased_on IS NOT NULL)
 );
 CREATE INDEX purchase_origins_item ON inventory_purchase_origins (inventory_item_id, observed_at DESC);
 CREATE INDEX purchase_origins_merchant ON inventory_purchase_origins (household_id, merchant_id, observed_at DESC);

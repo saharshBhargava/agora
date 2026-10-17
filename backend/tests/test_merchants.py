@@ -127,7 +127,7 @@ async def test_store_flows_from_upload_to_purchase_history(app, client, replay_d
     # Per-item: send eggs back to inheriting (now no store), then give the jar a store after the fact.
     url = f"/v1/scans/{scan['id']}/detections"
     assert (await client.patch(f"{url}/{d['large eggs']['id']}", headers=erin,
-                               json={"inherit_from_scan": True})).status_code == 200
+                               json={"inherit": ["purchased_from"]})).status_code == 200
     assert await history("large eggs") == []
     assert (await client.patch(f"{url}/{d['unlabeled jar']['id']}", headers=erin,
                                json={"purchased_from_merchant_id": tj["id"]})).status_code == 200
@@ -140,10 +140,70 @@ async def test_store_flows_from_upload_to_purchase_history(app, client, replay_d
     assert await history("unlabeled jar") == [tj["id"]]  # its override survives scan-level changes
 
     both = await client.patch(f"{url}/{d['large eggs']['id']}", headers=erin,
-                              json={"inherit_from_scan": True, "purchased_from_merchant_id": None})
+                              json={"inherit": ["purchased_from"], "purchased_from_merchant_id": None})
     neither = await client.patch(f"{url}/{d['large eggs']['id']}", headers=erin, json={})
     assert both.status_code == 422 and neither.status_code == 422
 
     frank = await login(client, "frank")
     assert (await client.patch(f"/v1/scans/{scan['id']}", headers=frank,
                                json={"purchased_from_merchant_id": None})).status_code == 404
+
+
+async def test_purchased_on_date_flows_like_the_store(app, client, replay_dir, catalog):
+    from datetime import UTC, datetime, timedelta
+
+    gina = await login(client, "gina")
+    today = datetime.now(UTC).date()
+    monday, tuesday = (today - timedelta(days=3)).isoformat(), (today - timedelta(days=2)).isoformat()
+    photo = fridge_photo(30)
+    write_fixture(replay_dir, photo, [MILK, EGGS])
+
+    future = await client.post("/v1/scans", headers={**gina, **idem()},
+                               files=[("files", ("a.jpg", photo, "image/jpeg"))],
+                               data={"purchased_on": (today + timedelta(days=5)).isoformat()})
+    assert future.status_code == 422 and future.json()["title"] == "invalid_purchased_on"
+
+    scan = (await client.post("/v1/scans", headers={**gina, **idem()},
+                              files=[("files", ("a.jpg", photo, "image/jpeg"))],
+                              data={"purchased_on": monday})).json()
+    assert scan["purchased_on"] == monday and scan["purchased_from"] is None
+    await app.state.worker.drain()
+    d = {x["label"]: x for x in (await client.get(f"/v1/scans/{scan['id']}", headers=gina)).json()["detections"]}
+    assert all(x["purchased_on"] == monday and not x["purchased_on_override"] for x in d.values())
+
+    # Eggs were bought the next day; the date alone (no store) is enough to record purchase history.
+    review = await client.post(f"/v1/scans/{scan['id']}/review", headers=gina, json={
+        "remaining": "accept",
+        "decisions": [{"detection_id": d["large eggs"]["id"], "action": "accept", "purchased_on": tuesday}]})
+    assert review.status_code == 200, review.text
+    items = {i["display_name"]: i for i in (await client.get("/v1/inventory", headers=gina)).json()}
+    assert items["2% milk"]["last_purchased_on"] == monday and items["large eggs"]["last_purchased_on"] == tuesday
+    detail = (await client.get(f"/v1/inventory/{items['large eggs']['id']}", headers=gina)).json()
+    assert detail["purchase_history"][0]["purchased_on"] == tuesday
+    assert detail["purchase_history"][0]["merchant"] is None
+
+    # Changing only the date leaves the store alone, and per-item overrides survive.
+    store = (await create(client, gina, name="PCC Community Markets")).json()["merchant"]
+    both = await client.patch(f"/v1/scans/{scan['id']}", headers=gina,
+                              json={"purchased_from_merchant_id": store["id"], "purchased_on": today.isoformat()})
+    assert both.status_code == 200 and both.json()["purchased_on"] == today.isoformat()
+    date_only = await client.patch(f"/v1/scans/{scan['id']}", headers=gina, json={"purchased_on": monday})
+    assert date_only.json()["purchased_from"]["id"] == store["id"]
+    d = {x["label"]: x for x in date_only.json()["detections"]}
+    assert d["2% milk"]["purchased_on"] == monday and d["large eggs"]["purchased_on"] == tuesday
+
+    reset = await client.patch(f"/v1/scans/{scan['id']}/detections/{d['large eggs']['id']}", headers=gina,
+                               json={"inherit": ["purchased_on"]})
+    eggs = next(x for x in reset.json()["detections"] if x["label"] == "large eggs")
+    assert eggs["purchased_on"] == monday and not eggs["purchased_on_override"]
+    assert eggs["purchased_from"]["id"] == store["id"]
+
+    cleared = await client.patch(f"/v1/scans/{scan['id']}", headers=gina, json={"purchased_on": None})
+    assert cleared.json()["purchased_on"] is None
+    items = {i["display_name"]: i for i in (await client.get("/v1/inventory", headers=gina)).json()}
+    assert items["large eggs"]["last_purchased_on"] is None
+    assert items["large eggs"]["last_purchased_from"]["id"] == store["id"]  # store still recorded
+
+    assert (await client.patch(f"/v1/scans/{scan['id']}", headers=gina, json={})).status_code == 422
+    bad = await client.patch(f"/v1/scans/{scan['id']}", headers=gina, json={"purchased_on": "2001-01-01"})
+    assert bad.status_code == 422

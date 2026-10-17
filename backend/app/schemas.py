@@ -1,12 +1,25 @@
-from datetime import datetime
-from typing import Literal
+from datetime import UTC, date, datetime, timedelta
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+def plausible_purchase_date(value: date) -> date:
+    # One day of slack covers time zones ahead of UTC; two years back is plenty for groceries.
+    today = datetime.now(UTC).date()
+    if value > today + timedelta(days=1):
+        raise ValueError("purchased_on can't be in the future")
+    if value < today - timedelta(days=730):
+        raise ValueError("purchased_on must be within the last two years")
+    return value
+
+
+PurchaseDate = Annotated[date, AfterValidator(plausible_purchase_date)]
 
 
 # ---------------------------------------------------------------- auth / me
@@ -119,6 +132,7 @@ class ItemOut(BaseModel):
     source: str | None = None
     preferred_merchant_id: UUID | None = None
     last_purchased_from: MerchantRef | None = None
+    last_purchased_on: date | None = None
 
 
 class ItemIn(Strict):
@@ -159,7 +173,8 @@ class DailyPoint(BaseModel):
 
 
 class PurchaseOrigin(BaseModel):
-    merchant: MerchantRef
+    merchant: MerchantRef | None
+    purchased_on: date | None
     observed_at: datetime
     quantity: float
     scan_id: UUID
@@ -196,6 +211,9 @@ class Detection(BaseModel):
     purchased_from_merchant_id: UUID | None
     purchased_from: MerchantRef | None
     merchant_override: bool
+    # Effective purchase date: the detection's override if set, else the scan's.
+    purchased_on: date | None
+    purchased_on_override: bool
 
 
 class ScanOut(BaseModel):
@@ -214,18 +232,38 @@ class ScanOut(BaseModel):
     created_at: datetime
     purchased_from_merchant_id: UUID | None
     purchased_from: MerchantRef | None
+    purchased_on: date | None
     detections: list[Detection] = []
 
 
 class ScanPatch(Strict):
-    purchased_from_merchant_id: UUID | None = Field(description="Store for the whole upload; null clears it")
+    """Upload-level store and/or purchase date. Send only the fields to change; null clears one."""
+    purchased_from_merchant_id: UUID | None = None
+    purchased_on: PurchaseDate | None = None
+
+    @model_validator(mode="after")
+    def _something(self) -> "ScanPatch":
+        if not self.model_fields_set:
+            raise ValueError("send purchased_from_merchant_id and/or purchased_on")
+        return self
 
 
 class DetectionPatch(Strict):
-    """Per-product store. Send ``purchased_from_merchant_id`` (null = explicitly no store) to override the
-    scan's store for this product, or ``inherit_from_scan: true`` to go back to the scan's store."""
+    """Per-product overrides. Setting a field (null = explicitly none) overrides the upload's value for this
+    product; listing it in ``inherit`` goes back to the upload's value."""
     purchased_from_merchant_id: UUID | None = None
-    inherit_from_scan: bool = False
+    purchased_on: PurchaseDate | None = None
+    inherit: list[Literal["purchased_from", "purchased_on"]] = Field(default_factory=list, max_length=2)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "DetectionPatch":
+        field_names = {"purchased_from_merchant_id": "purchased_from", "purchased_on": "purchased_on"}
+        setting = {name for field, name in field_names.items() if field in self.model_fields_set}
+        if not setting and not self.inherit:
+            raise ValueError("send a field to set, or list fields in inherit")
+        if setting & set(self.inherit):
+            raise ValueError("a field can't be both set and inherited")
+        return self
 
 
 class ReviewDecision(Strict):
@@ -234,8 +272,9 @@ class ReviewDecision(Strict):
     label: str | None = Field(default=None, min_length=1, max_length=80)
     quantity: float | None = Field(default=None, ge=0, le=10000)
     inventory_item_id: UUID | None = None
-    # Optional per-product store override; include the key with null to mark "no store" for this product.
+    # Optional per-product overrides; include a key with null to mark "none" for this product.
     purchased_from_merchant_id: UUID | None = None
+    purchased_on: PurchaseDate | None = None
 
 
 class ReviewIn(Strict):

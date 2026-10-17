@@ -158,7 +158,7 @@ Conventions: `uuid` PKs (`gen_random_uuid()`), `timestamptz` everywhere, money a
 |---|---|---|
 | `products` | `id, name, brand, category, subcategory, unit, size_value, size_unit, gtin, nutrition jsonb, image_url, embedding vector(768), search_tsv` | Seeded from an Open Food Facts subset; new products created from detections |
 | `merchants` | `id, name, locality, kind, is_small_business, website, lat, lng, household_id?` | `household_id IS NULL` = global catalog (read-only to users); otherwise a household-private store created via find-or-create. Unique per scope on normalized name + locality |
-| `inventory_purchase_origins` | `scan_detection_id, inventory_item_id, merchant_id, scan_id, observed_at, quantity` | "Purchased from" history, one row per confirmed detection with a store. Separate from `inventory_items.preferred_merchant_id` |
+| `inventory_purchase_origins` | `scan_detection_id, inventory_item_id, merchant_id?, purchased_on?, scan_id, observed_at, quantity` | "Purchased from / on" history, one row per confirmed detection with a store and/or purchase date. Separate from `inventory_items.preferred_merchant_id` |
 | `merchant_offers` | `merchant_id, product_id, url, sku, last_seen_at` | Where a product can be bought |
 
 **Inventory ("fridge Strava")**
