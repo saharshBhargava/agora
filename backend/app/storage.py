@@ -1,9 +1,12 @@
 import asyncio
 import re
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from app.config import Settings
+
+if TYPE_CHECKING:
+    from app.db import Database
 
 _KEY = re.compile(r"^[a-z0-9][a-z0-9/_.-]{0,200}$")
 
@@ -69,5 +72,34 @@ class S3Storage:
         await asyncio.to_thread(self.client.delete_object, Bucket=self.bucket, Key=_check_key(key))
 
 
-def make_storage(settings: Settings) -> Storage:
-    return S3Storage(settings) if settings.storage_backend == "s3" else LocalStorage(settings.storage_dir)
+class DbStorage:
+    """Media kept in Postgres. Zero extra accounts; fine for hackathon volumes since frames are purged after review."""
+
+    def __init__(self, db: "Database"):
+        self.db = db
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        async with self.db.system() as conn:
+            await conn.execute(
+                """INSERT INTO media_objects (key, content_type, data) VALUES ($1, $2, $3)
+                   ON CONFLICT (key) DO UPDATE SET content_type = EXCLUDED.content_type, data = EXCLUDED.data""",
+                _check_key(key), content_type, data)
+
+    async def get(self, key: str) -> bytes:
+        async with self.db.system() as conn:
+            data = await conn.fetchval("SELECT data FROM media_objects WHERE key = $1", _check_key(key))
+        if data is None:
+            raise FileNotFoundError(key)
+        return data
+
+    async def delete(self, key: str) -> None:
+        async with self.db.system() as conn:
+            await conn.execute("DELETE FROM media_objects WHERE key = $1", _check_key(key))
+
+
+def make_storage(settings: Settings, db: "Database") -> Storage:
+    if settings.storage_backend == "s3":
+        return S3Storage(settings)
+    if settings.storage_backend == "db":
+        return DbStorage(db)
+    return LocalStorage(settings.storage_dir)

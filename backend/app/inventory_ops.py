@@ -70,3 +70,21 @@ async def commit_scan(conn: asyncpg.Connection, scan: asyncpg.Record, user_id: U
         await record_observation(conn, scan["household_id"], item_id, scan["captured_at"], qty, "scan",
                                  scan_id=scan["id"], confidence=confidence[item_id], user_id=user_id)
     return len(totals)
+
+
+async def sync_purchase_origins(conn: asyncpg.Connection, scan_id: UUID, user_id: UUID | None) -> int:
+    """Rebuild a confirmed scan's purchase history from its detections. Idempotent; call after any store change.
+    Each accepted/corrected product gets its effective store: its own override if set, else the scan's store."""
+    await conn.execute("DELETE FROM inventory_purchase_origins WHERE scan_id = $1", scan_id)
+    result = await conn.execute(
+        """INSERT INTO inventory_purchase_origins (scan_detection_id, household_id, inventory_item_id, merchant_id,
+                                                  scan_id, observed_at, quantity, recorded_by)
+           SELECT d.id, d.household_id, d.inventory_item_id, e.merchant_id, s.id, s.captured_at, d.quantity, $2
+           FROM scan_detections d
+           JOIN scans s ON s.id = d.scan_id,
+           LATERAL (SELECT CASE WHEN d.merchant_override THEN d.purchased_from_merchant_id
+                                ELSE s.purchased_from_merchant_id END AS merchant_id) e
+           WHERE d.scan_id = $1 AND s.status = 'confirmed' AND d.review IN ('accepted', 'corrected')
+             AND d.inventory_item_id IS NOT NULL AND e.merchant_id IS NOT NULL""",
+        scan_id, user_id)
+    return int(result.split()[-1])

@@ -11,9 +11,9 @@ primary_region = "sea"
 [env]
   AGORA_ENV = "demo"
   AGORA_AUTH_MODE = "dev"
-  AGORA_STORAGE_BACKEND = "s3"
-  AGORA_VISION_PROVIDER = "perceptron"
-  AGORA_VISION_FALLBACK = "gemini"
+  AGORA_STORAGE_BACKEND = "db"
+  AGORA_VISION_PROVIDER = "gemini"
+  AGORA_VISION_FALLBACK = "replay"
   AGORA_RUN_WORKER_IN_PROCESS = "true"
 
 [http_service]

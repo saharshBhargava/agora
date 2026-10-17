@@ -107,3 +107,14 @@ def test_config_refuses_unsafe_deploys():
     with pytest.raises(ValueError, match="unique"):
         Settings(env="demo", auth_mode="dev")
     Settings(env="demo", auth_mode="dev", dev_jwt_secret="a-real-random-secret-for-the-demo-0123456789")
+
+
+async def test_missing_vision_key_degrades_to_replay_instead_of_crashing():
+    import httpx
+
+    from app.main import build_pipeline
+
+    settings = Settings(env="test", vision_provider="gemini", vision_fallback="perceptron", storage_backend="local")
+    async with httpx.AsyncClient() as client:
+        pipeline = build_pipeline(settings, db=None, client=client)
+    assert pipeline.vision.primary.name == "replay" and pipeline.vision.fallback is None

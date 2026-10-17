@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Strict(BaseModel):
@@ -62,6 +62,46 @@ class LocationIn(Strict):
     kind: Literal["fridge", "freezer", "pantry", "bathroom", "other"]
 
 
+# ---------------------------------------------------------------- merchants
+
+class MerchantRef(BaseModel):
+    id: UUID
+    name: str
+    locality: str | None
+    scope: Literal["global", "household"]
+
+
+class Merchant(BaseModel):
+    id: UUID
+    name: str
+    locality: str | None
+    kind: str
+    is_small_business: bool
+    website: str | None
+    scope: Literal["global", "household"]
+    household_id: UUID | None
+
+
+class MerchantIn(Strict):
+    name: str = Field(min_length=1, max_length=80)
+    locality: str | None = Field(default=None, max_length=80, description="Neighborhood or branch, e.g. 'Ballard'")
+    kind: Literal["grocery", "big_box", "online", "local", "other"] = "other"
+    website: str | None = Field(default=None, max_length=200, pattern=r"^https://")
+    household_id: UUID | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _has_letters(cls, value: str) -> str:
+        if not any(c.isalnum() for c in value):
+            raise ValueError("name needs at least one letter or digit")
+        return value.strip()
+
+
+class MerchantCreated(BaseModel):
+    merchant: Merchant
+    created: bool
+
+
 # ---------------------------------------------------------------- inventory
 
 class ItemOut(BaseModel):
@@ -77,6 +117,8 @@ class ItemOut(BaseModel):
     quantity: float | None = None
     observed_at: datetime | None = None
     source: str | None = None
+    preferred_merchant_id: UUID | None = None
+    last_purchased_from: MerchantRef | None = None
 
 
 class ItemIn(Strict):
@@ -87,6 +129,7 @@ class ItemIn(Strict):
     unit: str = Field(default="unit", max_length=20)
     par_level: float | None = Field(default=None, ge=0, le=10000)
     quantity: float | None = Field(default=None, ge=0, le=10000)
+    preferred_merchant_id: UUID | None = None
 
 
 class ItemPatch(Strict):
@@ -94,6 +137,7 @@ class ItemPatch(Strict):
     location_id: UUID | None = None
     par_level: float | None = Field(default=None, ge=0, le=10000)
     status: Literal["active", "archived"] | None = None
+    preferred_merchant_id: UUID | None = None
 
 
 class ObservationIn(Strict):
@@ -114,9 +158,18 @@ class DailyPoint(BaseModel):
     quantity: float | None
 
 
+class PurchaseOrigin(BaseModel):
+    merchant: MerchantRef
+    observed_at: datetime
+    quantity: float
+    scan_id: UUID
+    detection_id: UUID
+
+
 class ItemDetail(ItemOut):
     daily: list[DailyPoint]
     observations: list[Observation]
+    purchase_history: list[PurchaseOrigin]
     series_engine: Literal["timescale", "postgres"]
 
 
@@ -139,6 +192,10 @@ class Detection(BaseModel):
     frame_index: int | None
     review: str
     auto_accepted: bool
+    # Effective store for this product: the detection's override if set, else the scan's store.
+    purchased_from_merchant_id: UUID | None
+    purchased_from: MerchantRef | None
+    merchant_override: bool
 
 
 class ScanOut(BaseModel):
@@ -155,7 +212,20 @@ class ScanOut(BaseModel):
     latency_ms: int | None
     error_code: str | None
     created_at: datetime
+    purchased_from_merchant_id: UUID | None
+    purchased_from: MerchantRef | None
     detections: list[Detection] = []
+
+
+class ScanPatch(Strict):
+    purchased_from_merchant_id: UUID | None = Field(description="Store for the whole upload; null clears it")
+
+
+class DetectionPatch(Strict):
+    """Per-product store. Send ``purchased_from_merchant_id`` (null = explicitly no store) to override the
+    scan's store for this product, or ``inherit_from_scan: true`` to go back to the scan's store."""
+    purchased_from_merchant_id: UUID | None = None
+    inherit_from_scan: bool = False
 
 
 class ReviewDecision(Strict):
@@ -164,6 +234,8 @@ class ReviewDecision(Strict):
     label: str | None = Field(default=None, min_length=1, max_length=80)
     quantity: float | None = Field(default=None, ge=0, le=10000)
     inventory_item_id: UUID | None = None
+    # Optional per-product store override; include the key with null to mark "no store" for this product.
+    purchased_from_merchant_id: UUID | None = None
 
 
 class ReviewIn(Strict):

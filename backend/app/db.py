@@ -20,8 +20,10 @@ class Database:
     cross-tenant maintenance.
     """
 
-    def __init__(self, dsn: str, min_size: int = 1, max_size: int = 10):
+    def __init__(self, dsn: str, min_size: int = 1, max_size: int = 10, pgbouncer: bool = False):
         self.dsn, self.min_size, self.max_size = dsn, min_size, max_size
+        # Transaction-mode poolers (Supabase :6543, Neon "-pooler") can't keep prepared statements.
+        self.statement_cache_size = 0 if pgbouncer else 100
         self.pool: asyncpg.Pool | None = None
         self.timescale = False
 
@@ -29,6 +31,7 @@ class Database:
         self.pool = await asyncpg.create_pool(
             self.dsn, min_size=self.min_size, max_size=self.max_size, init=_init_connection,
             command_timeout=30, server_settings={"application_name": "agora-api"},
+            statement_cache_size=self.statement_cache_size,
         )
         async with self.pool.acquire() as conn:
             self.timescale = bool(await conn.fetchval("SELECT 1 FROM pg_extension WHERE extname = 'timescaledb'"))
