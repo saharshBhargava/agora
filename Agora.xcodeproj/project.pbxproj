@@ -8,20 +8,30 @@
 
 /* Begin PBXBuildFile section */
 		03406B1A40E5CA57ADAD24A4 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 831AD7A099E0A7D56607E1F7 /* ChatView.swift */; };
+		05FFF0EE258E16E7E0A0B1FA /* CapturePickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0E1B2C48ED10E23512AA2F /* CapturePickers.swift */; };
 		1DAE5BC67E9D00BC0856827F /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AB33E9AFC57A2F607241511 /* Foundation.framework */; };
 		21807B9C72A7D293730B7A16 /* BrowserScripts.js in Resources */ = {isa = PBXBuildFile; fileRef = 53ED4944AABB5AFAB8E77288 /* BrowserScripts.js */; };
+		2A3088999406A8AA8526BAAF /* CaptionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE74BEEED1DE81A6C9EB8F0 /* CaptionController.swift */; };
 		32E2DC2B067CA0C31D50EEA1 /* BrowserChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8238981FD4E643FA656A081F /* BrowserChatApp.swift */; };
 		388C884619261DE7F69D6AFD /* TaskRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 089874F2A5F5DC56A4972E7B /* TaskRepository.swift */; };
+		38B185A9696E32AEBE5683B8 /* CaptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69584785EE382B97897F6C47 /* CaptionTests.swift */; };
 		591BB0C7E60D64929EF3C6F5 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AB33E9AFC57A2F607241511 /* Foundation.framework */; };
 		6D11BAD95BF25539F1C4E6F9 /* BrowserToolExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7F7975FBBF93E36BFD498E9 /* BrowserToolExecutor.swift */; };
 		6E30429DCEA967A30A0237B1 /* AgentCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A9515555259CC33BE5F8186 /* AgentCoordinator.swift */; };
+		7ADD93AC1DAA8FBDB5B01A83 /* GeminiCaptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84712908608539A298B3D679 /* GeminiCaptionService.swift */; };
 		7E74D785404CE20E82B14692 /* ModelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EFB306656DA7F8B908FD7AD /* ModelProvider.swift */; };
 		8302AFD8D8B81A92CBEAD235 /* browser-fixture.html in Resources */ = {isa = PBXBuildFile; fileRef = 1EBB9EED3AC87495774DB9C3 /* browser-fixture.html */; };
+		8432C3CF2BA964919467BE02 /* CaptionPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F1BC7A4AD07422B58B4CBD /* CaptionPanel.swift */; };
+		8D0CCFFAB867BE1F82D17943 /* CaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BD2ABEE624DF14392818B91 /* CaptureTests.swift */; };
 		955855FBF03677594D4C70C9 /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0CEBF0DA029FF97E245B638 /* BrowserSession.swift */; };
 		95C9CA5BD07AC93F9805C30F /* BrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15815BEC3690BB246FAB930E /* BrowserTests.swift */; };
+		9E76D3E5F8E372903A639FEB /* CaptionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E8D513CC6D322C48CB177B1 /* CaptionModels.swift */; };
+		A08A2945ADCBCDF7B83142E5 /* CaptionHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1982523DE11C44D26A8E91A /* CaptionHTTPClient.swift */; };
 		A35D6F61976E6049CF5A4B80 /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7005469F1885068D2934AB7 /* AppLog.swift */; };
 		A8ED89AC09560331D16FAB79 /* BrowserPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D12F0C37DD25E51D738468 /* BrowserPolicy.swift */; };
+		B0218DE2720796644F4C0F20 /* MediaLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A4EFF4ADF48178439FDE70 /* MediaLibrary.swift */; };
 		B19FB286D3D071050FD59BB2 /* BrowserViewport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508A2F0DC4605AD428A03C04 /* BrowserViewport.swift */; };
+		C2C9603958A6C856007BFACB /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E95A5738AAF7E09F32FD585 /* CaptureView.swift */; };
 		D03A7F0139733750A21E1B8B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 925DF290158B6070465CC038 /* SettingsView.swift */; };
 		FD1FF5C357383BDC1AC89B3D /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 867F5B288D00FC80995A3455 /* SettingsStore.swift */; };
 /* End PBXBuildFile section */
@@ -40,18 +50,28 @@
 		089874F2A5F5DC56A4972E7B /* TaskRepository.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TaskRepository.swift; path = Agora/Storage/TaskRepository.swift; sourceTree = "<group>"; };
 		0EFB306656DA7F8B908FD7AD /* ModelProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelProvider.swift; path = Agora/Agent/ModelProvider.swift; sourceTree = "<group>"; };
 		15815BEC3690BB246FAB930E /* BrowserTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserTests.swift; path = AgoraTests/BrowserTests.swift; sourceTree = "<group>"; };
-		1EBB9EED3AC87495774DB9C3 /* browser-fixture.html */ = {isa = PBXFileReference; includeInIndex = 1; name = "browser-fixture.html"; path = "Fixtures/browser-fixture.html"; sourceTree = "<group>"; };
+		1AE74BEEED1DE81A6C9EB8F0 /* CaptionController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionController.swift; path = Agora/Capture/CaptionController.swift; sourceTree = "<group>"; };
+		1E8D513CC6D322C48CB177B1 /* CaptionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionModels.swift; path = Agora/Capture/CaptionModels.swift; sourceTree = "<group>"; };
+		1E95A5738AAF7E09F32FD585 /* CaptureView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptureView.swift; path = Agora/Capture/CaptureView.swift; sourceTree = "<group>"; };
+		1EBB9EED3AC87495774DB9C3 /* browser-fixture.html */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.html; name = "browser-fixture.html"; path = "Fixtures/browser-fixture.html"; sourceTree = "<group>"; };
 		34AE695D1E8550998371F613 /* Agora.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Agora.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A9515555259CC33BE5F8186 /* AgentCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgentCoordinator.swift; path = Agora/Agent/AgentCoordinator.swift; sourceTree = "<group>"; };
+		4C0E1B2C48ED10E23512AA2F /* CapturePickers.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CapturePickers.swift; path = Agora/Capture/CapturePickers.swift; sourceTree = "<group>"; };
 		4C2FD697CABA3EC8399D89B5 /* AgoraTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AgoraTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		508A2F0DC4605AD428A03C04 /* BrowserViewport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserViewport.swift; path = Agora/Browser/BrowserViewport.swift; sourceTree = "<group>"; };
-		53ED4944AABB5AFAB8E77288 /* BrowserScripts.js */ = {isa = PBXFileReference; includeInIndex = 1; name = BrowserScripts.js; path = Agora/Browser/BrowserScripts.js; sourceTree = "<group>"; };
+		53ED4944AABB5AFAB8E77288 /* BrowserScripts.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; name = BrowserScripts.js; path = Agora/Browser/BrowserScripts.js; sourceTree = "<group>"; };
+		5BD2ABEE624DF14392818B91 /* CaptureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptureTests.swift; path = AgoraTests/CaptureTests.swift; sourceTree = "<group>"; };
+		69584785EE382B97897F6C47 /* CaptionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionTests.swift; path = AgoraTests/CaptionTests.swift; sourceTree = "<group>"; };
 		8238981FD4E643FA656A081F /* BrowserChatApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserChatApp.swift; path = Agora/App/BrowserChatApp.swift; sourceTree = "<group>"; };
 		831AD7A099E0A7D56607E1F7 /* ChatView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatView.swift; path = Agora/App/ChatView.swift; sourceTree = "<group>"; };
+		84712908608539A298B3D679 /* GeminiCaptionService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GeminiCaptionService.swift; path = Agora/Capture/GeminiCaptionService.swift; sourceTree = "<group>"; };
 		867F5B288D00FC80995A3455 /* SettingsStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsStore.swift; path = Agora/Storage/SettingsStore.swift; sourceTree = "<group>"; };
+		88F1BC7A4AD07422B58B4CBD /* CaptionPanel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionPanel.swift; path = Agora/Capture/CaptionPanel.swift; sourceTree = "<group>"; };
 		925DF290158B6070465CC038 /* SettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = Agora/App/SettingsView.swift; sourceTree = "<group>"; };
 		98D12F0C37DD25E51D738468 /* BrowserPolicy.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserPolicy.swift; path = Agora/Browser/BrowserPolicy.swift; sourceTree = "<group>"; };
+		99A4EFF4ADF48178439FDE70 /* MediaLibrary.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MediaLibrary.swift; path = Agora/Capture/MediaLibrary.swift; sourceTree = "<group>"; };
 		9AB33E9AFC57A2F607241511 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		C1982523DE11C44D26A8E91A /* CaptionHTTPClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionHTTPClient.swift; path = Agora/Capture/CaptionHTTPClient.swift; sourceTree = "<group>"; };
 		E0CEBF0DA029FF97E245B638 /* BrowserSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserSession.swift; path = Agora/Browser/BrowserSession.swift; sourceTree = "<group>"; };
 		E7005469F1885068D2934AB7 /* AppLog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppLog.swift; path = Agora/Storage/AppLog.swift; sourceTree = "<group>"; };
 		F7F7975FBBF93E36BFD498E9 /* BrowserToolExecutor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserToolExecutor.swift; path = Agora/Browser/BrowserToolExecutor.swift; sourceTree = "<group>"; };
@@ -97,6 +117,16 @@
 				15815BEC3690BB246FAB930E /* BrowserTests.swift */,
 				1EBB9EED3AC87495774DB9C3 /* browser-fixture.html */,
 				E7005469F1885068D2934AB7 /* AppLog.swift */,
+				4C0E1B2C48ED10E23512AA2F /* CapturePickers.swift */,
+				99A4EFF4ADF48178439FDE70 /* MediaLibrary.swift */,
+				1E95A5738AAF7E09F32FD585 /* CaptureView.swift */,
+				5BD2ABEE624DF14392818B91 /* CaptureTests.swift */,
+				1AE74BEEED1DE81A6C9EB8F0 /* CaptionController.swift */,
+				88F1BC7A4AD07422B58B4CBD /* CaptionPanel.swift */,
+				1E8D513CC6D322C48CB177B1 /* CaptionModels.swift */,
+				84712908608539A298B3D679 /* GeminiCaptionService.swift */,
+				C1982523DE11C44D26A8E91A /* CaptionHTTPClient.swift */,
+				69584785EE382B97897F6C47 /* CaptionTests.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -171,6 +201,12 @@
 			attributes = {
 				LastSwiftUpdateCheck = 1600;
 				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					102B01FE511585C1E11EB73E = {
+						DevelopmentTeam = 8N46NST49L;
+						ProvisioningStyle = Automatic;
+					};
+				};
 			};
 			buildConfigurationList = 2DECBB9C8AFB0866653A1ADA /* Build configuration list for PBXProject "Agora" */;
 			compatibilityVersion = "Xcode 3.2";
@@ -181,8 +217,6 @@
 				Base,
 			);
 			mainGroup = 165B961B61F0A78E9BD13536;
-			minimizedProjectReferenceProxies = 0;
-			preferredProjectObjectVersion = 77;
 			productRefGroup = 6CA1606ADF00BEEA3ADAC2E5 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -218,6 +252,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				95C9CA5BD07AC93F9805C30F /* BrowserTests.swift in Sources */,
+				8D0CCFFAB867BE1F82D17943 /* CaptureTests.swift in Sources */,
+				38B185A9696E32AEBE5683B8 /* CaptionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -237,6 +273,14 @@
 				B19FB286D3D071050FD59BB2 /* BrowserViewport.swift in Sources */,
 				6D11BAD95BF25539F1C4E6F9 /* BrowserToolExecutor.swift in Sources */,
 				A35D6F61976E6049CF5A4B80 /* AppLog.swift in Sources */,
+				05FFF0EE258E16E7E0A0B1FA /* CapturePickers.swift in Sources */,
+				B0218DE2720796644F4C0F20 /* MediaLibrary.swift in Sources */,
+				C2C9603958A6C856007BFACB /* CaptureView.swift in Sources */,
+				2A3088999406A8AA8526BAAF /* CaptionController.swift in Sources */,
+				8432C3CF2BA964919467BE02 /* CaptionPanel.swift in Sources */,
+				9E76D3E5F8E372903A639FEB /* CaptionModels.swift in Sources */,
+				7ADD93AC1DAA8FBDB5B01A83 /* GeminiCaptionService.swift in Sources */,
+				A08A2945ADCBCDF7B83142E5 /* CaptionHTTPClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -260,7 +304,10 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8N46NST49L;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Agora uses the camera to take photos, record videos, and scan documents.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Agora uses the microphone to record sound with your videos.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -324,8 +371,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -415,7 +461,10 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8N46NST49L;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Agora uses the camera to take photos, record videos, and scan documents.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Agora uses the microphone to record sound with your videos.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

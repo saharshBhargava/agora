@@ -9,6 +9,8 @@ struct BrowserChatApp: App {
             TabView {
                 ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser)
                     .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
+                CaptureView(settings: workspace.settings)
+                    .tabItem { Label("Capture", systemImage: "camera.viewfinder") }
                 SettingsView(settings: workspace.settings, workspace: workspace)
                     .tabItem { Label("Settings", systemImage: "gearshape") }
             }
