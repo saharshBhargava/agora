@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>
+<h1>Browser fixture</h1><label>Search <input id="query" type="text"></label>
+<button id="search" onclick="setTimeout(() => document.getElementById('result').textContent = 'Results for ' + document.getElementById('query').value, 400)">Search now</button>
+<div id="result">No results yet</div><label><input id="agree" type="checkbox">Remember choice</label>
+<select aria-label="Color"><option value="red">Red</option><option value="blue">Blue</option></select>
+<button id="replace" onclick="document.getElementById('search').outerHTML = '<button id=search>Replacement</button>'">Replace button</button>
+<input id="secret" type="password" value="never-send-this" hidden>
+<div style="height:1400px">Scrollable content</div>
+<a href="https://example.com" target="_blank">Popup link</a>
+</body></html>
