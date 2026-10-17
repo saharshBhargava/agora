@@ -44,7 +44,8 @@ struct ChatView: View {
                 if let approval = agent.approval {
                     VStack(alignment: .leading, spacing: 12) {
                         Label(approval.title, systemImage: "hand.raised.fill").font(.headline)
-                        Text(approval.detail).font(.callout)
+                        ScrollView { Text(approval.detail).font(.callout).frame(maxWidth: .infinity, alignment: .leading) }
+                            .frame(maxHeight: 240)
                         HStack {
                             Button("Deny", role: .cancel) { agent.resolveApproval(false) }.buttonStyle(.bordered)
                             Spacer()

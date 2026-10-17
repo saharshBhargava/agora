@@ -1,6 +1,8 @@
+import base64
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,7 +20,7 @@ class Settings(BaseSettings):
     db_pool_max: int = 10
 
     # Auth: "dev" mints short-lived HMAC tokens for seeded demo users; "oidc" verifies an IdP's JWTs via JWKS.
-    auth_mode: Literal["dev", "oidc"] = "dev"
+    auth_mode: Literal["dev", "oidc", "google"] = "dev"
     dev_jwt_secret: SecretStr = SecretStr(DEFAULT_DEV_SECRET)
     # In demo mode, dev login only works for these seeded handles.
     demo_handles: list[str] = Field(default_factory=lambda: ["kedar", "saharsh"])
@@ -26,6 +28,12 @@ class Settings(BaseSettings):
     oidc_issuer: str | None = None
     oidc_audience: str | None = None
     oidc_jwks_url: str | None = None
+
+    # First-party Google OAuth (confidential web client; the phone never receives its secret).
+    google_client_id: str | None = None
+    google_client_secret: SecretStr | None = None
+    google_redirect_uri: str | None = None
+    google_token_key: SecretStr | None = None  # base64-encoded 32-byte AES-GCM key
 
     # Media storage: "local" writes under storage_dir; "s3" targets any S3-compatible bucket (Cloudflare R2).
     storage_backend: Literal["local", "s3"] = "local"
@@ -66,8 +74,24 @@ class Settings(BaseSettings):
         if self.env == "prod":
             if self.auth_mode == "dev":
                 raise ValueError("AGORA_AUTH_MODE=dev is not allowed when AGORA_ENV=prod")
-            if not (self.oidc_issuer and self.oidc_audience and self.oidc_jwks_url):
+            if self.auth_mode == "oidc" and not (self.oidc_issuer and self.oidc_audience and self.oidc_jwks_url):
                 raise ValueError("OIDC issuer, audience and JWKS URL are required in prod")
+        google = (self.google_client_id, self.google_client_secret, self.google_redirect_uri, self.google_token_key)
+        if any(google) or self.auth_mode == "google":
+            if not all(google):
+                raise ValueError("Google client ID, secret, redirect URI and token encryption key are required")
+            try:
+                key = base64.b64decode(self.google_token_key.get_secret_value(), validate=True)
+                if len(key) != 32:
+                    raise ValueError()
+            except (ValueError, TypeError) as error:
+                raise ValueError("AGORA_GOOGLE_TOKEN_KEY must be base64-encoded 32 random bytes") from error
+            uri = urlsplit(self.google_redirect_uri)
+            local = self.env in ("dev", "test") and uri.hostname in ("localhost", "127.0.0.1")
+            if (uri.scheme != "https" and not (local and uri.scheme == "http")) or not uri.netloc:
+                raise ValueError("Google redirect URI must use HTTPS (localhost allowed in dev/test)")
+            if uri.username or uri.password or uri.query or uri.fragment:
+                raise ValueError("Google redirect URI must not contain credentials, query or fragment")
         if self.auth_mode == "dev":
             secret = self.dev_jwt_secret.get_secret_value()
             if len(secret) < 32:

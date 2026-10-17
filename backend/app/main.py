@@ -13,9 +13,10 @@ from app.auth import TokenVerifier
 from app.config import Settings, get_settings
 from app.db import Database
 from app.errors import Problem, handle_problem, handle_validation, problem_response
+from app.google_calendar import GoogleCalendar
 from app.jobs import Worker
 from app.pipeline import Pipeline
-from app.routers import account, audit, events, inventory, scans
+from app.routers import account, audit, calendar, events, inventory, scans
 from app.routers.events import Broadcaster
 from app.storage import make_storage
 from app.vision.providers import make_provider
@@ -44,6 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await broadcaster.start()
         app.state.settings, app.state.db, app.state.pipeline = settings, db, pipeline
         app.state.storage, app.state.broadcaster = pipeline.storage, broadcaster
+        app.state.calendar = GoogleCalendar(settings, db, client)
         app.state.verifier = TokenVerifier(settings)
         app.state.worker = Worker(db, pipeline.handlers, settings.worker_concurrency)
         worker_task = asyncio.create_task(app.state.worker.run()) if settings.run_worker_in_process else None
@@ -105,9 +107,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await conn.fetchval("SELECT 1")
         return {"ok": True, "timescale": request.app.state.db.timescale, "version": app.version}
 
-    for router in (account.router, inventory.router, scans.router, events.router, audit.router):
+    for router in (account.router, inventory.router, scans.router, events.router, audit.router, calendar.router):
         app.include_router(router)
     return app
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+
+
+class RedactAccessQuery(logging.Filter):
+    """Uvicorn's default access logger otherwise records OAuth codes and state in query strings."""
+    def filter(self, record):
+        if isinstance(record.args, tuple) and len(record.args) == 5:
+            client, method, path, version, status = record.args
+            record.args = (client, method, str(path).split("?", 1)[0], version, status)
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(RedactAccessQuery())

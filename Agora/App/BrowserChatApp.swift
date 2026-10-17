@@ -3,16 +3,25 @@ import SwiftUI
 @main
 struct BrowserChatApp: App {
     @StateObject private var workspace = ChatWorkspace()
+    @State private var selectedTab: AppTab = .home
     @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
-            TabView {
-                ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser)
-                    .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
-                CaptureView(settings: workspace.settings)
-                    .tabItem { Label("Capture", systemImage: "camera.viewfinder") }
-                SettingsView(settings: workspace.settings, workspace: workspace)
-                    .tabItem { Label("Settings", systemImage: "gearshape") }
+            CalendarGate(calendar: workspace.calendar, onDisconnect: { workspace.agent.newChat() }) {
+                TabView(selection: $selectedTab) {
+                    HomeView(selectedTab: $selectedTab)
+                        .tabItem { Label("Home", systemImage: "house") }
+                        .tag(AppTab.home)
+                    ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser)
+                        .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
+                        .tag(AppTab.chat)
+                    CaptureView(settings: workspace.settings)
+                        .tabItem { Label("Capture", systemImage: "camera.viewfinder") }
+                        .tag(AppTab.capture)
+                    SettingsView(settings: workspace.settings, workspace: workspace)
+                        .tabItem { Label("Settings", systemImage: "gearshape") }
+                        .tag(AppTab.settings)
+                }
             }
             .tint(.teal)
             .onChange(of: scenePhase) { _, phase in
@@ -28,10 +37,12 @@ final class ChatWorkspace: ObservableObject {
     let settings: SettingsStore
     let browser: BrowserSession
     let agent: AgentCoordinator
+    let calendar: CalendarConnection
     init() {
         AppLog.event(.app, "workspace.created")
         let settings = SettingsStore(); self.settings = settings
         let browser = BrowserSession(policy: settings.policy); self.browser = browser
-        agent = AgentCoordinator(settings: settings, browser: browser)
+        let calendar = CalendarConnection(); self.calendar = calendar
+        agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar)
     }
 }

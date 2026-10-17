@@ -1,7 +1,6 @@
 import SwiftUI
 import AVKit
 import PhotosUI
-import VisionKit
 import PDFKit
 import UniformTypeIdentifiers
 
@@ -15,17 +14,16 @@ struct CaptureView: View {
     @State private var deleting: CaptureItem?
     @State private var requestingPermission = false
     @State private var needsSettings = false
-    enum CameraMode: String, Identifiable { case photo, video, scan; var id: String { rawValue } }
+    enum CameraMode: String, Identifiable { case photo, video; var id: String { rawValue } }
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Capture something new").font(.title2.bold())
-                        Text("Scan a document, take a photo, or record a video.").foregroundStyle(.secondary)
+                        Text("Take a photo or record a video.").foregroundStyle(.secondary)
                     }
                     HStack(spacing: 12) {
-                        captureButton("Scan", icon: "doc.viewfinder", mode: .scan)
                         captureButton("Photo", icon: "camera", mode: .photo)
                         captureButton("Video", icon: "video", mode: .video)
                     }.disabled(library.busy || requestingPermission)
@@ -35,7 +33,7 @@ struct CaptureView: View {
                         Button { pickingFiles = true } label: { Label("Files", systemImage: "folder") }
                             .buttonStyle(.bordered)
                     }.disabled(library.busy || requestingPermission)
-                    Text("Photos, videos, and scans are saved in Agora on this device. Nothing is sent to Gemini automatically.")
+                    Text("Photos and videos are saved in Agora on this device. Nothing is sent to Gemini automatically.")
                         .font(.footnote).foregroundStyle(.secondary)
                     if library.busy { ProgressView("Saving media…").frame(maxWidth: .infinity) }
                     HStack {
@@ -62,24 +60,15 @@ struct CaptureView: View {
             .navigationTitle("Capture")
             .task { await library.load() }
             .fullScreenCover(item: $camera) { mode in
-                if mode == .scan {
-                    DocumentScanner { result in
-                        camera = nil
-                        switch result {
-                        case .success(let url): if let url { saveTemporary(url, kind: .document) }
-                        case .failure(let error): library.error = error.localizedDescription
-                        }
-                    }.ignoresSafeArea()
-                } else {
-                    CameraPicker(video: mode == .video) { result in
-                        camera = nil
-                        switch result {
-                        case .success(let media): if let (url, kind) = media { saveTemporary(url, kind: kind) }
-                        case .failure(let error): library.error = error.localizedDescription
-                        }
-                    }.ignoresSafeArea()
-                }
+                CameraPicker(video: mode == .video) { result in
+                    camera = nil
+                    switch result {
+                    case .success(let media): if let (url, kind) = media { saveTemporary(url, kind: kind) }
+                    case .failure(let error): library.error = error.localizedDescription
+                    }
+                }.ignoresSafeArea()
             }
+
             .sheet(isPresented: $pickingLibrary) {
                 LibraryPicker { results in
                     pickingLibrary = false
@@ -141,12 +130,12 @@ struct CaptureView: View {
     private func openCamera(_ mode: CameraMode) async {
         requestingPermission = true; needsSettings = false
         defer { requestingPermission = false }
-        guard UIImagePickerController.isSourceTypeAvailable(.camera), mode != .scan || VNDocumentCameraViewController.isSupported else {
-            library.error = "This device does not support \(mode == .scan ? "document scanning" : "camera capture"). Use Photo Library or Files, or try on a physical iPhone."
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            library.error = "This device does not support camera capture. Use Photo Library or Files, or try on a physical iPhone."
             return
         }
         guard await AVCaptureDevice.requestAccess(for: .video) else {
-            needsSettings = true; library.error = "Allow camera access in Settings to take photos, record videos, or scan documents."; return
+            needsSettings = true; library.error = "Allow camera access in Settings to take photos or record videos."; return
         }
         if mode == .video, !(await AVCaptureDevice.requestAccess(for: .audio)) {
             needsSettings = true; library.error = "Allow microphone access in Settings to record videos with sound."; return
@@ -198,6 +187,11 @@ private struct MediaPreview: View {
     @State private var player: AVPlayer?
     @State private var loaded = false
     @State private var confirmDismiss = false
+    @State private var purchasedFrom = ""
+    @State private var savedStore = ""
+    @State private var savingStore = false
+    @State private var storeMessage: String?
+    private var storeHasEdits: Bool { purchasedFrom.trimmingCharacters(in: .whitespacesAndNewlines) != savedStore }
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -210,6 +204,28 @@ private struct MediaPreview: View {
                         else { ProgressView() }
                     }.frame(maxWidth: .infinity).frame(height: item.kind == .document ? 550 : 300)
                     if item.kind != .document {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Purchased from").font(.headline)
+                            TextField("Store or website, e.g. Costco or Amazon", text: $purchasedFrom)
+                                .textFieldStyle(.roundedBorder)
+                                .disabled(savingStore)
+                                .accessibilityIdentifier("capture.purchasedFrom")
+                            Text("Optional. Enter the store for the items in this photo or video.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                            Button(savingStore ? "Saving…" : "Save store") {
+                                savingStore = true
+                                Task {
+                                    defer { savingStore = false }
+                                    do {
+                                        try await library.savePurchasedFrom(purchasedFrom, for: item.id)
+                                        savedStore = purchasedFrom.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        purchasedFrom = savedStore
+                                        storeMessage = savedStore.isEmpty ? "Store cleared." : "Store saved."
+                                    } catch { storeMessage = "Could not save store: \(error.localizedDescription)" }
+                                }
+                            }.disabled(savingStore || !storeHasEdits)
+                            if let storeMessage { Text(storeMessage).font(.footnote).foregroundStyle(.secondary) }
+                        }.padding()
                         CaptionPanel(item: item, url: url, settings: settings, library: library, controller: caption)
                     }
                 }
@@ -218,18 +234,21 @@ private struct MediaPreview: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") {
-                        if caption.hasEdits || caption.busy { confirmDismiss = true }
+                        if caption.hasEdits || caption.busy || storeHasEdits { confirmDismiss = true }
                         else { dismiss() }
-                    }
+                    }.disabled(savingStore)
                 }
                 ToolbarItem(placement: .primaryAction) { ShareLink(item: url) { Image(systemName: "square.and.arrow.up") } }
             }
-            .interactiveDismissDisabled(caption.hasEdits || caption.busy)
+            .interactiveDismissDisabled(caption.hasEdits || caption.busy || storeHasEdits || savingStore)
             .confirmationDialog("Close this preview? Unsaved edits will be discarded and captioning will be cancelled.", isPresented: $confirmDismiss, titleVisibility: .visible) {
                 Button("Close preview", role: .destructive) { caption.cancel(); dismiss() }
             }
             .task {
-                caption.restore(library.items.first(where: { $0.id == item.id })?.caption)
+                let current = library.items.first(where: { $0.id == item.id }) ?? item
+                caption.restore(current.caption)
+                purchasedFrom = current.purchasedFrom ?? ""
+                savedStore = purchasedFrom
                 if item.kind == .video { player = AVPlayer(url: url) }
                 else if item.kind == .image { image = await Task.detached { MediaLibrary.thumbnail(url, maxPixels: 2400) }.value; loaded = true }
             }

@@ -100,3 +100,98 @@ migrations/           numbered SQL; *.timescale.sql only runs where TimescaleDB 
 2. Create a private R2 bucket and an access key scoped to it.
 3. Run `fly launch --no-deploy --copy-config`, set the secrets listed at the top of `fly.toml`, then `fly deploy`.
 4. Seed once with `fly ssh console -C "python -m app.seed"`.
+
+## Google Calendar onboarding and Gemini tools
+
+Agora now uses first-party Google OAuth and the Calendar API. The iOS onboarding screen requires a Calendar
+connection and uses the Google identity to create/sign into an Agora account. No MCP service or third-party
+connector is involved. The integration is implemented but requires your own Google Cloud configuration;
+no credentials or deployed API URL are included in the repository.
+
+### Configure Google and the backend
+
+1. In your Google Cloud project, enable **Google Calendar API**. Configure Google Auth Platform branding,
+   audience and consent. For development, add each tester under **Test users**.
+2. Create an OAuth client of type **Web application**. Register the exact HTTPS redirect URI:
+   `https://YOUR_API_HOST/v1/integrations/google/callback`.
+   Google returns to the backend, which forwards the authorization code to the iOS authentication session.
+   This implementation uses `ASWebAuthenticationSession` and a confidential web client; it does not need
+   the Google Sign-In SDK or a separate iOS OAuth client.
+3. Request these scopes: `openid`, `email`, `https://www.googleapis.com/auth/calendar.events`, and
+   `https://www.googleapis.com/auth/calendar.freebusy`. Users must grant both Calendar permissions.
+4. Set backend secrets/configuration:
+
+   ```dotenv
+   AGORA_AUTH_MODE=google
+   AGORA_GOOGLE_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
+   AGORA_GOOGLE_CLIENT_SECRET=YOUR_WEB_CLIENT_SECRET
+   AGORA_GOOGLE_REDIRECT_URI=https://YOUR_API_HOST/v1/integrations/google/callback
+   AGORA_GOOGLE_TOKEN_KEY=BASE64_ENCODED_32_BYTE_RANDOM_KEY
+   ```
+
+   Generate the encryption key once with `openssl rand -base64 32`. Keep it stable across deployments and
+   back it up securely. Changing it without re-encrypting stored tokens requires users to reconnect.
+   All four Google settings are validated together. `AGORA_ENV=prod` supports `AGORA_AUTH_MODE=google`.
+   If using the existing Fly configuration, override its `AGORA_AUTH_MODE=dev` with `google`.
+5. Apply migrations with `uv run python -m app.migrate` (Docker already runs migrations at startup), then
+   restart the API. Ensure your reverse proxy and observability tooling do not log query strings on the
+   OAuth callback. Agora redacts query strings in Uvicorn access logs and returns `Cache-Control: no-store`.
+6. For public rollout, complete Google's OAuth verification as required by the requested scopes. Google
+   Calendar authorization on an external OAuth app in **Testing** typically expires after seven days;
+   publishing/verification is needed for a lasting public onboarding experience.
+
+### Configure and run iOS
+
+In the Agora target's Xcode **Build Settings**, set the user-defined `AGORA_API_BASE_URL` to the HTTPS API
+origin, e.g. `https://YOUR_API_HOST`, for each build configuration. It is intentionally empty by default.
+`Agora/Info.plist` includes that setting and the `dev.agora.browserchat` callback scheme. Do not put the
+Google client secret or encryption key in the app. Use an HTTPS development endpoint reachable by both
+Google and the phone/simulator. The project generator preserves the required plist configuration; set the
+API URL again after generating a fresh project.
+
+Run the app, choose **Connect Google Calendar**, select a Google account and approve permissions. Cancelled
+or partially granted authorization leaves onboarding incomplete. Under **Settings → Connected accounts**,
+users can reconnect, sign out, or disconnect/revoke access. Disconnect also invalidates their Agora sessions;
+existing Google Calendar events remain. Sign out removes only the current Agora session. Sessions expire
+at 30 days, after which the user signs in again. Google access tokens are refreshed independently of Agora sessions.
+
+After adding the existing Gemini API key in Settings, try:
+
+> Find a free half hour tomorrow afternoon and add a grocery run.
+
+Gemini receives `calendar_freebusy` and `calendar_create_event`. It resolves relative dates using the device
+clock/timezone. Agora shows the exact title, start/end, timezone, location and description before creating
+an event. The API validates timestamps and DST offsets. The initial implementation supports the user's
+**primary calendar**, timed events, and no attendees/invitations. Editing, deleting, recurring events and
+secondary calendar selection are not implemented.
+
+### API and security
+
+- `POST /v1/integrations/google/start`: creates expiring OAuth state bound to a device-generated PKCE challenge.
+  A signed-in reconnect is also bound to the current Agora account.
+- `GET /v1/integrations/google/callback`: validates state and returns to the system authentication session.
+- `POST /v1/integrations/google/exchange`: consumes state once, exchanges the code using PKCE, verifies Google
+  identity and required scopes, and issues a random Agora session token. The phone stores it in Keychain;
+  the database stores only its SHA-256 hash. Google credentials never enter the Gemini conversation.
+- `GET /v1/integrations/google`: connection status for the authenticated user.
+- `DELETE /v1/integrations/google`: revokes Google access and removes the connection and Agora sessions.
+- `POST /v1/auth/logout`: revokes the current Agora session.
+- `POST /v1/calendar/freebusy`: accepts offset-aware `start`, `end`, and IANA `timezone`; max window 31 days.
+- `POST /v1/calendar/events`: additionally accepts `title`, optional `description`/`location`, `confirmed: true`,
+  and an `Idempotency-Key` header. The native app sets confirmation only after the user approves; it is not a
+  model argument. As with any authenticated client API, the server trusts the client to capture confirmation.
+  Google event IDs are derived from the user and request key. Retries recover the existing event and reject
+  mismatched payloads. An uncertain result stops the agent and asks the user to check Calendar.
+
+Refresh tokens use AES-256-GCM with user ID as authenticated associated data. Connection rows have row-level
+security; session/state tables are restricted to the authentication service. The backend never stores the
+user's calendar contents. Audit records contain action names and event IDs only.
+
+Validation: `AGORA_TEST_DATABASE_URL=postgresql://... uv run pytest -q` exercises real Postgres isolation,
+PKCE/state replay, permissions, event retries, revocation, session expiry and validation with mocked Google
+HTTP responses. `AgoraTests/CalendarTests.swift` covers native callback validation, tool validation and the
+Gemini approval/execution loop. A real Google sign-in and event creation still require configured credentials.
+
+References: [Google web-server OAuth](https://developers.google.com/identity/protocols/oauth2/web-server),
+[Calendar event creation](https://developers.google.com/workspace/calendar/api/v3/reference/events/insert),
+[Calendar free/busy](https://developers.google.com/workspace/calendar/api/v3/reference/freebusy/query).

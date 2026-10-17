@@ -1,3 +1,4 @@
+import hashlib
 import time
 from dataclasses import dataclass
 from uuid import UUID
@@ -90,7 +91,20 @@ async def ensure_user(db: Database, subject: str, handle: str, display_name: str
 async def current_principal(request: Request) -> Principal:
     state = request.app.state
     # JWKS fetches are blocking network calls (cached after the first), so keep them off the event loop.
-    subject = await run_in_threadpool(state.verifier.verify, _bearer(request))
+    token = _bearer(request)
+    if token.startswith("ags_"):
+        async with state.db.system() as conn:
+            row = await conn.fetchrow(
+                """SELECT u.id, u.auth_subject, u.handle FROM app_sessions s JOIN users u ON u.id = s.user_id
+                   WHERE s.token_hash = $1 AND s.expires_at > now() AND u.deleted_at IS NULL""",
+                hashlib.sha256(token.encode()).hexdigest())
+        if row is None:
+            raise Problem(401, "invalid_token", "Sign in again.")
+        request.state.user_id = row["id"]
+        return Principal(user_id=row["id"], subject=row["auth_subject"], handle=row["handle"])
+    if state.settings.auth_mode == "google":
+        raise Problem(401, "invalid_token", "Sign in with Google.")
+    subject = await run_in_threadpool(state.verifier.verify, token)
     async with state.db.system() as conn:
         row = await conn.fetchrow("SELECT id, handle FROM users WHERE auth_subject = $1 AND deleted_at IS NULL",
                                   subject)
