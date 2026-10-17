@@ -1,0 +1,20 @@
+# Local development: the same TimescaleDB image family Tiger Cloud runs (includes pgvectorscale).
+services:
+  db:
+    image: timescale/timescaledb-ha:pg17
+    environment:
+      POSTGRES_USER: agora
+      POSTGRES_PASSWORD: agora-dev-only
+      POSTGRES_DB: agora
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - agora-db:/home/postgres/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agora -d agora"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  agora-db:
