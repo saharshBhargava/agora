@@ -20,6 +20,7 @@ final class AgentCoordinator: ObservableObject {
     @Published private(set) var approval: ActionApproval?
     let browser: BrowserSession
     private let settings: SettingsStore
+    private let calendar: CalendarConnection?
     private let executor: BrowserToolExecutor
     private let repository = TaskRepository()
     private var history: [[String: Any]] = []
@@ -28,11 +29,12 @@ final class AgentCoordinator: ObservableObject {
     private var approvalReply: CheckedContinuation<Bool, Never>?
     var providerOverride: ModelProvider?
 
-    init(settings: SettingsStore, browser: BrowserSession) {
+    init(settings: SettingsStore, browser: BrowserSession, calendar: CalendarConnection? = nil) {
+        self.calendar = calendar
         self.settings = settings; self.browser = browser; executor = BrowserToolExecutor(session: browser)
         browser.onHumanInteraction = { [weak self] in self?.stop(reason: "Paused for you. Press Resume when ready.", paused: true) }
         if repository.needsRecovery {
-            messages.append(ChatMessage(role: "notice", text: "The previous task was interrupted. Inspect the website before retrying any action; actions are never replayed automatically."))
+            messages.append(ChatMessage(role: "notice", text: "The previous task was interrupted. Inspect the website or Google Calendar before retrying any action; actions are never replayed automatically."))
         }
     }
     func send(_ text: String) {
@@ -102,7 +104,7 @@ final class AgentCoordinator: ObservableObject {
                 guard ContinuousClock.now < deadline else { throw BrowserError("task_budget_exhausted", "Send a message to continue.") }
                 guard try JSONSerialization.data(withJSONObject: contents).count < 1_500_000 else { throw BrowserError("conversation_limit", "Start a new chat to continue.") }
                 status = "Thinking…"
-                let response = try await provider.nextTurn(contents: contents, tools: BrowserCall.schemas)
+                let response = try await provider.nextTurn(contents: contents, tools: BrowserCall.schemas + (calendar?.connected == true ? CalendarCall.schemas : []))
                 try Task.checkCancellation(); guard generation == id else { return }
                 contents.append(response)
                 let parts = response["parts"] as? [[String: Any]] ?? []
@@ -120,18 +122,34 @@ final class AgentCoordinator: ObservableObject {
                     try Task.checkCancellation(); guard generation == id else { return }
                     var result: [String: Any]
                     do {
-                        let call = try BrowserCall(raw)
-                        if call.name == "browser_close" || (call.name == "browser_act" && call.arguments["action"] as? String != "scroll") {
-                            let epoch = browser.epoch, lease = browser.lease, document = browser.documentEpoch
-                            guard await requestApproval(call) else { throw BrowserError("approval_denied", "Do not retry this action.") }
-                            try browser.check(epoch: epoch, lease: lease)
-                            guard document == browser.documentEpoch else { throw BrowserError("stale_reference") }
+                        if let name = raw["name"] as? String, CalendarCall.names.contains(name) {
+                            guard let calendar, calendar.connected else { throw BrowserError("calendar_reconnect_required") }
+                            let call = try CalendarCall(raw)
+                            if call.name == "calendar_create_event" {
+                                approval = ActionApproval(title: "Add this Google Calendar event?", detail: call.approvalDetail)
+                                status = "Waiting for your approval"
+                                let allowed = await withCheckedContinuation { approvalReply = $0 }
+                                guard allowed else { throw BrowserError("approval_denied", "Do not retry this action.") }
+                            }
+                            try Task.checkCancellation(); guard generation == id else { return }
+                            status = call.name == "calendar_create_event" ? "Adding Calendar event…" : "Checking availability…"
+                            try repository.record(task: id, operation: call.name, phase: "dispatched")
+                            result = try await calendar.execute(call, taskID: id)
+                            try repository.record(task: id, operation: call.name, phase: "observed")
+                        } else {
+                            let call = try BrowserCall(raw)
+                            if call.name == "browser_close" || (call.name == "browser_act" && call.arguments["action"] as? String != "scroll") {
+                                let epoch = browser.epoch, lease = browser.lease, document = browser.documentEpoch
+                                guard await requestApproval(call) else { throw BrowserError("approval_denied", "Do not retry this action.") }
+                                try browser.check(epoch: epoch, lease: lease)
+                                guard document == browser.documentEpoch else { throw BrowserError("stale_reference") }
+                            }
+                            status = call.name.replacingOccurrences(of: "browser_", with: "Browser: ")
+                            browser.state.status = status
+                            try repository.record(task: id, operation: call.name, phase: "dispatched")
+                            result = try await executor.execute(call)
+                            try repository.record(task: id, operation: call.name, phase: result["dispatched"] as? Bool == true ? "dispatched_unverified" : "observed")
                         }
-                        status = call.name.replacingOccurrences(of: "browser_", with: "Browser: ")
-                        browser.state.status = status
-                        try repository.record(task: id, operation: call.name, phase: "dispatched")
-                        result = try await executor.execute(call)
-                        try repository.record(task: id, operation: call.name, phase: result["dispatched"] as? Bool == true ? "dispatched_unverified" : "observed")
                         failures = 0
                     } catch {
                         try Task.checkCancellation(); guard generation == id else { return }
@@ -140,6 +158,7 @@ final class AgentCoordinator: ObservableObject {
                         try repository.record(task: id, operation: raw["name"] as? String ?? "invalid_tool", phase: "failed_or_uncertain")
                         if error.localizedDescription.contains("outcome_unknown") { throw error }
                     }
+                    try Task.checkCancellation(); guard generation == id else { return }
                     var response: [String: Any] = ["name": raw["name"] as? String ?? "unknown", "response": result]
                     if let callID = raw["id"] { response["id"] = callID }
                     if let image = result.removeValue(forKey: "image") as? String {

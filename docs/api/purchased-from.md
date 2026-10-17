@@ -5,11 +5,13 @@ the running server (IDs shortened only where marked).
 
 ## 1. Base URL and sign-in
 
+Set it in Xcode as the user-defined build setting `AGORA_API_BASE_URL` (read via `AgoraAPIBaseURL` in
+`Info.plist`). The app only accepts **HTTPS** origins, so use one of:
+
 | Environment | Base URL |
 |---|---|
-| Simulator, backend on the same Mac | `http://localhost:8000` (allow it under ATS exceptions for Debug only) |
-| Physical iPhone, backend on a Mac | `cloudflared tunnel --url http://localhost:8000` → `https://<random>.trycloudflare.com` (free, no account) |
 | Shared dev deploy | The Render URL once deployed from `render.yaml`, e.g. `https://agora-api.onrender.com` (first request after idle can take ~1 min) |
+| Backend on your Mac (simulator or device) | `cloudflared tunnel --url http://localhost:8000` → `https://<random>.trycloudflare.com` (free, no account; the URL changes each run) |
 
 Run the backend locally with `backend/README.md` → "Run locally". If you'd rather skip Docker, point
 `AGORA_DATABASE_URL` at a free Tiger Cloud service.
@@ -28,7 +30,9 @@ Content-Type: application/json
 {"access_token": "eyJhbGciOiJIUzI1NiIs…", "token_type": "bearer", "expires_at": 1792323170}
 ```
 
-Send `Authorization: Bearer <access_token>` on every other call. Tokens last 12 h; on `401` sign in again. Store the
+Send `Authorization: Bearer <access_token>` on every other call. If the backend runs with
+`AGORA_AUTH_MODE=google`, use the `ags_…` session token from the Google Calendar onboarding instead (see
+`backend/README.md`). Every endpoint here accepts either. Tokens last 12 h; on `401` sign in again. Store the
 token in the Keychain like the Gemini key (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`). When we move to a real
 identity provider, only the login step changes.
 
@@ -242,7 +246,7 @@ GET /v1/inventory/d41729d8-…
 
 ## 8. Migration
 
-`backend/migrations/0003_purchase_origins.sql` (applied automatically on boot):
+`backend/migrations/0005_purchase_origins.sql` (applied automatically on boot):
 
 - `merchants`: adds `household_id` (null = global), `locality`, `created_by`, and generated `normalized_name` /
   `normalized_locality`. Adds unique indexes per scope and row-level security (`SELECT` global + own household;

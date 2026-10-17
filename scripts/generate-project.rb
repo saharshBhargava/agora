@@ -4,9 +4,9 @@ project = Xcodeproj::Project.new(File.join(root, 'Agora.xcodeproj'))
 app = project.new_target(:application, 'Agora', :ios, '17.0')
 app.product_name = 'Agora'
 app.build_configurations.each do |config|
-  config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'dev.agora.browserchat', 'SWIFT_VERSION' => '5.0', 'GENERATE_INFOPLIST_FILE' => 'YES', 'INFOPLIST_KEY_UILaunchScreen_Generation' => 'YES', 'INFOPLIST_KEY_UIApplicationSceneManifest_Generation' => 'YES', 'INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents' => 'YES', 'TARGETED_DEVICE_FAMILY' => '1,2', 'CODE_SIGN_STYLE' => 'Automatic', 'CURRENT_PROJECT_VERSION' => '1', 'MARKETING_VERSION' => '1.0', 'SWIFT_EMIT_LOC_STRINGS' => 'YES', 'INFOPLIST_KEY_NSCameraUsageDescription' => 'Agora uses the camera to take photos, record videos, and scan documents.', 'INFOPLIST_KEY_NSMicrophoneUsageDescription' => 'Agora uses the microphone to record sound with your videos.' })
+  config.build_settings.merge!({ 'PRODUCT_BUNDLE_IDENTIFIER' => 'dev.agora.browserchat', 'SWIFT_VERSION' => '5.0', 'GENERATE_INFOPLIST_FILE' => 'YES', 'INFOPLIST_FILE' => 'Agora/Info.plist', 'AGORA_API_BASE_URL' => '', 'INFOPLIST_KEY_UILaunchScreen_Generation' => 'YES', 'INFOPLIST_KEY_UIApplicationSceneManifest_Generation' => 'YES', 'INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents' => 'YES', 'TARGETED_DEVICE_FAMILY' => '1,2', 'CODE_SIGN_STYLE' => 'Automatic', 'CURRENT_PROJECT_VERSION' => '1', 'MARKETING_VERSION' => '1.0', 'SWIFT_EMIT_LOC_STRINGS' => 'YES', 'INFOPLIST_KEY_NSCameraUsageDescription' => 'Agora uses the camera to take photos and record videos.', 'INFOPLIST_KEY_NSMicrophoneUsageDescription' => 'Agora uses the microphone to record sound with your videos.' })
 end
-Dir.glob(File.join(root, 'Agora/**/*')).select { |p| File.file?(p) }.each do |path|
+Dir.glob(File.join(root, 'Agora/**/*')).select { |p| File.file?(p) && File.basename(p) != 'Info.plist' }.each do |path|
   ref = project.main_group.new_file(path.delete_prefix(root + '/'))
   path.end_with?('.swift') ? app.source_build_phase.add_file_reference(ref) : app.resources_build_phase.add_file_reference(ref)
 end

@@ -12,9 +12,14 @@
 		1DAE5BC67E9D00BC0856827F /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AB33E9AFC57A2F607241511 /* Foundation.framework */; };
 		21807B9C72A7D293730B7A16 /* BrowserScripts.js in Resources */ = {isa = PBXBuildFile; fileRef = 53ED4944AABB5AFAB8E77288 /* BrowserScripts.js */; };
 		2A3088999406A8AA8526BAAF /* CaptionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE74BEEED1DE81A6C9EB8F0 /* CaptionController.swift */; };
+		325A454F8AC8D05744D4BD7B /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A910D2A694D670DFE0DCB5D7 /* HomeView.swift */; };
 		32E2DC2B067CA0C31D50EEA1 /* BrowserChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8238981FD4E643FA656A081F /* BrowserChatApp.swift */; };
 		388C884619261DE7F69D6AFD /* TaskRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 089874F2A5F5DC56A4972E7B /* TaskRepository.swift */; };
 		38B185A9696E32AEBE5683B8 /* CaptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69584785EE382B97897F6C47 /* CaptionTests.swift */; };
+		475814F1BCEB9651E4C8EE62 /* CalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FA2E53318070AFAFE43447 /* CalendarTests.swift */; };
+		48F1879E8EA701FF86DCF925 /* CalendarConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B048E8F7517165BBAC352B /* CalendarConnection.swift */; };
+		4DB185EC3F1F901B1470CA2B /* CalendarOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D63E8A1F4D704E4944DE1118 /* CalendarOnboardingView.swift */; };
+		4FC355EA8D6BE5C8BB446EBF /* CalendarTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EB5DD92CDB24C7884F2F633 /* CalendarTools.swift */; };
 		591BB0C7E60D64929EF3C6F5 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AB33E9AFC57A2F607241511 /* Foundation.framework */; };
 		6D11BAD95BF25539F1C4E6F9 /* BrowserToolExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7F7975FBBF93E36BFD498E9 /* BrowserToolExecutor.swift */; };
 		6E30429DCEA967A30A0237B1 /* AgentCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A9515555259CC33BE5F8186 /* AgentCoordinator.swift */; };
@@ -49,6 +54,7 @@
 /* Begin PBXFileReference section */
 		089874F2A5F5DC56A4972E7B /* TaskRepository.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TaskRepository.swift; path = Agora/Storage/TaskRepository.swift; sourceTree = "<group>"; };
 		0EFB306656DA7F8B908FD7AD /* ModelProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelProvider.swift; path = Agora/Agent/ModelProvider.swift; sourceTree = "<group>"; };
+		12B048E8F7517165BBAC352B /* CalendarConnection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarConnection.swift; path = Agora/Calendar/CalendarConnection.swift; sourceTree = "<group>"; };
 		15815BEC3690BB246FAB930E /* BrowserTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserTests.swift; path = AgoraTests/BrowserTests.swift; sourceTree = "<group>"; };
 		1AE74BEEED1DE81A6C9EB8F0 /* CaptionController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionController.swift; path = Agora/Capture/CaptionController.swift; sourceTree = "<group>"; };
 		1E8D513CC6D322C48CB177B1 /* CaptionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionModels.swift; path = Agora/Capture/CaptionModels.swift; sourceTree = "<group>"; };
@@ -61,6 +67,7 @@
 		508A2F0DC4605AD428A03C04 /* BrowserViewport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserViewport.swift; path = Agora/Browser/BrowserViewport.swift; sourceTree = "<group>"; };
 		53ED4944AABB5AFAB8E77288 /* BrowserScripts.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; name = BrowserScripts.js; path = Agora/Browser/BrowserScripts.js; sourceTree = "<group>"; };
 		5BD2ABEE624DF14392818B91 /* CaptureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptureTests.swift; path = AgoraTests/CaptureTests.swift; sourceTree = "<group>"; };
+		5EB5DD92CDB24C7884F2F633 /* CalendarTools.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarTools.swift; path = Agora/Calendar/CalendarTools.swift; sourceTree = "<group>"; };
 		69584785EE382B97897F6C47 /* CaptionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionTests.swift; path = AgoraTests/CaptionTests.swift; sourceTree = "<group>"; };
 		8238981FD4E643FA656A081F /* BrowserChatApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserChatApp.swift; path = Agora/App/BrowserChatApp.swift; sourceTree = "<group>"; };
 		831AD7A099E0A7D56607E1F7 /* ChatView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatView.swift; path = Agora/App/ChatView.swift; sourceTree = "<group>"; };
@@ -71,10 +78,13 @@
 		98D12F0C37DD25E51D738468 /* BrowserPolicy.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserPolicy.swift; path = Agora/Browser/BrowserPolicy.swift; sourceTree = "<group>"; };
 		99A4EFF4ADF48178439FDE70 /* MediaLibrary.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MediaLibrary.swift; path = Agora/Capture/MediaLibrary.swift; sourceTree = "<group>"; };
 		9AB33E9AFC57A2F607241511 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		A910D2A694D670DFE0DCB5D7 /* HomeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HomeView.swift; path = Agora/App/HomeView.swift; sourceTree = "<group>"; };
 		C1982523DE11C44D26A8E91A /* CaptionHTTPClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionHTTPClient.swift; path = Agora/Capture/CaptionHTTPClient.swift; sourceTree = "<group>"; };
+		D63E8A1F4D704E4944DE1118 /* CalendarOnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarOnboardingView.swift; path = Agora/Calendar/CalendarOnboardingView.swift; sourceTree = "<group>"; };
 		E0CEBF0DA029FF97E245B638 /* BrowserSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserSession.swift; path = Agora/Browser/BrowserSession.swift; sourceTree = "<group>"; };
 		E7005469F1885068D2934AB7 /* AppLog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppLog.swift; path = Agora/Storage/AppLog.swift; sourceTree = "<group>"; };
 		F7F7975FBBF93E36BFD498E9 /* BrowserToolExecutor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserToolExecutor.swift; path = Agora/Browser/BrowserToolExecutor.swift; sourceTree = "<group>"; };
+		F8FA2E53318070AFAFE43447 /* CalendarTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarTests.swift; path = AgoraTests/CalendarTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -127,6 +137,11 @@
 				84712908608539A298B3D679 /* GeminiCaptionService.swift */,
 				C1982523DE11C44D26A8E91A /* CaptionHTTPClient.swift */,
 				69584785EE382B97897F6C47 /* CaptionTests.swift */,
+				A910D2A694D670DFE0DCB5D7 /* HomeView.swift */,
+				D63E8A1F4D704E4944DE1118 /* CalendarOnboardingView.swift */,
+				12B048E8F7517165BBAC352B /* CalendarConnection.swift */,
+				5EB5DD92CDB24C7884F2F633 /* CalendarTools.swift */,
+				F8FA2E53318070AFAFE43447 /* CalendarTests.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -254,6 +269,7 @@
 				95C9CA5BD07AC93F9805C30F /* BrowserTests.swift in Sources */,
 				8D0CCFFAB867BE1F82D17943 /* CaptureTests.swift in Sources */,
 				38B185A9696E32AEBE5683B8 /* CaptionTests.swift in Sources */,
+				475814F1BCEB9651E4C8EE62 /* CalendarTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -281,6 +297,10 @@
 				9E76D3E5F8E372903A639FEB /* CaptionModels.swift in Sources */,
 				7ADD93AC1DAA8FBDB5B01A83 /* GeminiCaptionService.swift in Sources */,
 				A08A2945ADCBCDF7B83142E5 /* CaptionHTTPClient.swift in Sources */,
+				325A454F8AC8D05744D4BD7B /* HomeView.swift in Sources */,
+				4DB185EC3F1F901B1470CA2B /* CalendarOnboardingView.swift in Sources */,
+				48F1879E8EA701FF86DCF925 /* CalendarConnection.swift in Sources */,
+				4FC355EA8D6BE5C8BB446EBF /* CalendarTools.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -299,6 +319,7 @@
 		1689C1808BF24A52F21DDEA5 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AGORA_API_BASE_URL = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_OBJC_WEAK = NO;
@@ -306,7 +327,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8N46NST49L;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Agora uses the camera to take photos, record videos, and scan documents.";
+				INFOPLIST_FILE = Agora/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Agora uses the camera to take photos and record videos.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Agora uses the microphone to record sound with your videos.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -456,6 +478,7 @@
 		968C862FD74C7BDB16D14E26 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AGORA_API_BASE_URL = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_OBJC_WEAK = NO;
@@ -463,7 +486,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8N46NST49L;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Agora uses the camera to take photos, record videos, and scan documents.";
+				INFOPLIST_FILE = Agora/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Agora uses the camera to take photos and record videos.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Agora uses the microphone to record sound with your videos.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

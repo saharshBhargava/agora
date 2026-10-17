@@ -9,6 +9,7 @@ struct CaptureItem: Identifiable, Codable, Equatable {
     let filename: String
     let createdAt: Date
     var caption: SavedCaption? = nil
+    var purchasedFrom: String? = nil
     var title: String {
         switch kind { case .image: return "Photo"; case .video: return "Video"; case .document: return "Document scan" }
     }
@@ -65,6 +66,14 @@ actor MediaRepository {
         try persist(items)
         return items
     }
+    func savePurchasedFrom(_ store: String, for id: UUID) throws -> [CaptureItem] {
+        var items = try load()
+        guard let index = items.firstIndex(where: { $0.id == id }) else { throw CaptureFailure.missingFile }
+        let value = store.trimmingCharacters(in: .whitespacesAndNewlines)
+        items[index].purchasedFrom = value.isEmpty ? nil : value
+        try persist(items)
+        return items
+    }
     func remove(_ item: CaptureItem) throws -> [CaptureItem] {
         let items = try load().filter { $0.id != item.id }
         try persist(items)
@@ -96,6 +105,9 @@ final class MediaLibrary: ObservableObject {
     }
     func saveCaption(_ caption: SavedCaption, for id: UUID) async throws {
         items = try await repository.saveCaption(caption, for: id)
+    }
+    func savePurchasedFrom(_ store: String, for id: UUID) async throws {
+        items = try await repository.savePurchasedFrom(store, for: id)
     }
     func remove(_ item: CaptureItem) async {
         do { items = try await repository.remove(item) }

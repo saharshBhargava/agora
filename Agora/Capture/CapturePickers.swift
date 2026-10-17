@@ -1,6 +1,5 @@
 import SwiftUI
 import PhotosUI
-import VisionKit
 import UniformTypeIdentifiers
 
 struct CameraPicker: UIViewControllerRepresentable {
@@ -33,36 +32,6 @@ struct CameraPicker: UIViewControllerRepresentable {
                     try data.write(to: file, options: .atomic)
                     complete(.success((file, .image)))
                 } else { throw CaptureFailure.unsupported }
-            } catch { complete(.failure(error)) }
-        }
-    }
-}
-
-struct DocumentScanner: UIViewControllerRepresentable {
-    let onComplete: (Result<URL?, Error>) -> Void
-    func makeCoordinator() -> Coordinator { Coordinator(onComplete) }
-    func makeUIViewController(context: Context) -> VNDocumentCameraViewController {
-        let controller = VNDocumentCameraViewController(); controller.delegate = context.coordinator; return controller
-    }
-    func updateUIViewController(_ controller: VNDocumentCameraViewController, context: Context) {}
-    final class Coordinator: NSObject, VNDocumentCameraViewControllerDelegate {
-        let complete: (Result<URL?, Error>) -> Void
-        init(_ complete: @escaping (Result<URL?, Error>) -> Void) { self.complete = complete }
-        func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) { complete(.success(nil)) }
-        func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) { complete(.failure(error)) }
-        func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
-            do {
-                let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("pdf")
-                let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 612, height: 792))
-                try renderer.writePDF(to: file) { context in
-                    for page in 0..<scan.pageCount {
-                        let image = scan.imageOfPage(at: page)
-                        let width: CGFloat = 612, height = width * image.size.height / max(image.size.width, 1)
-                        let bounds = CGRect(x: 0, y: 0, width: width, height: height)
-                        context.beginPage(withBounds: bounds, pageInfo: [:]); image.draw(in: bounds)
-                    }
-                }
-                complete(.success(file))
             } catch { complete(.failure(error)) }
         }
     }
