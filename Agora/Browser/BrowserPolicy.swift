@@ -3,7 +3,10 @@ import Foundation
 struct BrowserError: LocalizedError {
     let code: String
     let detail: String
-    init(_ code: String, _ detail: String = "") { self.code = code; self.detail = detail }
+    let status: Int?
+    init(_ code: String, _ detail: String = "", status: Int? = nil) {
+        self.code = code; self.detail = detail; self.status = status
+    }
     var errorDescription: String? { detail.isEmpty ? code : "\(code): \(detail)" }
 }
 
