@@ -70,9 +70,9 @@ flowchart LR
 |---|---|---|
 | Language/framework | Python 3.12, FastAPI, Pydantic v2, asyncpg | Fastest path to typed APIs + auto OpenAPI; Python is best for vision/forecasting code |
 | DB | Postgres 17 + TimescaleDB (Tiger Cloud; local: `timescale/timescaledb-ha` Docker image) | Time-series is the core of the product (see §5) |
-| Migrations | Alembic with raw SQL ops | Timescale DDL is SQL anyway; keeps it explicit |
+| Migrations | Numbered SQL files + a ~60-line runner (`app/migrate.py`, advisory-locked, checksummed) | Timescale DDL is SQL anyway; no ORM layer to fight |
 | Object storage | Cloudflare R2 (S3 API), private bucket | Free tier, no egress fees, S3-compatible so swappable |
-| Auth | Pluggable verifier: `dev` (HMAC JWT for seeded demo users) and `oidc` (JWKS). Recommended IdP: Supabase Auth *used only for auth* (Sign in with Apple/Google, Swift + JS SDKs) | Auth never blocks backend work; real sign-in can be added later |
+| Auth | Pluggable verifier: `dev` (HMAC JWT; in `AGORA_ENV=demo` only seeded accounts, and a non-default secret is required) and `oidc` (JWKS). Recommended IdP: Supabase Auth *used only for auth* (Sign in with Apple/Google, Swift + JS SDKs) | Auth never blocks backend work; real sign-in can be added later |
 | Hosting | Fly.io (`sea` region), one app with `web` + `worker` process groups, min 1 machine always on | Cheap, Docker-native, no cold starts during judging. Railway/Render are drop-in alternatives |
 | Vision | Perceptron Mk1 (primary), Gemini (fallback) behind a `VisionProvider` interface | Sponsor fit + resilience |
 | Tests/CI | pytest + testcontainers (Timescale image), ruff, GitHub Actions | Real DB in tests; migrations tested every push |
@@ -85,7 +85,7 @@ backend/
   core/           policy engine, forecasting, matching (pure, no I/O)
   providers/      vision (perceptron, gemini, replay), payments, calendar, storage
   worker/         job runner + job handlers
-  migrations/     alembic; timescale-specific steps clearly separated
+  migrations/     numbered SQL; *.timescale.sql steps run only where TimescaleDB exists
   seed/           demo households, catalog subset, price history, replay fixtures
   tests/
 api/openapi.json  generated, committed, diffed in CI
@@ -139,7 +139,7 @@ erDiagram
 
 ### 3.2 Tables by domain
 
-Conventions: `uuid` PKs (v7, time-ordered), `timestamptz` everywhere, money as `bigint` cents + `char(3)` currency, soft enums as `text` + `CHECK`. Tables marked **HT** are hypertables (see §5).
+Conventions: `uuid` PKs (`gen_random_uuid()`), `timestamptz` everywhere, money as `bigint` cents + `char(3)` currency, soft enums as `text` + `CHECK`. Tables marked **HT** are hypertables (see §5).
 
 **Identity, privacy, devices**
 
@@ -327,7 +327,7 @@ Pitch line: *"Your fridge is a time series."*
 
 ### How we keep it optional (no lock-in, nothing breaks if we drop it)
 
-1. **Schema is plain Postgres first.** All tables, including future hypertables, are created as ordinary tables in the base migrations. A separate migration `xxxx_timescale.py` runs only if `timescaledb` is available: it calls `create_hypertable(..., migrate_data => true)` and adds continuous aggregates and policies.
+1. **Schema is plain Postgres first.** All tables, including future hypertables, are created as ordinary tables in the base migrations. Files named `*.timescale.sql` run only if `timescaledb` is available: they call `create_hypertable(..., migrate_data => true)` and add continuous aggregates and policies. Skipped files apply automatically once the extension appears. Fuzzy matching uses `pg_trgm` where present, with a SQL `similarity()` fallback otherwise.
 2. **Hypertable-safe design rules from day one** (so converting later never needs a schema change):
    - PK / unique indexes on time-series tables include the time column, e.g. `PRIMARY KEY (inventory_item_id, time)`.
    - Nothing has a foreign key *into* a time-series table. Hypertables may reference regular tables, not the other way round.

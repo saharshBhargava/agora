@@ -1,0 +1,33 @@
+# Fly.io deploy. Secrets (never in this file):
+#   fly secrets set AGORA_DATABASE_URL=... AGORA_DEV_JWT_SECRET=$(openssl rand -hex 32) \
+#     AGORA_PERCEPTRON_API_KEY=... AGORA_GEMINI_API_KEY=... \
+#     AGORA_S3_BUCKET=... AGORA_S3_ENDPOINT_URL=... AGORA_S3_ACCESS_KEY_ID=... AGORA_S3_SECRET_ACCESS_KEY=...
+app = "agora-api"
+primary_region = "sea"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  AGORA_ENV = "demo"
+  AGORA_AUTH_MODE = "dev"
+  AGORA_STORAGE_BACKEND = "s3"
+  AGORA_VISION_PROVIDER = "perceptron"
+  AGORA_VISION_FALLBACK = "gemini"
+  AGORA_RUN_WORKER_IN_PROCESS = "true"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"   # no cold starts while judges are clicking
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    path = "/readyz"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

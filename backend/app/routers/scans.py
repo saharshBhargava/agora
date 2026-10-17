@@ -1,0 +1,195 @@
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
+
+import asyncpg
+from fastapi import APIRouter, File, Form, Query, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse, Response
+
+from app import idempotency, media
+from app.auth import CurrentUser, Principal
+from app.db import audit, notify
+from app.errors import Problem, not_found
+from app.inventory_ops import match
+from app.jobs import enqueue
+from app.pipeline import frame_key, video_key
+from app.routers.account import require_household
+from app.schemas import Detection, ReviewIn, ReviewOut, ScanOut
+
+router = APIRouter(prefix="/v1/scans", tags=["scans"])
+
+
+async def _read_capped(upload: UploadFile, limit: int) -> bytes:
+    data = await upload.read(limit + 1)
+    if len(data) > limit:
+        raise Problem(413, "file_too_large", f"Each file must be under {limit // (1024 * 1024)} MB.")
+    return data
+
+
+async def load_scan(conn: asyncpg.Connection, scan_id: UUID) -> ScanOut:
+    scan = await conn.fetchrow("SELECT * FROM scans WHERE id = $1", scan_id)
+    if scan is None:
+        raise not_found("scan")
+    detections = await conn.fetch(
+        """SELECT d.*, d.quantity::float8 AS qty, i.display_name AS item_name FROM scan_detections d
+           LEFT JOIN inventory_items i ON i.id = d.inventory_item_id
+           WHERE d.scan_id = $1 ORDER BY d.confidence DESC, d.label""", scan_id)
+    return ScanOut(
+        id=scan["id"], household_id=scan["household_id"], location_id=scan["location_id"],
+        captured_at=scan["captured_at"], media_kind=scan["media_kind"], frame_count=len(scan["frame_keys"]),
+        media_deleted=scan["media_deleted_at"] is not None, status=scan["status"], provider=scan["provider"],
+        model=scan["model"], latency_ms=scan["latency_ms"], error_code=scan["error_code"],
+        created_at=scan["created_at"],
+        detections=[Detection(
+            id=d["id"], label=d["label"], brand=d["brand"], category=d["category"], count=d["count"],
+            fill_fraction=d["fill_fraction"], quantity=d["qty"], confidence=d["confidence"],
+            match_score=d["match_score"], inventory_item_id=d["inventory_item_id"], inventory_item_name=d["item_name"],
+            product_id=d["product_id"], bbox=d["bbox"], frame_index=d["frame_index"], review=d["review"],
+            auto_accepted=d["auto_accepted"]) for d in detections])
+
+
+@router.post("", response_model=ScanOut, status_code=202)
+async def create_scan(
+    request: Request,
+    files: list[UploadFile] = File(..., description="Up to 12 photos, or one MP4/MOV video"),
+    household_id: UUID | None = Form(default=None),
+    location_id: UUID | None = Form(default=None),
+    captured_at: datetime | None = Form(default=None),
+    user: Principal = CurrentUser,
+) -> JSONResponse:
+    """Upload a scan. Returns immediately; processing happens in the background and is pushed over /v1/events."""
+    state = request.app.state
+    settings, db, storage = state.settings, state.db, state.storage
+    key = idempotency.key_from(request)
+    # Hash what the client sent, before defaults, so a retry matches its original request.
+    digest_fields = (str(household_id), str(location_id), captured_at.isoformat() if captured_at else None)
+    now = datetime.now(UTC)
+    captured_at = captured_at or now
+    if captured_at.tzinfo is None:
+        raise Problem(422, "invalid_captured_at", "captured_at must include a time zone offset.")
+    if not now - timedelta(days=30) <= captured_at <= now + timedelta(minutes=5):
+        raise Problem(422, "invalid_captured_at", "captured_at must be within the last 30 days.")
+    if not 1 <= len(files) <= settings.max_frames:
+        raise Problem(422, "invalid_file_count", f"Send between 1 and {settings.max_frames} files.")
+
+    raw = [await _read_capped(f, settings.max_video_bytes) for f in files]
+    is_video = len(raw) == 1 and media.looks_like_video(raw[0])
+    digest = idempotency.request_hash(*digest_fields, [media.sha256(r) for r in raw])
+
+    async with db.scoped(user.user_id) as conn:
+        household_id = await require_household(conn, household_id, user.user_id)
+        if location_id and not await conn.fetchval(
+                "SELECT 1 FROM storage_locations WHERE id = $1 AND household_id = $2", location_id, household_id):
+            raise not_found("location")
+        if (previous := await idempotency.lookup(conn, user.user_id, key, digest)) is not None:
+            return JSONResponse(previous, status_code=202, headers={"Idempotent-Replay": "true"})
+
+    scan_id = uuid4()
+    if is_video:
+        if not media.ffmpeg_available():
+            raise Problem(503, "video_unsupported", "Video processing isn't available here; upload photos instead.")
+        keys, hashes = [], []
+        await storage.put(video_key(household_id, scan_id), raw[0], "application/octet-stream")
+    else:
+        if any(len(r) > settings.max_image_bytes for r in raw):
+            raise Problem(413, "file_too_large", "Each photo must be under 10 MB.")
+        frames = [await run_in_threadpool(media.sanitize_image, r, settings.max_image_side) for r in raw]
+        keys = [frame_key(household_id, scan_id, i) for i in range(len(frames))]
+        hashes = [media.sha256(f) for f in frames]
+        for k, f in zip(keys, frames, strict=True):
+            await storage.put(k, f, "image/jpeg")
+
+    async with db.scoped(user.user_id) as conn:
+        await conn.execute(
+            """INSERT INTO scans (id, household_id, user_id, location_id, captured_at, media_kind, frame_keys,
+                                  frame_hashes, raw_video_key)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
+            scan_id, household_id, user.user_id, location_id, captured_at, "video" if is_video else "photos",
+            keys, hashes, video_key(household_id, scan_id) if is_video else None)
+        scan = await load_scan(conn, scan_id)
+        body = scan.model_dump(mode="json")
+        if not await idempotency.claim(conn, user.user_id, key, digest, 202, body):
+            raise Problem(409, "duplicate_request", "This request is already being processed; retry shortly.")
+        await enqueue(conn, "scan.process", {"scan_id": str(scan_id), "user_id": str(user.user_id)})
+        await audit(conn, "scan.created", actor_id=user.user_id, household_id=household_id, target_type="scan",
+                    target_id=scan_id, meta={"media_kind": scan.media_kind, "files": len(raw)})
+        await notify(conn, household_id, "scan.updated", scan_id)
+    return JSONResponse(body, status_code=202)
+
+
+@router.get("", response_model=list[ScanOut])
+async def list_scans(request: Request, household_id: UUID | None = None,
+                     limit: int = Query(default=20, ge=1, le=100), user: Principal = CurrentUser) -> list[ScanOut]:
+    async with request.app.state.db.scoped(user.user_id) as conn:
+        household_id = await require_household(conn, household_id, user.user_id)
+        ids = await conn.fetch("SELECT id FROM scans WHERE household_id = $1 ORDER BY captured_at DESC LIMIT $2",
+                               household_id, limit)
+        return [await load_scan(conn, r["id"]) for r in ids]
+
+
+@router.get("/{scan_id}", response_model=ScanOut)
+async def get_scan(scan_id: UUID, request: Request, user: Principal = CurrentUser) -> ScanOut:
+    async with request.app.state.db.scoped(user.user_id) as conn:
+        return await load_scan(conn, scan_id)
+
+
+@router.get("/{scan_id}/frames/{index}", responses={200: {"content": {"image/jpeg": {}}}})
+async def get_frame(scan_id: UUID, index: int, request: Request, user: Principal = CurrentUser) -> Response:
+    """Serve a sanitized frame for the review screen. Authorized per request, never cached."""
+    async with request.app.state.db.scoped(user.user_id) as conn:
+        scan = await conn.fetchrow("SELECT frame_keys, media_deleted_at FROM scans WHERE id = $1", scan_id)
+    if scan is None:
+        raise not_found("scan")
+    if scan["media_deleted_at"] is not None:
+        raise Problem(410, "media_deleted", "Photos from this scan were deleted under your retention setting.")
+    if not 0 <= index < len(scan["frame_keys"]):
+        raise not_found("frame")
+    data = await request.app.state.storage.get(scan["frame_keys"][index])
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, no-store"})
+
+
+@router.post("/{scan_id}/review", response_model=ReviewOut)
+async def review_scan(scan_id: UUID, body: ReviewIn, request: Request, user: Principal = CurrentUser) -> ReviewOut:
+    """Accept, correct or reject what the model saw. Only accepted and corrected detections reach inventory."""
+    state = request.app.state
+    async with state.db.scoped(user.user_id) as conn:
+        scan = await conn.fetchrow("SELECT * FROM scans WHERE id = $1 FOR UPDATE", scan_id)
+        if scan is None:
+            raise not_found("scan")
+        if scan["status"] != "needs_review":
+            raise Problem(409, "not_reviewable", f"Scan is {scan['status']}, not waiting for review.")
+        household_id = scan["household_id"]
+        known = {r["id"]: r for r in await conn.fetch("SELECT * FROM scan_detections WHERE scan_id = $1", scan_id)}
+        counts = {"accept": 0, "reject": 0, "correct": 0}
+        decided: set[UUID] = set()
+        for decision in body.decisions:
+            detection = known.get(decision.detection_id)
+            if detection is None or decision.detection_id in decided:
+                raise Problem(422, "unknown_detection", "A decision refers to a detection not in this scan.")
+            decided.add(decision.detection_id)
+            counts[decision.action] += 1
+            if decision.action != "correct":
+                await conn.execute("UPDATE scan_detections SET review = $2 WHERE id = $1", decision.detection_id,
+                                   "accepted" if decision.action == "accept" else "rejected")
+                continue
+            label = (decision.label or detection["label"]).strip().lower()
+            item_id, product_id = detection["inventory_item_id"], detection["product_id"]
+            if decision.inventory_item_id is not None:
+                if not await conn.fetchval("SELECT 1 FROM inventory_items WHERE id = $1 AND household_id = $2",
+                                           decision.inventory_item_id, household_id):
+                    raise not_found("inventory item")
+                item_id = decision.inventory_item_id
+            elif decision.label is not None:
+                item_id, product_id, _ = await match(conn, household_id, label, detection["brand"])
+            await conn.execute(
+                """UPDATE scan_detections SET review = 'corrected', label = $2, quantity = $3,
+                          inventory_item_id = $4, product_id = $5 WHERE id = $1""",
+                decision.detection_id, label,
+                decision.quantity if decision.quantity is not None else detection["quantity"], item_id, product_id)
+        remaining = "accepted" if body.remaining == "accept" else "rejected"
+        await conn.execute("UPDATE scan_detections SET review = $2 WHERE scan_id = $1 AND review = 'proposed'",
+                           scan_id, remaining)
+        await audit(conn, "scan.reviewed", actor_id=user.user_id, household_id=household_id, target_type="scan",
+                    target_id=scan_id, meta={**counts, "remaining": remaining})
+        updated = await state.pipeline.finalize(conn, scan, user.user_id)
+        return ReviewOut(scan=await load_scan(conn, scan_id), items_updated=updated)
