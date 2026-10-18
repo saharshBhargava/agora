@@ -19,7 +19,8 @@ def tool(monkeypatch):
     monkeypatch.setenv("RENDER_API_KEY", "rnd_test")
     monkeypatch.setenv("RENDER_SERVICE_ID", "srv-test")
     monkeypatch.setenv("AGORA_API_URL", "https://api.example")
-    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    for name in ("GITHUB_ACTIONS", "GITHUB_STEP_SUMMARY", "GITHUB_OUTPUT"):  # CI sets these
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.delenv("AGORA_DEMO_PASSWORD", raising=False)
     monkeypatch.setattr(module.time, "sleep", lambda _: None)
     return module
