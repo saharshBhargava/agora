@@ -265,3 +265,13 @@ final class DibsHouseholdRowActionTests: XCTestCase {
         XCTAssertEqual(HouseholdRowAction.forRow(connected: false), .signInFirst)
     }
 }
+
+/// The invite share text carries the link, so the share sheet's Copy copies it.
+final class DibsShareTextTests: XCTestCase {
+    func testShareTextIncludesTheJoinLink() throws {
+        let link = try XCTUnwrap(URL(string: "https://dibs.example.com/join?run=r1"))
+        let text = StartLogic.shareText(title: "Jake's QFC run", link: link)
+        XCTAssertEqual(text, "Join Jake's QFC run on Dibs: https://dibs.example.com/join?run=r1")
+        XCTAssertTrue(text.contains(link.absoluteString))
+    }
+}

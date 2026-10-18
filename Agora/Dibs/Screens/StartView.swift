@@ -47,10 +47,11 @@ struct StartScreen: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                // One text item with the link in it: "Copy" then copies the link too (with a separate message,
+                // Copy took only the message text), and Messages still shows it as a tappable link.
                 ShareLink(
-                    item: joinLink,
+                    item: StartLogic.shareText(title: title, link: joinLink),
                     subject: Text(title),
-                    message: Text("Join \(title) on Dibs"),
                     preview: SharePreview(title)
                 ) {
                     HStack(spacing: Metrics.space1) {
@@ -159,3 +160,8 @@ private let previewLink = URL(string: "https://x.ngrok.app/join?run=\(PreviewDat
     }
 }
 #endif
+
+/// What the invite share sheet sends.
+enum StartLogic {
+    static func shareText(title: String, link: URL) -> String { "Join \(title) on Dibs: \(link.absoluteString)" }
+}
