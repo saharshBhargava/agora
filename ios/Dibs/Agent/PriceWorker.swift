@@ -20,6 +20,8 @@ struct PriceRequest: Decodable, Sendable, Equatable {
     let name: String
     let store: String
     let searchUrl: String
+    /// The store to price at, when the server names one (else the worker's default).
+    var storeLocation: StoreLocation? = nil
 }
 
 /// The browser the worker drives. StoreBrowser (through BrowserToolExecutor) in the app; a fake in tests.
@@ -29,6 +31,8 @@ protocol PriceBrowsing: AnyObject {
     func restrict(to url: URL)
     /// Runs one browser tool (`browser_open`, `browser_observe`, ...) and returns its JSON result.
     func run(tool name: String, args: [String: Any]) async throws -> [String: Any]
+    /// Switches the site's pickup store (or confirms it); see StoreSetupScript.
+    func setStore(_ location: StoreLocation) async -> StoreSetupResult
     /// The page being driven, for the on-screen thumbnail (nil in tests).
     var pageView: WKWebView? { get }
     /// Loads the store's home page so cookies, consent, scripts and caches are ready. Stops early when cancelled.
@@ -108,6 +112,8 @@ final class PriceWorker {
         let via: Via
         var cents: Int? = nil
         var productName: String? = nil
+        /// False when the store's results page loaded and had no match: no retry.
+        var retryable = true
     }
 
     struct Lookup: Equatable, Sendable {
@@ -132,6 +138,11 @@ final class PriceWorker {
     private(set) var lastOutcome: Outcome?
     /// Every finished lookup, oldest first (tests and debugging).
     private(set) var outcomes: [Outcome] = []
+    /// Items whose final attempt ended without a price.
+    private(set) var gaveUpNames: Set<String> = []
+
+    /// True once the worker has stopped trying to price `name` ("No price found · Add price").
+    func gaveUp(for name: String) -> Bool { gaveUpNames.contains(name) }
 
     /// The most recently started lookup's item, or nil.
     var currentName: String? { active.last?.name }
@@ -158,7 +169,12 @@ final class PriceWorker {
     @MainActor private final class Slot {
         let browser: PriceBrowsing
         var busy = false
-        var warm: Task<Void, Never>?
+        /// Warm-up and store setup; lookups on this browser wait for it.
+        var ready: Task<Void, Never>?
+        /// The store the header was verified to show.
+        var store: StoreLocation?
+        var storeTried: Set<StoreLocation> = []
+        var storeAgentTried: Set<StoreLocation> = []
         init(_ browser: PriceBrowsing) { self.browser = browser }
     }
 
@@ -170,6 +186,9 @@ final class PriceWorker {
     @ObservationIgnored private let waitSeconds: Double
     @ObservationIgnored private let reloadWaitSeconds: Double
     @ObservationIgnored private let retryDelay: Duration
+    @ObservationIgnored private let storeLocation: StoreLocation
+    @ObservationIgnored private let giveUpSteps: Int
+    @ObservationIgnored private let giveUpSeconds: Double
     @ObservationIgnored private var slots: [Slot] = []
     @ObservationIgnored private var inFlight: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var lookupBrowsers: [String: PriceBrowsing] = [:]
@@ -184,6 +203,8 @@ final class PriceWorker {
          warmUpURL: URL? = URL(string: "https://www.qfc.com/"),
          renderPoll: Duration = .milliseconds(250), waitSeconds: Double = 25, reloadWaitSeconds: Double = 20,
          retryDelay: Duration = .seconds(20),
+         storeLocation: StoreLocation = .universityVillage,
+         giveUpSteps: Int = 3, giveUpSeconds: Double = 10,
          makeBrowser: @escaping @MainActor () -> PriceBrowsing = { BrowserToolExecutor(session: StoreBrowser()) }) {
         self.pollInterval = pollInterval
         self.poolSize = max(1, poolSize)
@@ -192,6 +213,9 @@ final class PriceWorker {
         self.waitSeconds = waitSeconds
         self.reloadWaitSeconds = reloadWaitSeconds
         self.retryDelay = retryDelay
+        self.storeLocation = storeLocation
+        self.giveUpSteps = giveUpSteps
+        self.giveUpSeconds = giveUpSeconds
         self.makeBrowser = makeBrowser
     }
 
@@ -202,13 +226,22 @@ final class PriceWorker {
         PriceLog.event("price worker start \(api.base.absoluteString)")
         while slots.count < poolSize { slots.append(Slot(makeBrowser())) }
         if let warmUpURL {
-            for (i, slot) in slots.enumerated() where !slot.busy {
+            // One browser after the other: the first sets the store cookie, so the second's
+            // fresh page usually shows the store already.
+            var previous: Task<Void, Never>?
+            let location = storeLocation
+            for (i, slot) in slots.enumerated() where !slot.busy && slot.ready == nil {
+                let before = previous
                 let browser = slot.browser
-                slot.warm = Task {
+                let task = Task { [weak self] in
+                    await before?.value
                     let t0 = ContinuousClock.now
                     await browser.warmUp(warmUpURL)
-                    PriceLog.event("price browser \(i) warm-up \(Self.ms(since: t0)) ms\(Task.isCancelled ? " (cut short)" : "")")
+                    PriceLog.event("price browser \(i) warm-up \(Self.ms(since: t0)) ms")
+                    await self?.ensureStore(location, on: slot)
                 }
+                slot.ready = task
+                previous = task
             }
         }
         let interval = pollInterval
@@ -229,8 +262,8 @@ final class PriceWorker {
         inFlight.values.forEach { $0.cancel() }
         inFlight = [:]
         for slot in slots {
-            slot.warm?.cancel()
-            slot.warm = nil
+            slot.ready?.cancel()
+            slot.ready = nil
             slot.busy = false
             slot.browser.close()
         }
@@ -297,20 +330,62 @@ final class PriceWorker {
             inFlight[request.id] = nil
             lookupBrowsers[request.id] = nil
         }
-        if let warm = slot.warm {
-            // The search page replaces the home page; cookies and caches are already warming.
-            warm.cancel()
-            await warm.value
-            slot.warm = nil
+        if let ready = slot.ready {
+            await ready.value
+            slot.ready = nil
         }
+        await prepareStore(for: request, on: slot, api: api)
         let outcome = await handle(request, browser: slot.browser, api: api)
         if Task.isCancelled { return }
         lastOutcome = outcome
         outcomes.append(outcome)
-        if outcome.cents == nil && attempt == 1 {
+        if outcome.cents != nil {
+            gaveUpNames.remove(request.name)
+        } else if attempt == 1 && outcome.retryable {
             retryAt[request.id] = .now + retryDelay
             PriceLog.event("price \(request.id) no price; retrying in \(retryDelay)")
+        } else {
+            gaveUpNames.insert(request.name)
+            PriceLog.event("price \(request.id) gave up on \"\(request.name)\"")
         }
+    }
+
+    // MARK: store
+
+    /// Runs the scripted store switch once per browser and store; logs the result.
+    private func ensureStore(_ location: StoreLocation, on slot: Slot) async {
+        guard slot.store != location, !slot.storeTried.contains(location), !Task.isCancelled else { return }
+        slot.storeTried.insert(location)
+        let t0 = ContinuousClock.now
+        let result = await slot.browser.setStore(location)
+        switch result {
+        case .already: PriceLog.event("price store already \(location.name)")
+        case .set: PriceLog.event("price store set \(location.name) (\(Self.ms(since: t0)) ms)")
+        case .failed(let step): PriceLog.event("price store setup failed at \(step)")
+        }
+        if result.ok { slot.store = location }
+    }
+
+    /// Before a lookup: make sure the browser prices at the request's store. If the script
+    /// failed, let the agent switch it once (on this request's agent-step), then check again.
+    private func prepareStore(for request: PriceRequest, on slot: Slot, api: PriceAPI) async {
+        let location = request.storeLocation ?? storeLocation
+        await ensureStore(location, on: slot)
+        guard slot.store != location, !slot.storeAgentTried.contains(location), !Task.isCancelled else { return }
+        slot.storeAgentTried.insert(location)
+        PriceLog.event("price \(request.id) asking the agent to set the store to \(location.name)")
+        _ = try? await agentLoop(request, browser: slot.browser, api: api, seed: Self.storeSeed(location), maxSteps: 6)
+        let result = await slot.browser.setStore(location)
+        PriceLog.event(result.ok ? "price store set \(location.name) by agent" : "price store still not \(location.name); pricing anyway")
+        if result.ok { slot.store = location }
+    }
+
+    static func storeSeed(_ location: StoreLocation) -> String {
+        let place = location.address.map { "\(location.name) (\($0))" } ?? location.name
+        return "Set the store only; do not look up prices. On qfc.com, click the button that says how you are shopping "
+            + "(for example \"Pickup at Harvard Market\"), search postal code \(location.postalCode), choose \(place), then click "
+            + "Start Shopping. When the page header says \"Pickup at \(location.name)\", call report_price with found false. "
+            + "Start at https://www.qfc.com/."
     }
 
     private struct Timing {
@@ -338,8 +413,13 @@ final class PriceWorker {
         browser.restrict(to: url)
         PriceLog.event("price \(request.id) start \"\(request.name)\" at \(request.store)")
 
+        var readNoMatch = false
         do {
-            if let found = try await fastPath(request, browser: browser, api: api, timing: &timing) { return found }
+            switch try await fastPath(request, browser: browser, api: api, timing: &timing) {
+            case .found(let outcome): return outcome
+            case .noMatch: readNoMatch = true
+            case .unreadable: break
+            }
         } catch let error as DibsError {
             PriceLog.event("price \(request.id) extract failed: \(error.localizedDescription); skipping")
             return Outcome(requestId: request.id, name: request.name, via: .failed)
@@ -348,10 +428,43 @@ final class PriceWorker {
         }
         if Task.isCancelled { return Outcome(requestId: request.id, name: request.name, via: .failed) }
 
+        if readNoMatch {
+            // The results page loaded and had no match: the store likely doesn't carry it.
+            // A short, capped look, then give up (no retry).
+            PriceLog.event("price \(request.id) quick agent look (\(giveUpSteps) steps, \(Int(giveUpSeconds)) s)")
+            var outcome = await cappedAgent(request, browser: browser, api: api, maxSteps: giveUpSteps, seconds: giveUpSeconds)
+            if outcome.cents == nil { outcome.retryable = false }
+            return outcome
+        }
         do {
-            return try await agentLoop(request, browser: browser, api: api)
+            return try await agentLoop(request, browser: browser, api: api, seed: Self.priceSeed(request), maxSteps: Self.maxAgentSteps)
         } catch {
             PriceLog.event("price \(request.id) agent stopped: \(error.localizedDescription)")
+            return Outcome(requestId: request.id, name: request.name, via: .failed)
+        }
+    }
+
+    /// The agent loop with a wall-clock cap; on timeout or error it ends as not found.
+    private func cappedAgent(_ request: PriceRequest, browser: PriceBrowsing, api: PriceAPI,
+                             maxSteps: Int, seconds: Double) async -> Outcome {
+        let work = Task { [weak self] () -> Outcome? in
+            try await self?.agentLoop(request, browser: browser, api: api, seed: Self.priceSeed(request), maxSteps: maxSteps)
+        }
+        let capped = Flag()
+        let timer = Task {
+            try? await Task.sleep(for: .milliseconds(Int(seconds * 1000)))
+            if !Task.isCancelled { capped.on = true; work.cancel() }
+        }
+        let result = await withTaskCancellationHandler { await work.result } onCancel: { work.cancel() }
+        timer.cancel()
+        switch result {
+        case .success(let outcome?): return outcome
+        case .success(nil): return Outcome(requestId: request.id, name: request.name, via: .failed)
+        case .failure where capped.on || Task.isCancelled:
+            PriceLog.event("price \(request.id) quick agent hit the \(Int(seconds)) s cap")
+            return Outcome(requestId: request.id, name: request.name, via: .notFound)
+        case .failure(let error):
+            PriceLog.event("price \(request.id) quick agent stopped: \(error.localizedDescription)")
             return Outcome(requestId: request.id, name: request.name, via: .failed)
         }
     }
@@ -366,10 +479,19 @@ final class PriceWorker {
         return text.range(of: #"\$\s?\d+\.\d{2}"#, options: .regularExpression) != nil
     }
 
+    @MainActor private final class Flag { var on = false }
+
+    private enum FastResult {
+        case found(Outcome)
+        /// The page rendered and /extract found no match.
+        case noMatch
+        /// The page never rendered, or had no text.
+        case unreadable
+    }
+
     /// open → poll until rendered (25 s, then one reload and 20 s more) → /extract.
-    /// Nil when the page had no match.
     private func fastPath(_ request: PriceRequest, browser: PriceBrowsing, api: PriceAPI,
-                          timing: inout Timing) async throws -> Outcome? {
+                          timing: inout Timing) async throws -> FastResult {
         PriceLog.event("price \(request.id) open \(BrowserPolicy.safeURL(URL(string: request.searchUrl)))")
         var t0 = ContinuousClock.now
         _ = try await browser.run(tool: "browser_open", args: ["url": request.searchUrl])
@@ -388,17 +510,17 @@ final class PriceWorker {
             let head = text.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(200)
             PriceLog.event("price \(request.id) page starts: \(head)")
         }
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .unreadable }
         t0 = ContinuousClock.now
         let reply = try await api.extract(id: request.id, pageText: text)
         timing.extract = Self.ms(since: t0)
         if reply["found"] as? Bool == true, let cents = reply["priceCents"] as? Int {
             let product = reply["productName"] as? String
             PriceLog.event("price \(request.id) found \(Money.format(cents)) \"\(product ?? "")\" from page")
-            return Outcome(requestId: request.id, name: request.name, via: .page, cents: cents, productName: product)
+            return .found(Outcome(requestId: request.id, name: request.name, via: .page, cents: cents, productName: product))
         }
         PriceLog.event("price \(request.id) page had no match")
-        return nil
+        return ready ? .noMatch : .unreadable
     }
 
     /// Observes every `renderPoll` until `rendered` or `seconds` pass. Returns the last page text.
@@ -417,15 +539,17 @@ final class PriceWorker {
 
     /// The team's Gemini browser agent, with the model on the server: post the conversation,
     /// run the model's browser calls here, append both turns, repeat.
-    private func agentLoop(_ request: PriceRequest, browser: PriceBrowsing, api: PriceAPI) async throws -> Outcome {
-        // The server seeds the Item/Store line when contents is empty; sending the turn ourselves
-        // keeps the task (and the wait instruction) in the history every later step must carry.
-        // 12 steps make 23 entries, under the server's 24.
-        var contents: [[String: Any]] = [[
-            "role": "user",
-            "parts": [["text": "\(Self.agentWaitInstruction)\nItem: \"\(request.name)\". Store: \(request.store). Start at \(request.searchUrl)."]],
-        ]]
-        for step in 1...Self.maxAgentSteps {
+    /// The server seeds the Item/Store line when contents is empty; sending the turn ourselves
+    /// keeps the task (and the wait instruction) in the history every later step must carry.
+    static func priceSeed(_ request: PriceRequest) -> String {
+        "\(agentWaitInstruction)\nItem: \"\(request.name)\". Store: \(request.store). Start at \(request.searchUrl)."
+    }
+
+    /// 12 steps make 23 entries, under the server's 24.
+    private func agentLoop(_ request: PriceRequest, browser: PriceBrowsing, api: PriceAPI,
+                           seed: String, maxSteps: Int) async throws -> Outcome {
+        var contents: [[String: Any]] = [["role": "user", "parts": [["text": seed]]]]
+        for step in 1...max(1, min(maxSteps, Self.maxAgentSteps)) {
             try Task.checkCancellation()
             Self.fit(&contents)
             PriceLog.event("price \(request.id) agent step \(step)")
@@ -468,7 +592,7 @@ final class PriceWorker {
             }
             contents.append(["role": "user", "parts": replies])
         }
-        PriceLog.event("price \(request.id) agent hit the \(Self.maxAgentSteps)-step cap")
+        PriceLog.event("price \(request.id) agent hit the \(maxSteps)-step cap")
         return Outcome(requestId: request.id, name: request.name, via: .notFound)
     }
 

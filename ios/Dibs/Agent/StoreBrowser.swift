@@ -127,6 +127,39 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         return result
     }
 
+    /// Runs an async script body (which returns a JSON string) in the tools content world.
+    /// Navigation away from the page fails it; `timeout` bounds the wait.
+    func evaluate(_ body: String, arguments: [String: Any], timeout: Duration) async throws -> [String: Any] {
+        guard isOpen else { throw BrowserError("no_browser") }
+        let raw: String = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+            let id = UUID()
+            pending[id] = { continuation.resume(with: $0) }
+            webView.callAsyncJavaScript(body, arguments: arguments, in: nil, in: world) { [weak self] result in
+                switch result {
+                case .success(let value):
+                    if let s = value as? String { self?.finish(id, .success(s)) }
+                    else { self?.finish(id, .failure(BrowserError("script_result"))) }
+                case .failure(let error):
+                    let info = (error as NSError).userInfo
+                    if let message = info["WKJavaScriptExceptionMessage"] as? String {
+                        let line = info["WKJavaScriptExceptionLineNumber"].map { " line \($0)" } ?? ""
+                        self?.finish(id, .failure(BrowserError("script_exception", message + line)))
+                    } else {
+                        self?.finish(id, .failure(error))
+                    }
+                }
+            }
+            Task { [weak self] in
+                try? await Task.sleep(for: timeout)
+                self?.finish(id, .failure(BrowserError("timeout")))
+            }
+        }
+        guard let data = raw.data(using: .utf8), let result = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw BrowserError("script_result")
+        }
+        return result
+    }
+
     func observe() async throws -> [String: Any] {
         guard !privateMode else { throw BrowserError("user_action_required", "Private page. Open a different page.") }
         var result = try await bridge(["operation": "observe"])
