@@ -119,6 +119,28 @@ output for the fixtures in `tests/test_forecast_core.py` (viewed on Friday 16 Oc
 
 ## Run-outs
 
+### Native consumption predictions
+
+Home's **Running low** carousel includes active items forecast to run out within seven days, plus recorded
+zero quantities and items below their restock levels. Recorded zeroes come first, followed by predicted
+run-outs in date order and threshold-only items. A restock level is not required for predictions. Lists
+and the inventory list use the same prioritization. Estimates say **May run out in N days** or **May have
+run out**; only a recorded zero is labeled **Out of stock**. Low-confidence estimates are labeled on Home.
+
+Tapping a Home item opens its detail, which shows the forecast date/range, daily consumption, estimated
+remaining stock, confidence, evidence and explanation. Typical-use priors are explicitly distinguished
+from personal consumption history. Predictions never overwrite recorded inventory quantities.
+
+The native foreground inventory refresh loads run-outs every 30 seconds, and pull-to-refresh does the
+same. A quantity update immediately invalidates the previous prediction; new results are accepted only
+when their last observation time and quantity match the current item. Account/household changes clear
+predictions and reject late responses. An unavailable endpoint falls back to recorded stock with a notice.
+The existing backend worker and demo forecast seed/backfill supply the data; no migration or new stored
+data is introduced. Rebuild the iOS app to use this integration.
+
+Gemini and other configured chat models receive these same evidence-backed estimates through
+`shopping_context`; see [chat forecast context](chat-additions.md#consumption-forecast-context).
+
 ### `GET /v1/forecasts/runouts?within=7d`
 
 `within` is `1d` to `90d` (default `7d`). Returns active items whose latest forecast runs out before

@@ -312,6 +312,13 @@ Backend URL and accounts for testing: see [SETUP.md](../SETUP.md). The "Purchase
 
 ## Requested frontend features: run-outs and shopping lists
 
+**Native implementation update (October 18, 2026):** Home's Running low carousel now combines seven-day
+consumption predictions with recorded zeroes/restock thresholds. Lists use the same ordering; item detail
+shows date/range, consumption rate, estimated remaining quantity, confidence and evidence. Gemini chat can
+read these forecasts through `shopping_context`. Foreground refresh uses the existing 30-second cadence;
+new quantities invalidate old predictions. The horizon toggle, projection chart and SSE-specific refresh
+below remain follow-up proposals. See [native behavior](api/forecasts-and-lists.md#native-consumption-predictions).
+
 **Backend status:** done. **API contract:** [docs/api/forecasts-and-lists.md](api/forecasts-and-lists.md).
 **For:** iOS first; the laptop/desktop view can reuse the same screens.
 

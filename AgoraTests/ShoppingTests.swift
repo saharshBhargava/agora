@@ -115,6 +115,44 @@ final class ShoppingTests: XCTestCase {
         XCTAssertNil(patch["household_id"])
     }
 
+    func testShoppingContextGivesGeminiGroundedConsumptionForecasts() async throws {
+        var observed = stock
+        observed["observed_at"] = "2026-10-18T12:00:00Z"
+        let date = ISO8601DateFormatter().string(from: Date().addingTimeInterval(2 * 86_400))
+        let forecast: [String: Any] = ["computed_at": "2026-10-18T12:01:00Z", "method": "blended",
+            "status": "runs_out", "confidence": "low", "rate_per_day": 0.5, "qty_now": 1,
+            "last_quantity": 1, "last_observed_at": "2026-10-18T12:00:00Z", "runout_at": date,
+            "n_obs": 3, "span_days": 4, "explanation": "Estimated from history and typical use."]
+        let response: [String: Any] = ["household_id": household.uuidString, "within_days": 7,
+                                      "runouts": [["item": observed, "forecast": forecast]]]
+        ShoppingHTTP.handler = { request in
+            if request.url!.path.hasSuffix("/inventory") { return (200, [observed]) }
+            if request.url!.path.hasSuffix("/runouts") { return (200, response) }
+            return (200, [:])
+        }
+        let call = try ShoppingCall(["name": "shopping_context", "args": [:]])
+        let result = try await shopping.execute(call, taskID: UUID())
+        XCTAssertEqual(result["runout_forecast_status"] as? String, "available")
+        let forecasts = try XCTUnwrap(result["runout_forecasts"] as? [[String: Any]])
+        XCTAssertEqual(forecasts.count, 1)
+        XCTAssertEqual(forecasts.first?["item_id"] as? String, inventoryID.uuidString)
+        let facts = try XCTUnwrap(forecasts.first?["forecast"] as? [String: Any])
+        XCTAssertEqual(facts["runout_at"] as? String, date)
+        XCTAssertEqual(facts["confidence"] as? String, "low")
+        XCTAssertEqual(facts["rate_per_day"] as? Double, 0.5)
+        XCTAssertEqual(facts["method"] as? String, "blended")
+
+        ShoppingHTTP.handler = { request in
+            if request.url!.path.hasSuffix("/runouts") { return (503, ["title": "unavailable"]) }
+            if request.url!.path.hasSuffix("/inventory") { return (200, [observed]) }
+            return (200, [:])
+        }
+        let fallback = try await shopping.execute(call, taskID: UUID())
+        XCTAssertEqual(fallback["runout_forecast_status"] as? String, "unavailable")
+        XCTAssertTrue((fallback["runout_forecasts"] as? [Any])?.isEmpty == true)
+        XCTAssertEqual((fallback["inventory"] as? [Any])?.count, 1)
+    }
+
     func testWishlistSaveAcceptSnoozePurchaseAndFeedback204() async throws {
         var saved = row
         ShoppingHTTP.handler = { request in

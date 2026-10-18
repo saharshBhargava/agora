@@ -20,6 +20,21 @@ Names are 1–120 characters, units 1–20. Shopping quantities default to 1 and
 Chat asks for the destination/list when ambiguous; if no list exists, users create one in Lists first.
 No list creation, quantity changes, browser/photo extraction, undo or new result-card UI is included.
 
+## Consumption forecast context
+
+`shopping_context` also reads `GET /v1/forecasts/runouts?within=7d` for the selected household. Its result
+adds `runout_window_days: 7`, `runout_forecast_status: "available" | "unavailable"`, and `runout_forecasts`.
+Each entry identifies an inventory item and its unit, with a `forecast` containing method, confidence,
+status, rate per day, estimated quantity, run-out date/range, reading count, history span and explanation.
+Forecasts that do not match the freshly read item's last observation are omitted.
+
+Gemini and OpenAI-compatible chat models are instructed to read this tool for running-out questions,
+describe estimates with their confidence, distinguish typical-use assumptions from consumption history,
+and never invent rates or dates. An absent item is not proof of sufficient stock; it has no current
+prediction in this seven-day window. Forecast failures preserve the rest of shopping context and report
+`unavailable`. The consumption calculation remains on the backend; the model explains the evidence.
+The built-in demo chat retains its existing grammar; demo forecasts are available in Home/item detail.
+
 ## Inventory create compatibility
 
 `POST /v1/inventory` accepts an optional `Idempotency-Key`; chat always supplies it. Identical keyed

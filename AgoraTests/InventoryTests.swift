@@ -70,6 +70,143 @@ final class InventoryTests: XCTestCase {
         ["households": [["id": household.uuidString, "name": "Home", "locations": [["id": locationID.uuidString, "name": "Fridge", "kind": "fridge"]]],
                         ["id": secondHousehold.uuidString, "name": "Other home", "locations": []]]]
     }
+
+    private func forecastRow(days: Double = 3, method: String = "theil_sen") -> [String: Any] {
+        let now = Date(), formatter = ISO8601DateFormatter()
+        return ["computed_at": formatter.string(from: now), "method": method, "status": "runs_out",
+                "confidence": method == "prior" ? "low" : "high", "rate_per_day": 0.25, "qty_now": 0.75,
+                "last_observed_at": row["observed_at"]!, "last_quantity": 1.5,
+                "runout_at": formatter.string(from: now.addingTimeInterval(days * 86_400)),
+                "runout_lo": formatter.string(from: now.addingTimeInterval((days - 1) * 86_400)),
+                "runout_hi": formatter.string(from: now.addingTimeInterval((days + 1) * 86_400)),
+                "n_obs": method == "prior" ? 1 : 12, "span_days": method == "prior" ? 0 : 14,
+                "explanation": "Milk may run out in three days based on recorded consumption."]
+    }
+
+    private func forecastResponse(_ forecast: [String: Any], item: [String: Any]? = nil) -> [String: Any] {
+        ["household_id": household.uuidString, "within_days": 7,
+         "runouts": [["item": item ?? row, "forecast": forecast]]]
+    }
+
+    func testConsumptionPredictionIncludesStockAboveThresholdAndExplainsEvidence() async throws {
+        var stocked = row; stocked["par_level"] = 1
+        let profile = profile, response = forecastResponse(forecastRow(), item: stocked)
+        InventoryHTTP.handler = { request in
+            if request.url!.path.hasSuffix("/me") { return (200, profile) }
+            if request.url!.path.hasSuffix("/runouts") {
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-identity")
+                let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!
+                XCTAssertTrue(query.contains(.init(name: "within", value: "7d")))
+                XCTAssertTrue(query.contains(.init(name: "household_id", value: response["household_id"] as? String)))
+                return (200, response)
+            }
+            return (200, [stocked])
+        }
+        await store.refreshWithForecasts()
+        XCTAssertFalse(store.items[0].isRunningLow)
+        XCTAssertEqual(store.runningLowItems.map(\.id), [itemID])
+        XCTAssertEqual(store.stockSummary(store.items[0]), "May run out in 3 days")
+        XCTAssertEqual(store.forecast(for: store.items[0])?.evidenceLabel, "Consumption history · High confidence")
+        XCTAssertEqual(store.items[0].quantity, 1.5, "Prediction must never overwrite measured stock")
+        XCTAssertNil(store.forecastError)
+    }
+
+    func testPriorIsLabeledAndExpiredEstimateIsNotConfirmedOutOfStock() async throws {
+        let response = forecastResponse(forecastRow(days: -1, method: "prior"))
+        InventoryHTTP.handler = { _ in (200, response) }
+        await store.refreshForecasts()
+        let forecast = try XCTUnwrap(store.forecast(for: store.items[0]))
+        XCTAssertEqual(forecast.evidenceLabel, "Typical-use estimate · Low confidence")
+        XCTAssertEqual(store.stockSummary(store.items[0]), "May have run out")
+        XCTAssertEqual(store.items[0].quantity, 1.5)
+    }
+
+    func testForecastFailureKeepsThresholdFallbackAndRejectsWrongHousehold() async {
+        let response = forecastResponse(forecastRow())
+        InventoryHTTP.handler = { _ in (200, response) }
+        await store.refreshForecasts()
+        XCTAssertFalse(store.forecasts.isEmpty)
+        InventoryHTTP.handler = { _ in (503, ["title": "unavailable"]) }
+        await store.refreshForecasts()
+        XCTAssertTrue(store.forecasts.isEmpty); XCTAssertNotNil(store.forecastError)
+        XCTAssertEqual(store.runningLowItems.map(\.id), [itemID]); XCTAssertNil(store.error)
+        var wrong = response; wrong["household_id"] = secondHousehold.uuidString
+        InventoryHTTP.handler = { _ in (200, wrong) }
+        await store.refreshForecasts()
+        XCTAssertTrue(store.forecasts.isEmpty); XCTAssertNotNil(store.forecastError)
+    }
+
+    func testStaleForecastAndOutsideWindowAreIgnored() async {
+        var stale = forecastRow(); stale["last_quantity"] = 0.5
+        var response = forecastResponse(stale)
+        InventoryHTTP.handler = { _ in (200, response) }
+        await store.refreshForecasts()
+        XCTAssertTrue(store.forecasts.isEmpty)
+        response = forecastResponse(forecastRow(days: 8))
+        await store.refreshForecasts()
+        XCTAssertTrue(store.forecasts.isEmpty)
+        stale = forecastRow(); stale["last_observed_at"] = "2026-10-16T19:00:00Z"
+        response = forecastResponse(stale)
+        await store.refreshForecasts()
+        XCTAssertTrue(store.forecasts.isEmpty)
+    }
+
+    func testRestockInvalidatesForecastAndDiscardsAnInflightPrediction() async throws {
+        let response = forecastResponse(forecastRow())
+        InventoryHTTP.handler = { _ in (200, response) }
+        await store.refreshForecasts()
+        let requested = expectation(description: "Forecast request dispatched")
+        InventoryHTTP.delayIf = { $0.url!.path.hasSuffix("/runouts") ? 0.2 : 0 }
+        InventoryHTTP.handler = { request in
+            if request.url!.path.hasSuffix("/runouts") { requested.fulfill(); return (200, response) }
+            return (201, ["time": ISO8601DateFormatter().string(from: Date()), "quantity": 8, "source": "manual"])
+        }
+        let pending = Task { await store.refreshForecasts() }
+        await fulfillment(of: [requested], timeout: 2)
+        try await store.updateQuantity(store.items[0], quantity: 8)
+        XCTAssertTrue(store.forecasts.isEmpty)
+        await pending.value
+        XCTAssertTrue(store.forecasts.isEmpty); XCTAssertTrue(store.runningLowItems.isEmpty)
+    }
+
+    func testForecastsClearOnAccountAndHouseholdChanges() async throws {
+        let response = forecastResponse(forecastRow())
+        InventoryHTTP.handler = { _ in (200, response) }
+        await store.refreshForecasts()
+        XCTAssertFalse(store.forecasts.isEmpty)
+        let profile = profile
+        InventoryHTTP.handler = { request in
+            if request.url!.path.hasSuffix("/me") { return (200, profile) }
+            return (200, [])
+        }
+        await store.selectHousehold(secondHousehold)
+        XCTAssertTrue(store.forecasts.isEmpty); XCTAssertNil(store.forecastError)
+        store.reset(accountID: "another-account")
+        XCTAssertTrue(store.forecasts.isEmpty); XCTAssertTrue(store.runningLowItems.isEmpty)
+    }
+
+    func testSignOutDiscardsInflightForecast() async throws {
+        let response = forecastResponse(forecastRow()), requested = expectation(description: "Forecast dispatched")
+        InventoryHTTP.handler = { _ in requested.fulfill(); return (200, response) }
+        InventoryHTTP.delay = 0.2
+        let pending = Task { await store.refreshForecasts() }
+        await fulfillment(of: [requested], timeout: 2)
+        await calendar.signOut()
+        await pending.value
+        XCTAssertTrue(store.forecasts.isEmpty); XCTAssertTrue(store.items.isEmpty); XCTAssertNil(store.forecastError)
+    }
+
+    func testDetailDecodesForecastAndOlderServerWithoutForecast() async throws {
+        var detail = row
+        detail["daily"] = []; detail["observations"] = []; detail["purchase_history"] = []
+        detail["forecast"] = forecastRow()
+        InventoryHTTP.handler = { _ in (200, detail) }
+        let result = try await store.detail(itemID, days: 30)
+        XCTAssertTrue(try XCTUnwrap(result.forecast).matches(result.item))
+        detail["forecast"] = nil
+        let legacy = try await store.detail(itemID, days: 30)
+        XCTAssertNil(legacy.forecast)
+    }
     override func setUp() async throws {
         auth = InventoryGoogle(); calendar = CalendarConnection(authorization: auth)
         await calendar.refresh()
@@ -300,6 +437,69 @@ private final class InventoryLiveHTTP: URLProtocol {
 
 @MainActor
 final class InventoryLiveTests: XCTestCase {
+    func testConsumptionPredictionFromRecordedHistoryAndRestock() async throws {
+        var login = URLRequest(url: URL(string: "http://127.0.0.1:18765/v1/dev/login")!)
+        login.timeoutInterval = 2; login.httpMethod = "POST"
+        login.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        login.httpBody = try JSONSerialization.data(withJSONObject: ["handle": "forecast_" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "").prefix(16)])
+        let data: Data
+        do { (data, _) = try await URLSession.shared.data(for: login) }
+        catch { throw XCTSkip("Isolated inventory test API is not running on localhost:18765") }
+        let token = try XCTUnwrap((try JSONSerialization.jsonObject(with: data) as? [String: Any])?["access_token"] as? String)
+        let auth = InventoryGoogle(); auth.token = token
+        let calendar = CalendarConnection(authorization: auth); await calendar.refresh()
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [InventoryLiveHTTP.self]
+        let http = URLSession(configuration: config); defer { http.invalidateAndCancel() }
+        let api = AgoraClient(calendar: calendar, baseURL: URL(string: "https://inventory-live.example.com"), http: http)
+        let store = InventoryStore(api: api, calendar: calendar)
+        await store.refreshWithForecasts()
+        var draft = InventoryDraft(); draft.name = "Breakfast yogurt"; draft.category = "dairy"; draft.unit = "cups"
+        let item = try await store.save(draft, original: nil)
+        let now = Date(), formatter = ISO8601DateFormatter()
+        for day in 0...10 {
+            let _: InventoryObservation = try await api.fetch("v1/inventory/\(item.id)/observations",
+                as: InventoryObservation.self, method: "POST", body: [
+                    "time": formatter.string(from: now.addingTimeInterval(Double(day - 10) * 86_400 - 1)),
+                    "quantity": 13 - day
+                ])
+        }
+        for _ in 0..<30 {
+            await store.refreshWithForecasts()
+            if store.forecasts[item.id]?.nObs == 11 { break }
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        let forecast = try XCTUnwrap(store.forecasts[item.id])
+        XCTAssertEqual(forecast.method, "theil_sen")
+        XCTAssertEqual(try XCTUnwrap(forecast.ratePerDay), 1, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(forecast.runoutAt).timeIntervalSince(now) / 86_400, 3, accuracy: 0.05)
+        XCTAssertNil(store.items.first?.parLevel)
+        XCTAssertEqual(store.runningLowItems.map(\.id), [item.id])
+        XCTAssertEqual(store.items.first?.quantity, 3)
+        let settings = SettingsStore(keychainService: "forecast-render-" + UUID().uuidString)
+        let shopping = ShoppingStore(api: api, inventory: store)
+        let trips = TripStore(api: api, inventory: store, calendar: calendar)
+        try await screenshot(HomeView(selectedTab: .constant(.home), store: store, shopping: shopping,
+                                      settings: settings, trips: trips), name: "Consumption prediction Home")
+        try await screenshot(NavigationStack { InventoryDetailView(store: store, itemID: item.id) }, name: "Consumption prediction")
+        try await screenshot(NavigationStack { InventoryDetailView(store: store, itemID: item.id) }
+            .environment(\.dynamicTypeSize, .accessibility2), name: "Consumption prediction accessible")
+
+        try await store.updateQuantity(store.items[0], quantity: 20)
+        XCTAssertTrue(store.forecasts.isEmpty)
+        for _ in 0..<30 {
+            let detail = try await store.detail(item.id, days: 30)
+            if detail.forecast?.lastQuantity == 20 { break }
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        await store.refreshWithForecasts()
+        let detail = try await store.detail(item.id, days: 30)
+        XCTAssertEqual(detail.forecast?.lastQuantity, 20)
+        XCTAssertGreaterThan(try XCTUnwrap(detail.forecast?.runoutAt).timeIntervalSince(now), 7 * 86_400)
+        XCTAssertTrue(store.runningLowItems.isEmpty)
+        await calendar.signOut()
+        XCTAssertTrue(store.forecasts.isEmpty)
+    }
+
     func testInventoryLifecycleAgainstRealBackend() async throws {
         var login = URLRequest(url: URL(string: "http://127.0.0.1:18765/v1/dev/login")!)
         login.timeoutInterval = 2; login.httpMethod = "POST"
@@ -360,12 +560,23 @@ final class InventoryLiveTests: XCTestCase {
         defer { window.isHidden = true; previousWindow?.makeKeyAndVisible() }
         host.view.frame = window.bounds; host.view.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(500))
+        if name == "Consumption prediction accessible" {
+            func scrollViews(_ view: UIView) -> [UIScrollView] {
+                (view as? UIScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews)
+            }
+            let scroll = scrollViews(host.view).first { $0.contentSize.height > $0.bounds.height }
+            scroll?.setContentOffset(CGPoint(x: 0, y: 650), animated: false)
+            try await Task.sleep(for: .milliseconds(200))
+        }
         let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
             XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
         }
         let attachment = XCTAttachment(image: image)
         attachment.name = name; attachment.lifetime = .keepAlways
         add(attachment)
+        if name.hasPrefix("Consumption prediction") {
+            try image.pngData()?.write(to: URL(fileURLWithPath: "/tmp/\(name.replacingOccurrences(of: " ", with: "-" )).png"))
+        }
     }
 }
 

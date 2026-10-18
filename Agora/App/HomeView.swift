@@ -15,12 +15,7 @@ struct HomeView: View {
     private var inventoryError: String? { store.error }
 
     private var lowItems: [InventoryItem] {
-        inventory.filter(\.isRunningLow).sorted {
-            if $0.quantity == $1.quantity {
-                return $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
-            }
-            return ($0.quantity ?? 0) < ($1.quantity ?? 0)
-        }
+        store.runningLowItems
     }
 
     var body: some View {
@@ -41,7 +36,7 @@ struct HomeView: View {
             .background(Color(uiColor: .systemGroupedBackground))
             .safeAreaInset(edge: .top, spacing: 0) { topBar }
             .toolbar(.hidden, for: .navigationBar)
-            .refreshable { await store.refresh(); await shopping.refresh(); await trips.refresh() }
+            .refreshable { await store.refreshWithForecasts(); await shopping.refresh(); await trips.refresh() }
         }
     }
 
@@ -218,29 +213,39 @@ struct HomeView: View {
                 InventoryListView(store: store)
                     .toolbar(.visible, for: .navigationBar)
             }
+            sectionMessage("Predicted to run out within 7 days, out of stock, or below your restock level.")
             if loading && inventory.isEmpty && inventoryError == nil {
                 ProgressView("Checking your inventory…").padding(.horizontal, 20)
             } else if let inventoryError {
                 sectionMessage(inventoryError)
-                Button("Try again") { Task { await store.refresh() } }
+                Button("Try again") { Task { await store.refreshWithForecasts() } }
                     .disabled(loading).padding(.horizontal, 20)
             } else if inventory.isEmpty {
-                sectionMessage("Your inventory is empty. Items below their restock levels will appear here once your inventory is set up.")
+                sectionMessage("Add items and scan them over time to predict when you’ll need more.")
             } else if lowItems.isEmpty {
-                sectionMessage("No items below their restock levels. Items need a quantity and a restock level to be checked.")
+                if store.forecastsLoading { ProgressView("Checking consumption…").padding(.horizontal, 20) }
+                else { sectionMessage("No upcoming run-outs found. Keep quantities up to date to improve predictions.") }
             } else {
                 ItemCarousel {
                     ForEach(lowItems) { item in
-                        ItemCarouselItem(title: item.displayName,
-                                         detail: item.quantity.map { $0 == 0 ? "Out of stock" : "\($0.formatted()) \(item.unit) left" },
-                                         detailColor: item.quantity == 0 ? .red : .secondary) { size in
-                            ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName,
-                                          category: item.category, size: size)
+                        NavigationLink {
+                            InventoryDetailView(store: store, itemID: item.id)
+                                .toolbar(.visible, for: .navigationBar)
+                        } label: {
+                            ItemCarouselItem(title: item.displayName,
+                                             detail: store.stockSummary(item),
+                                             supportingText: store.forecast(for: item)?.confidence == "low" ? "Low confidence" : nil,
+                                             detailColor: item.quantity == 0 ? .red : .secondary) { size in
+                                ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName,
+                                              category: item.category, size: size)
+                            }
                         }
-                        .accessibilityValue(item.parLevel.map { "Restock below \($0.formatted()) \(item.unit)" } ?? "")
+                        .buttonStyle(.plain)
+                        .accessibilityValue(store.forecast(for: item)?.evidenceLabel ?? "Recorded stock level")
                     }
                 }
             }
+            if let error = store.forecastError { sectionMessage(error) }
             NavigationLink("Plan a restock trip") { tripsDestination }
                 .font(.subheadline.weight(.semibold))
                 .padding(.horizontal, 20)
@@ -293,6 +298,7 @@ struct ItemCarousel<Content: View>: View {
 struct ItemCarouselItem<Artwork: View>: View {
     let title: String
     var detail: String?
+    var supportingText: String? = nil
     var detailColor: Color = .secondary
     @ViewBuilder var artwork: (CGFloat) -> Artwork
     @ScaledMetric(relativeTo: .body) private var imageSize: CGFloat = 100
@@ -316,6 +322,9 @@ struct ItemCarouselItem<Artwork: View>: View {
                         .font(.caption)
                         .foregroundStyle(detailColor)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                }
+                if let supportingText {
+                    Text(supportingText).font(.caption2).foregroundStyle(.secondary)
                 }
             }
             .multilineTextAlignment(.center)

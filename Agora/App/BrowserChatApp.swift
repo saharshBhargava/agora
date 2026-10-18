@@ -175,7 +175,7 @@ private struct InventoryRefresh: View {
                 // Refresh on foreground/household changes and periodically while the app is open.
                 // Shared state also updates immediately after every successful local mutation.
                 while !Task.isCancelled {
-                    await store.refresh()
+                    await store.refreshWithForecasts()
                     do { try await Task.sleep(for: .seconds(30)) } catch { return }
                 }
             }

@@ -223,3 +223,16 @@ Recent scans shows Needs review, Check save status or Added to inventory from ex
 records. Saved reviews remain bound to their original account and household. Media/captions/sharing remain
 available from each scan's menu. Unsaved recognition edits are not persisted by closing review; reopening
 identifies the original media again. No API, schema or demo-data changes are needed for this UI flow.
+
+## Consumption predictions — native source, October 18, 2026
+
+Running low now includes items predicted to run out within seven days even without a restock level.
+Item details show the estimated date/range, daily use, remaining quantity and confidence, distinguishing
+typical-use assumptions from personal history. Home, Lists and inventory share prioritization; recorded
+zeroes stay labeled Out of stock, while predictions use uncertain wording. The existing forecast API,
+worker and demo history are reused. A rebuilt app is required; no backend deployment is needed.
+
+Gemini and other configured chat providers receive these predictions when reading `shopping_context`.
+They explain the backend's consumption estimate rather than generating an unsupported rate or date.
+See [the forecast contract](api/forecasts-and-lists.md#native-consumption-predictions) for freshness and
+fallback behavior. The built-in demo chat retains its existing grammar.

@@ -1,5 +1,34 @@
 # Current state — mandatory read before resuming work
 
+## Consumption predictions in Home and chat — source integration, October 18, 2026
+
+Validated on main `75a3f88` and reconciled with the documentation update at `82853b6`.
+Home's Running low carousel now
+includes items predicted to run out in the next seven days, plus recorded zeroes and restock-threshold
+items. Lists/inventory share the ordering. Item detail shows the estimated date/range, rate, remaining
+quantity, confidence and evidence. Typical-use priors are labeled separately from personal consumption;
+predictions never replace recorded quantities. This supersedes earlier notes that Home only uses `par_level`.
+
+The existing forecast worker/API and designated demo's seeded history are reused. No backend source,
+migration, new stored data or seed change is needed. Native foreground refresh loads run-outs every
+30 seconds; changed observations invalidate old predictions, and account/household changes clear them.
+Gemini and other configured chat models receive the same validated estimates via `shopping_context`
+and are instructed to explain their uncertainty rather than invent dates or rates. Built-in demo chat
+retains its existing grammar; its Home/detail forecasts remain available.
+
+Validation: **133 selected simulator tests passed**, including the iOS CI suites and real local
+API/Postgres/worker integration. Eleven observations declining by one cup per day produced a three-day
+run-out estimate without a restock threshold; restocking to 20 cups invalidated the old estimate and
+removed the item from Running low. **61 backend forecast/demo tests passed** on disposable PostgreSQL.
+After refining detail refresh, all **27 focused inventory/integration tests passed** again. Standard Home,
+item-detail and scrolled accessibility-size prediction captures were visually inspected. Final log/results:
+`/tmp/agora-consumption-render-final.log` and `/tmp/agora-consumption-render-final.xcresult`.
+Live credentialed Gemini inference and a distributed app were not tested. An exploratory Gemini settings
+test encountered the existing unsigned-simulator Keychain entitlement limitation; no full Gemini-suite
+pass is claimed. Logs: `/tmp/agora-consumption-final.log`, `/tmp/agora-consumption-backend.log`;
+simulator results: `/tmp/agora-consumption-final.xcresult`. This native change requires an app
+rebuild, with no backend deployment or production data changes.
+
 ## Combined native integration merged and released — October 18, 2026
 
 PR [#41](https://github.com/saharshBhargava/agora/pull/41) merged the full pending native integration

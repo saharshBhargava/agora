@@ -48,7 +48,7 @@ struct ListsView: View {
             .navigationDestination(item: $createdListID) { id in
                 TripListView(store: trips, listID: id)
             }
-            .refreshable { await inventory.refresh(); await shopping.refresh(); await trips.refresh() }
+            .refreshable { await inventory.refreshWithForecasts(); await shopping.refresh(); await trips.refresh() }
         }
         .id(inventory.context)
         .onChange(of: inventory.context) { _, _ in creatingList = false; createdListID = nil }
@@ -66,12 +66,12 @@ struct ListsView: View {
                 message("Add your essentials to see what you have and what needs restocking.")
             } else {
                 ItemCarousel {
-                    ForEach(inventory.activeItems.sorted(by: InventoryItem.restockOrder)) { item in
+                    ForEach(inventory.activeItems.sorted(by: inventory.restockOrder)) { item in
                         NavigationLink {
                             InventoryDetailView(store: inventory, itemID: item.id)
                         } label: {
-                            ItemCarouselItem(title: item.displayName, detail: item.stockSummary,
-                                             detailColor: item.quantity == 0 ? .red : item.isRunningLow ? .orange : .secondary) { size in
+                            ItemCarouselItem(title: item.displayName, detail: inventory.stockSummary(item),
+                                             detailColor: item.quantity == 0 ? .red : inventory.needsRestock(item) ? .orange : .secondary) { size in
                                 ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName,
                                               category: item.category, size: size)
                                     .allowsHitTesting(false)
@@ -215,7 +215,7 @@ struct InventoryListView: View {
             $0.status == (showArchived ? "archived" : "active") &&
             (locationID == nil || $0.locationId == locationID) &&
             (search.isEmpty || $0.displayName.localizedStandardContains(search) || ($0.category?.localizedStandardContains(search) ?? false))
-        }.sorted(by: InventoryItem.restockOrder)
+        }.sorted(by: store.restockOrder)
     }
 
     var body: some View {
@@ -254,7 +254,8 @@ struct InventoryListView: View {
                     NavigationLink {
                         InventoryDetailView(store: store, itemID: item.id)
                     } label: {
-                        InventoryRowView(item: item, location: store.locations.first { $0.id == item.locationId }?.name)
+                        InventoryRowView(item: item, location: store.locations.first { $0.id == item.locationId }?.name,
+                                         forecast: store.forecast(for: item))
                     }
                     .accessibilityIdentifier("inventory.item.\(item.id)")
                 }
@@ -275,7 +276,7 @@ struct InventoryListView: View {
                     .accessibilityIdentifier("inventory.add")
             }
         }
-        .refreshable { await store.refresh() }
+        .refreshable { await store.refreshWithForecasts() }
         .sheet(isPresented: $adding) { InventoryEditor(store: store, original: nil) }
         .sheet(isPresented: $managingLocations) { InventoryLocationsView(store: store) }
         .id(store.context)
@@ -286,6 +287,7 @@ struct InventoryListView: View {
 private struct InventoryRowView: View {
     let item: InventoryItem
     let location: String?
+    var forecast: InventoryForecast? = nil
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName, category: item.category)
@@ -298,6 +300,7 @@ private struct InventoryRowView: View {
                 Text(item.quantityLabel).font(.subheadline)
                 if item.status == "archived" { Text("Archived").font(.caption).foregroundStyle(.secondary) }
                 else if item.quantity == 0 { Text("Out of stock").font(.caption).foregroundStyle(.red) }
+                else if let forecast, forecast.runsOutSoon() { Text(forecast.summary()).font(.caption).foregroundStyle(.orange) }
                 else if item.isRunningLow { Text("Running low").font(.caption).foregroundStyle(.orange) }
             }.multilineTextAlignment(.trailing)
         }.padding(.vertical, 4)
@@ -307,6 +310,7 @@ private struct InventoryRowView: View {
 struct InventoryDetailView: View {
     @ObservedObject var store: InventoryStore
     let itemID: UUID
+    @Environment(\.scenePhase) private var phase
     @State private var detail: InventoryDetail?
     @State private var days = 30
     @State private var loading = true
@@ -317,6 +321,12 @@ struct InventoryDetailView: View {
     @State private var saving = false
     @State private var loadID = UUID()
     private var item: InventoryItem? { store.items.first { $0.id == itemID } }
+    private var currentForecast: InventoryForecast? {
+        guard let item else { return nil }
+        if let forecast = store.forecast(for: item) { return forecast }
+        if let forecast = detail?.forecast, forecast.matches(item) { return forecast }
+        return nil
+    }
 
     var body: some View {
         List {
@@ -331,6 +341,34 @@ struct InventoryDetailView: View {
                     if let source = item.source { LabeledContent("Source", value: source.capitalized) }
                     Button("Update quantity") { changingQuantity = true }
                         .accessibilityIdentifier("inventory.updateQuantity")
+                }
+                Section("Run-out prediction") {
+                    if let forecast = currentForecast {
+                        Text(forecast.summary()).font(.headline)
+                        Text(forecast.evidenceLabel).font(.caption).foregroundStyle(.secondary)
+                        if let date = forecast.runoutAt {
+                            LabeledContent("Estimated run-out") { Text(date, format: .dateTime.month().day()) }
+                        }
+                        if let low = forecast.runoutLo, let high = forecast.runoutHi, low < high {
+                            LabeledContent("Estimated range") {
+                                Text("\(low.formatted(date: .abbreviated, time: .omitted)) – \(high.formatted(date: .abbreviated, time: .omitted))")
+                            }
+                        }
+                        if let rate = forecast.ratePerDay {
+                            LabeledContent("Estimated daily use", value: "\(rate.formatted(.number.precision(.fractionLength(0...3)))) \(item.unit)/day")
+                        }
+                        if let remaining = forecast.qtyNow {
+                            LabeledContent("Estimated remaining", value: "\(remaining.formatted(.number.precision(.fractionLength(0...2)))) \(item.unit)")
+                        }
+                        Text(forecast.explanation).font(.subheadline)
+                        Text("\(forecast.nObs) readings across \(forecast.spanDays.formatted(.number.precision(.fractionLength(0...1)))) days. Estimates account for recorded restocks; they do not change your recorded quantity.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else if loading {
+                        ProgressView("Loading prediction…")
+                    } else {
+                        Text(error == nil ? "A current prediction isn’t available yet. Scan this item or update its quantity over time to learn your consumption." : "Couldn’t load the prediction. Pull to refresh.")
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Section("Purchase information") {
                     if let merchant = item.lastPurchasedFrom { LabeledContent("Last purchased from", value: merchant.label) }
@@ -414,9 +452,17 @@ struct InventoryDetailView: View {
                 }
             }
         }
-        .task(id: days) { await load() }
+        .task(id: "\(days)-\(store.context)-\(phase == .active)") {
+            await load()
+            guard phase == .active else { return }
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                await load()
+            }
+        }
         .onChange(of: item) { _, _ in Task { await load() } }
-        .refreshable { await store.refresh(); await load() }
+        .onChange(of: store.forecasts[itemID]) { _, _ in Task { await load() } }
+        .refreshable { await store.refreshWithForecasts(); await load() }
     }
 
     private func load() async {
