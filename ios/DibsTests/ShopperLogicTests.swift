@@ -175,6 +175,31 @@ final class ShopperLogicTests: XCTestCase {
         XCTAssertEqual(ShopperLogic.removals(previous: undone.ids, chips: run.chips).new.map(\.id), ["milk"])
     }
 
+    func testFixSheetOffersRemoveOnlyWhileTheCartTakesChanges() {
+        let chip = Chip(id: "m", name: "2% Milk", priceCents: 429, state: .open)
+        XCTAssertTrue(ShopperLogic.canRemoveFromSheet(chip, runState: .open))
+        XCTAssertTrue(ShopperLogic.canRemoveFromSheet(chip, runState: .lastCall))
+        XCTAssertFalse(ShopperLogic.canRemoveFromSheet(chip, runState: .locked))
+        XCTAssertFalse(ShopperLogic.canRemoveFromSheet(chip, runState: .receipt))
+        XCTAssertFalse(ShopperLogic.canRemoveFromSheet(chip, runState: nil))
+        var claimed = chip
+        claimed.claimers = ["p"]
+        claimed.state = .claimed
+        XCTAssertTrue(ShopperLogic.canRemoveFromSheet(claimed, runState: .open))
+        var gone = chip
+        gone.state = .removed
+        XCTAssertFalse(ShopperLogic.canRemoveFromSheet(gone, runState: .open))
+        XCTAssertFalse(ShopperLogic.canRemoveFromSheet(Chip(id: "w", name: "Bagels", state: .wish), runState: .open))
+        XCTAssertEqual(ShopperLogic.removeButtonTitle, "Remove from cart")
+    }
+
+    func testUndoToastNamesTheRemovedItem() {
+        XCTAssertEqual(ShopperLogic.undoLabel(Chip(id: "m", name: "2% Milk")), "Removed 2% Milk")
+        XCTAssertEqual(ShopperLogic.undoLabel(Chip(id: "x", name: "  ")), "Removed item")
+        let undo = UndoCountdown(chipId: "m", label: ShopperLogic.undoLabel(Chip(id: "m", name: "2% Milk")), startedAt: .now)
+        XCTAssertEqual("\(undo.label) · \(undo.buttonTitle(at: undo.startedAt))", "Removed 2% Milk · Undo · 5s")
+    }
+
     func testRowPrices() throws {
         let run = try withMilk()
         XCTAssertEqual(ShopperLogic.price(run.chip("milk")!), "$4.29")

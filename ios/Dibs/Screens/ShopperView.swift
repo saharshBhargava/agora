@@ -1,6 +1,7 @@
 import AVFoundation
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// The shopper's screen (Shopper.dc.html, Fixes.dc.html, LastCall.dc.html; web/app/shopper): live
 /// camera of the cart (streamed to housemates, watched on-device for new items) over a paper sheet
@@ -38,13 +39,21 @@ struct ShopperView: View {
     @State private var notice: String?
     @State private var busy = false
     @State private var actionError: String?
-    @State private var lift: Lift?
+    /// The row being dragged with the system drag (kept until the next drag; `dragActive` drives the UI).
+    @State private var dragged: Chip?
+    /// A row drag is over the screen: the remove zone shows.
+    @State private var dragActive = false
+    /// The dragged row is over the camera (drop removes it).
+    @State private var dragOverCamera = false
+    /// When the last row drag started, and whether the drop target has heard from it since. A drag
+    /// the system cancels at once (a hold released without moving) sends no callback, so a watchdog
+    /// hides the remove zone again.
+    @State private var dragStartedAt: Date?
+    @State private var dragSeen = false
     @State private var now = Date()
     /// Last call has no fixed length on the client: the first countdown value seen is the full bar.
     @State private var lastCallTotal = 0
 
-    /// A row being dragged toward the remove zone; `location` is in the "shopper" coordinate space.
-    private struct Lift: Equatable { let chip: Chip; var location: CGPoint }
 
     private struct FixTarget: Identifiable {
         let chip: Chip
@@ -80,16 +89,19 @@ struct ShopperView: View {
                 case .closed:
                     closedPanel
                 }
-                if let lift {
-                    CartRowView(chip: lift.chip, people: run?.people ?? [], me: personId)
-                        .frame(width: geo.size.width - 40)
-                        .scaleEffect(1.03)
-                        .shadow(color: .black.opacity(0.25), radius: 16, y: 8)
-                        .position(x: geo.size.width / 2, y: lift.location.y)
-                        .allowsHitTesting(false)
-                }
             }
             .coordinateSpace(name: Self.space)
+            // Rows are dragged with the system drag (it leaves the list's swipe-to-remove alone). The
+            // whole screen is the drop target so the drag's end is always seen; only a drop over the
+            // camera removes the row.
+            .onDrop(of: [.plainText], delegate: RemoveDrop(
+                cameraHeight: cameraFrameHeight ?? 0, dragged: dragged,
+                active: $dragActive, overCamera: $dragOverCamera, seen: $dragSeen, onRemove: { remove($0) }))
+            .task(id: dragStartedAt) {
+                guard dragStartedAt != nil else { return }
+                try? await Task.sleep(for: .seconds(1.5))
+                if !Task.isCancelled, !dragSeen { dragActive = false; dragOverCamera = false }
+            }
             .overlay(alignment: .bottom) {
                 if let toast {
                     UndoToast(toast: toast) { clearUndo(toast) }
@@ -127,12 +139,14 @@ struct ShopperView: View {
         .sheet(item: $fixing) { target in
             FixChipSheet(chip: target.chip, focusPrice: target.focusPrice,
                          onSave: { name, cents in save(target.chip, name: name, cents: cents) },
-                         onCancel: { fixing = nil })
-                .presentationDetents([.height(440)])
+                         onCancel: { fixing = nil },
+                         onRemove: ShopperLogic.canRemoveFromSheet(target.chip, runState: run?.state)
+                            ? { fixing = nil; remove(target.chip) } : nil)
+                .presentationDetents([.height(500)])
                 .presentationBackground(Color.paper)
                 .presentationDragIndicator(.visible)
         }
-        .sensoryFeedback(.impact(weight: .medium), trigger: lift?.chip.id) { _, new in new != nil }
+        .sensoryFeedback(.impact(weight: .medium), trigger: dragOverCamera) { _, over in over }
         .task {
             store.connect(runId: runId, personId: personId)
             priceWorker.start(api: api)
@@ -229,7 +243,6 @@ struct ShopperView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .scrollDisabled(lift != nil)
             .environment(\.defaultMinListRowHeight, 1)
 
             if actionError != nil || mode == .cart {
@@ -294,14 +307,22 @@ struct ShopperView: View {
         let view = CartRowView(chip: chip, people: run?.people ?? [], me: personId,
                                checking: priceWorker.status(for: chip.name), now: clock,
                                onAddPrice: { fixing = FixTarget(chip: chip, focusPrice: true) })
-            .opacity(lift?.chip.id == chip.id ? 0.3 : 1)
+            .opacity(dragActive && dragged?.id == chip.id ? 0.3 : 1)
             .onTapGesture { if chip.state != .wish { fixing = FixTarget(chip: chip) } }
             .accessibilityAddTraits(chip.state != .wish ? .isButton : [])
             .accessibilityHint(chip.state != .wish ? "Fix the name or price" : "")
         if removable {
             view
-                // Simultaneous so the list's own swipe and scroll still work; a lift needs a 0.35 s hold first.
-                .simultaneousGesture(liftGesture(chip))
+                // Hold to drag onto the camera (system drag, so a sideways swipe stays the list's own).
+                .onDrag {
+                    dragged = chip
+                    dragSeen = false
+                    dragActive = true
+                    dragStartedAt = Date()
+                    return NSItemProvider(object: chip.id as NSString)
+                } preview: {
+                    CartRowView(chip: chip, people: run?.people ?? [], me: personId).frame(width: 340)
+                }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) { remove(chip) } label: { Label("Remove", systemImage: "trash") }
                         .tint(Color.liveRed)
@@ -310,26 +331,6 @@ struct ShopperView: View {
         } else {
             view
         }
-    }
-
-    /// Hold a row to lift it, drag it onto the camera to remove it.
-    private func liftGesture(_ chip: Chip) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.35)
-            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space)))
-            .onChanged { value in
-                guard case .second(true, let drag) = value else { return }
-                if let drag {
-                    lift = Lift(chip: chip, location: drag.location)
-                } else if lift == nil {
-                    lift = Lift(chip: chip, location: CGPoint(x: 0, y: -1000))
-                }
-            }
-            .onEnded { value in
-                defer { lift = nil }
-                guard case .second(true, let drag?) = value, let camera = cameraFrameHeight,
-                      drag.location.y < camera else { return }
-                remove(chip)
-            }
     }
 
     /// Height of the camera area in the "shopper" space (rows dropped above this line are removed).
@@ -398,8 +399,8 @@ struct ShopperView: View {
                     act { adopt(try await api.back(runId: runId, personId: personId)) }
                 }
             }
-            if lift != nil {
-                RemoveZone(isOver: (lift?.location.y ?? .infinity) < height)
+            if dragActive {
+                RemoveZone(isOver: dragOverCamera)
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
             }
@@ -528,8 +529,7 @@ struct ShopperView: View {
     }
 
     private func showUndo(_ chip: Chip) {
-        let countdown = UndoCountdown(chipId: chip.id, label: "Removed \(chip.name.isEmpty ? "item" : chip.name)",
-                                      startedAt: Date())
+        let countdown = UndoCountdown(chipId: chip.id, label: ShopperLogic.undoLabel(chip), startedAt: Date())
         toast = Toast(label: countdown.label, seconds: countdown.duration, undo: { undoRemove(countdown) })
     }
 
@@ -569,6 +569,38 @@ struct ShopperView: View {
                 actionError = (error as? LocalizedError)?.errorDescription ?? "Something went wrong"
             }
         }
+    }
+}
+
+/// Drop target for a dragged cart row: the whole screen, so the drag's end is always seen. A drop
+/// above `cameraHeight` (over the camera and its remove zone) removes the row.
+private struct RemoveDrop: DropDelegate {
+    let cameraHeight: CGFloat
+    let dragged: Chip?
+    @Binding var active: Bool
+    @Binding var overCamera: Bool
+    @Binding var seen: Bool
+    let onRemove: (Chip) -> Void
+
+    func validateDrop(info: DropInfo) -> Bool { dragged != nil && info.hasItemsConforming(to: [.plainText]) }
+    func dropEntered(info: DropInfo) {
+        seen = true
+        active = true
+    }
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        seen = true
+        overCamera = info.location.y < cameraHeight
+        return DropProposal(operation: .move)
+    }
+    func dropExited(info: DropInfo) {
+        active = false
+        overCamera = false
+    }
+    func performDrop(info: DropInfo) -> Bool {
+        defer { active = false; overCamera = false }
+        guard let chip = dragged, info.location.y < cameraHeight else { return false }
+        onRemove(chip)
+        return true
     }
 }
 

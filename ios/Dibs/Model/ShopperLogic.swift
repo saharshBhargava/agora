@@ -139,6 +139,20 @@ enum ShopperLogic {
         }
     }
 
+    static let removeButtonTitle = "Remove from cart"
+
+    /// The fix sheet's "Remove from cart": the same removal as a swipe, while the server still takes
+    /// removals (open or last call) and the chip is a real item still in the cart.
+    static func canRemoveFromSheet(_ chip: Chip, runState: RunState?) -> Bool {
+        (runState == .open || runState == .lastCall) && isRemovable(chip) && chip.state != .removed && !chip.dropped
+    }
+
+    /// "Removed 2% Milk": the undo toast's text (its button reads "Undo · 5s").
+    static func undoLabel(_ chip: Chip) -> String {
+        let name = chip.name.trimmingCharacters(in: .whitespaces)
+        return "Removed \(name.isEmpty ? "item" : name)"
+    }
+
     /// Whether a row can be lifted to the remove zone or swiped away.
     static func isRemovable(_ chip: Chip) -> Bool { chip.state != .wish && chip.state != .identifying }
 

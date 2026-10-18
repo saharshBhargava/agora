@@ -8,6 +8,8 @@ struct FixChipSheet: View {
     let onCancel: () -> Void
     /// Start in the price field ("Add price" on a row with no price found).
     var focusPrice = false
+    /// "Remove from cart" at the bottom (shopper, while the cart takes changes); nil hides it.
+    var onRemove: (() -> Void)?
 
     @State private var name: String
     @State private var price: String
@@ -16,9 +18,10 @@ struct FixChipSheet: View {
     private enum Field { case name, price }
 
     init(chip: Chip, focusPrice: Bool = false, onSave: @escaping (_ name: String?, _ priceCents: Int?) -> Void,
-         onCancel: @escaping () -> Void) {
+         onCancel: @escaping () -> Void, onRemove: (() -> Void)? = nil) {
         self.chip = chip
         self.focusPrice = focusPrice
+        self.onRemove = onRemove
         self.onSave = onSave
         self.onCancel = onCancel
         _name = State(initialValue: chip.name)
@@ -58,6 +61,17 @@ struct FixChipSheet: View {
                     .frame(maxWidth: .infinity, minHeight: Metrics.tap)
             }
             .buttonStyle(.plain)
+            if let onRemove {
+                Button(role: .destructive, action: onRemove) {
+                    Label(ShopperLogic.removeButtonTitle, systemImage: "trash")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.danger)
+                        .frame(maxWidth: .infinity, minHeight: Metrics.tap)
+                        .background(Color.dangerSoft, in: RoundedRectangle(cornerRadius: Metrics.radiusSmall, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.top, 24)
