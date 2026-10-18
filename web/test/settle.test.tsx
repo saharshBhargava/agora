@@ -46,18 +46,51 @@ const settled = base({
   payout: { simulated: true, businessApplicationId: 'FD', amountCents: 3271, recipientPan: '4', requestId: 'q' },
 });
 
-test('settled run renders the three lines with exact copy', () => {
+test('settled run renders a card per claimer and the shopper hero with exact copy', () => {
   mk(settled);
   render(<SettleScreen />);
-  expect(screen.getByText('Captured $4.36 (settles tonight) · $35.64 released · approval 888888')).toBeInTheDocument();
-  expect(screen.getByText('Captured $28.35 (settles tonight) · $11.65 released · approval 888888')).toBeInTheDocument();
-  expect(screen.getByText('Reimbursed $32.71 (simulated Visa Direct)')).toBeInTheDocument();
+  expect(screen.getByText('$35.64 released · settles tonight')).toBeInTheDocument();
+  expect(screen.getByText('$11.65 released · settles tonight')).toBeInTheDocument();
+  const cards = screen.getAllByRole('listitem').filter((li) => li.classList.contains('person-card'));
+  expect(cards[0]).toHaveTextContent('Captured $4.36');
+  expect(cards[0]).toHaveTextContent('auth 888888');
+  expect(cards[1]).toHaveTextContent('Captured $28.35');
+  expect(screen.getByText('Sam gets back')).toBeInTheDocument();
+  expect(screen.getByText('$32.71')).toBeInTheDocument();
+  expect(screen.getByText('Run settled · nobody chases anybody')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Start another run' })).toHaveAttribute('href', '/');
+});
+
+test('the hero names what stays with the shopper, or omits the sentence', () => {
+  mk({ ...settled, chips: [chip('eggs', 'Eggs', { claimers: ['a'] }), chip('milk', 'Milk', { priceCents: 429, state: 'matched' })] });
+  const { unmount } = render(<SettleScreen />);
+  expect(screen.getByText("Pushed to Sam's card over Visa Direct (simulated in this build). Milk, $4.29, stays with Sam.")).toBeInTheDocument();
+  unmount();
+  mk({ ...settled, chips: [chip('eggs', 'Eggs', { claimers: ['a'] }), chip('milk', 'Milk', { putBack: true })] });
+  render(<SettleScreen />);
+  expect(screen.getByText("Pushed to Sam's card over Visa Direct (simulated in this build).")).toBeInTheDocument();
+});
+
+test('the settled receipt shows mono lines, a TOTAL and how many lines matched', () => {
+  mk({
+    ...settled,
+    receipt: {
+      lines: [{ text: 'KS EGGS 24CT', cents: 872, quantity: 1, isTax: false }, { text: '2% MILK', cents: 429, quantity: 1, isTax: false }],
+      matches: [{ chipId: 'eggs', lineIndex: 0, confidence: 0.9 }, { chipId: 'milk', lineIndex: 1, confidence: 0.8 }],
+      unmatchedLines: [],
+    },
+  });
+  render(<SettleScreen />);
+  expect(screen.getByText('2 of 2 lines matched')).toBeInTheDocument();
+  expect(screen.getByText('TOTAL')).toBeInTheDocument();
+  expect(screen.getByText('13.01')).toBeInTheDocument();
 });
 
 test('owed case', () => {
   mk(base({ settle: { a: ps({ capturedCents: 4000, owedCents: 112 }) } }));
   render(<SettleScreen />);
   expect(screen.getByText('Captured $40.00 · $1.12 owed')).toBeInTheDocument();
+  expect(screen.getByText('$40.00')).toBeInTheDocument();
 });
 
 test('partlySettled shows the badge and Retry that confirms again', async () => {
