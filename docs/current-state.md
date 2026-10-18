@@ -120,3 +120,18 @@ push entitlement are optional. See [watch contract](api/price-watches.md).
 
 This entry records repository changes and local verification, not a claim that production has this release.
 Confirm the release commit and applied migrations with `/readyz` after the managed deploy succeeds.
+
+## Verified watchlist deployment — October 18, 2026 UTC
+
+[PR #25](https://github.com/saharshBhargava/agora/pull/25) reached main as
+`ca727b6f2b73d182e3bfbb9239a1f40f941a2be8`. Its pre-release Postgres/TimescaleDB tests, image build,
+upgrade/rollback rehearsal and iOS simulator checks all passed. Local validation on the reconciled release
+included 536 backend tests, 23 selected iOS tests, Ruff, the migration guard and a disposable demo reset.
+
+The [managed deployment](https://github.com/saharshBhargava/agora/actions/runs/39104163821) succeeded.
+Read-only production verification reported that exact commit, TimescaleDB enabled, latest migration
+`0016_price_watches.sql` and no pending migrations. Anonymous `/v1/watches` returned 401, confirming the
+endpoint is deployed and requires authentication. This supersedes the older live-commit/schema snapshot
+above. No production reset or real purchase was performed. Background inference configuration and actual
+APNs delivery are not established by these deployment checks. A later documentation-only commit need not
+change the running image.

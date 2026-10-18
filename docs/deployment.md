@@ -158,8 +158,9 @@ data while Render is down, or `--import-snapshot <file>` for a backup. See SETUP
 
 ## What is still manual or unverified
 
-- The pipeline's first managed release, rollback and backup run will be the first live exercise. Until a
-  green deploy run is recorded in current-state, treat them as configured, not proven.
+- A managed release of `ca727b6` succeeded on October 18, 2026 UTC, with its commit and migration 0016
+  verified through production readiness; see [the run](https://github.com/saharshBhargava/agora/actions/runs/39104163821).
+  A real production rollback and backup restore remain unverified.
 - Tiger's own backups/PITR on this plan, and a restore into a new Tiger service, are untested.
 - No staging environment. The release rehearsal on a throwaway database stands in for one.
 - GitHub branch protection (required checks/reviews) is unverified; an admin can enable it in Settings → Branches.
