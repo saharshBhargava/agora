@@ -46,6 +46,11 @@ final class AgoraClient {
         query: [URLQueryItem] = []
     ) async throws -> Value {
         let data = try await perform(path, method: method, body: body, key: key, query: query)
+        return try Self.decoder().decode(type, from: data)
+    }
+
+    /// The decoder `fetch` uses: snake_case keys and ISO 8601 timestamps with or without fractional seconds.
+    nonisolated static func decoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         decoder.dateDecodingStrategy = .custom { decoder in
@@ -57,7 +62,7 @@ final class AgoraClient {
             if let date = formatter.date(from: value) { return date }
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid timestamp"))
         }
-        return try decoder.decode(type, from: data)
+        return decoder
     }
 
     /// Requests whose successful response has no JSON body (for example, DELETE feedback).
