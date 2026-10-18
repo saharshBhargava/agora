@@ -1,12 +1,12 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useRun } from '@/lib/socket';
-import { formatCents } from '@/lib/money';
-import { isLiveChip, listNames } from '@/lib/share';
-import { Camera } from '@/components/Camera';
-import { ReceiptMatch } from '@/components/ReceiptMatch';
+import { formatCents, wholeCents } from '@/lib/money';
+import { coverage, isLiveChip, listNames } from '@/lib/share';
+import { ReceiptCamera } from '@/components/ReceiptCamera';
+import { ReceiptMatch, receiptCounts } from '@/components/ReceiptMatch';
 import { SettleLines } from '@/components/SettleLines';
 import type { Run } from '@/lib/types';
 
@@ -31,7 +31,6 @@ export default function SettleScreen() {
   const personId = params.get('person') ?? '';
   const mock = params.get('mock') === '1';
   const { run, connected, ended } = useRun(runId || null, personId || null);
-  const frameRef = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,14 +58,42 @@ export default function SettleScreen() {
   const shopperName = run.people.find((p) => p.id === run.shopperId)?.name ?? 'The shopper';
   const stays = staysWith(run, shopperName);
   const settled = run.state === 'settled' || run.state === 'partlySettled';
+  const settles = Object.values(run.settle);
+  const failed = settles.filter((x) => x.step === 'failed').length;
+  const soFar = run.payout?.amountCents ?? settles.reduce((t, x) => t + (x.step === 'captured' ? x.capturedCents : 0), 0);
+  const counts = run.receipt ? receiptCounts(run.receipt) : { matched: 0, items: 0, needs: 0 };
+  const matchedIds = new Set(run.receipt?.matches.map((m) => m.chipId) ?? []);
+  const preview = coverage(run.people, run.chips.filter((c) => matchedIds.has(c.id)));
+
+  if (run.state === 'locked' && isShopper) {
+    return (
+      <ReceiptCamera
+        busy={busy}
+        mock={mock}
+        mockHref={mockHref}
+        error={error}
+        onError={setError}
+        onSubmit={(imageBase64) => void act(() => api.receipt(runId, imageBase64))}
+      />
+    );
+  }
 
   return (
     <div className="settle bleed">
-      {run.payout ? (
+      {run.state === 'partlySettled' ? (
+        <section className="settle-hero settle-hero-partly" aria-label="Run partly settled">
+          <span className="partly-pill">Partly settled</span>
+          <h1 className="settle-hero-who">{shopperName} gets back so far</h1>
+          <span className="money settle-hero-amount">{wholeCents(soFar)}</span>
+          <p className="settle-hero-note">
+            {failed === 1 ? "One share didn't go through." : `${failed} shares didn't go through.`} Retrying never repeats what already worked.
+          </p>
+        </section>
+      ) : run.payout ? (
         <section className="settle-hero" aria-label="Run settled">
           <span className="settle-hero-tag">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" aria-hidden="true"><path d="M5 12l5 5 9-10" /></svg>
-            <span>{run.state === 'partlySettled' ? 'Run partly settled' : 'Run settled · nobody chases anybody'}</span>
+            <span>Run settled · nobody chases anybody</span>
           </span>
           <h1 className="settle-hero-who">{shopperName} gets back</h1>
           <span className="money settle-hero-amount">{formatCents(run.payout.amountCents)}</span>
@@ -74,6 +101,13 @@ export default function SettleScreen() {
             {`Pushed to ${shopperName}'s card over Visa Direct (simulated in this build).`}{stays ? ` ${stays}` : ''}
           </p>
         </section>
+      ) : run.state === 'receipt' && run.receipt ? (
+        <header className="settle-head">
+          <h1>Check the receipt</h1>
+          <p className="muted">
+            {`${counts.matched} ${counts.matched === 1 ? 'line' : 'lines'} matched`}{counts.needs ? ` · ${counts.needs} ${counts.needs === 1 ? 'needs' : 'need'} you` : ''}
+          </p>
+        </header>
       ) : (
         <header className="settle-head">
           <span className="wordmark" aria-hidden="true">dibs</span>
@@ -83,63 +117,33 @@ export default function SettleScreen() {
 
       <div className="settle-body">
         {!connected && <p className="muted" role="status">Reconnecting…</p>}
-        {run.state === 'partlySettled' && <span className="badge">Partly settled</span>}
 
         {(run.state === 'open' || run.state === 'lastCall') && (
           <p className="muted">The run is still open. <a href={back}>Back to the cart</a></p>
         )}
 
-        {run.state === 'locked' &&
-          (isShopper ? (
-            <>
-              {mock ? (
-                <button type="button" className="btn" disabled={busy} onClick={() => act(() => api.receipt(runId, ''))}>
-                  Use printed receipt
-                </button>
-              ) : (
-                <>
-                  <div className="settle-photo">
-                    <Camera
-                      send={(m) => {
-                        if (typeof m.jpegBase64 === 'string') frameRef.current = m.jpegBase64;
-                        return true;
-                      }}
-                      enabled
-                      region={null}
-                      mockHref={mockHref}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={busy}
-                    onClick={() => act(async () => {
-                      if (!frameRef.current) throw new Error('Point the camera at the receipt first');
-                      await api.receipt(runId, frameRef.current);
-                    })}
-                  >
-                    Photograph receipt
-                  </button>
-                </>
-              )}
-            </>
-          ) : (
-            <p className="muted" role="status">Waiting for the shopper to read the receipt.</p>
-          ))}
+        {run.state === 'locked' && <p className="muted" role="status">Waiting for the shopper to read the receipt.</p>}
 
-        {hasResults && <SettleLines run={run} me={personId} canRetry={isShopper} busy={busy} onRetry={confirm} />}
+        {hasResults && <SettleLines run={run} me={personId} shopperName={shopperName} canRetry={isShopper} busy={busy} onRetry={confirm} />}
 
         {run.receipt && (
           <ReceiptMatch
             receipt={run.receipt}
             chips={run.chips}
             canFix={isShopper && run.state === 'receipt'}
+            people={run.people}
             compact={settled}
             busy={busy}
             onFix={(i, target) => void act(() => api.fixReceiptLine(runId, i, target))}
           />
         )}
 
+        {run.state === 'receipt' && preview.segments.length > 0 && (
+          <div className="check-total">
+            <span>Captured from {listNames(preview.segments.map((g) => g.name))}</span>
+            <strong>{formatCents(preview.coveredCents)}</strong>
+          </div>
+        )}
         {canConfirm && run.state === 'receipt' && (
           <button type="button" className="btn" disabled={busy} onClick={confirm}>Confirm & charge</button>
         )}

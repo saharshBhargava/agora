@@ -97,7 +97,10 @@ test('partlySettled shows the badge and Retry that confirms again', async () => 
   mk(base({ state: 'partlySettled', settle: { a: ps({ step: 'failed', error: 'x' }), b: ps({ capturedCents: 2835, releasedCents: 1165 }) } }));
   render(<SettleScreen />);
   expect(screen.getByText('Partly settled')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(screen.getByText('Sam gets back so far')).toBeInTheDocument();
+  expect(screen.getByText("One share didn't go through. Retrying never repeats what already worked.")).toBeInTheDocument();
+  expect(screen.getByText("Didn't go through")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry A' }));
   await waitFor(() => expect(api.confirm).toHaveBeenCalledWith('r1', 'shop'));
 });
 
@@ -105,8 +108,8 @@ test('a claimer sees a plain note instead of a Retry button on failure', () => {
   search = 'run=r1&person=a';
   mk(base({ state: 'partlySettled', settle: { a: ps({ step: 'failed', error: 'x' }) } }));
   render(<SettleScreen />);
-  expect(screen.getByText("Didn't go through, the shopper will retry")).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  expect(screen.getByText("Didn't go through, Sam will retry")).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull();
 });
 
 test('Pair and Mine are disabled while a fix is in flight', async () => {
@@ -150,6 +153,22 @@ test('shopper at receipt can mark Mine and Confirm & charge', async () => {
   await waitFor(() => expect(api.confirm).toHaveBeenCalledWith('r1', 'shop'));
 });
 
+test('check the receipt: matched rows name the item, who is in and the match; the unmatched line asks whose it is', () => {
+  mk(base({
+    state: 'receipt',
+    chips: [chip('eggs', 'Eggs', { claimers: ['a', 'b'] }), chip('milk', 'Milk', { state: 'unmatched' })],
+    receipt: { lines: [{ text: 'KS EGGS 24CT', cents: 872, quantity: 1, isTax: false }, { text: 'BANANAS', cents: 199, quantity: 1, isTax: false }], matches: [{ chipId: 'eggs', lineIndex: 0, confidence: 1 }], unmatchedLines: [1] },
+  }));
+  render(<SettleScreen />);
+  expect(screen.getByRole('heading', { name: 'Check the receipt' })).toBeInTheDocument();
+  expect(screen.getByText('1 line matched · 1 needs you')).toBeInTheDocument();
+  expect(screen.getByText('Eggs · A and B')).toBeInTheDocument();
+  expect(screen.getByText('100% match')).toBeInTheDocument();
+  expect(screen.getByText('Not in the cart. Whose is it?')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Pair with an item' })).toBeInTheDocument();
+  expect(screen.getByText('Captured from A and B')).toBeInTheDocument();
+});
+
 test('mock=1 at locked offers Use printed receipt, posting an empty image', async () => {
   search = 'run=r1&person=shop&mock=1';
   mk(base({ state: 'locked' }));
@@ -163,4 +182,23 @@ test('a $0 share shows nothing captured and the full release', () => {
   render(<SettleScreen />);
   expect(screen.getByText('Nothing captured · $40.00 released')).toBeInTheDocument();
   expect(screen.queryByText('Settling…')).toBeNull();
+});
+
+test('the receipt camera sends a picked photo when the shopper uses From photos', async () => {
+  mk(base({ state: 'locked' }));
+  render(<SettleScreen />);
+  expect(screen.getByRole('heading', { name: 'Snap the receipt' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Take the receipt photo' })).toBeInTheDocument();
+  const input = screen.getByLabelText('From photos') as HTMLInputElement;
+  expect(input).toHaveAttribute('accept', 'image/*');
+  fireEvent.change(input, { target: { files: [new File(['abc'], 'receipt.jpg', { type: 'image/jpeg' })] } });
+  await waitFor(() => expect(api.receipt).toHaveBeenCalledWith('r1', 'YWJj'));
+});
+
+test('the shutter without a frame yet asks to point the camera at the receipt', () => {
+  mk(base({ state: 'locked' }));
+  render(<SettleScreen />);
+  fireEvent.click(screen.getByRole('button', { name: 'Take the receipt photo' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('Point the camera at the receipt first');
+  expect(api.receipt).not.toHaveBeenCalled();
 });

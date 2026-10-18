@@ -24,7 +24,7 @@ test('pairing and Not on receipt list live chips only', () => {
   ];
   render(<ReceiptMatch receipt={receipt} chips={chips} canFix onFix={vi.fn()} />);
   expect(screen.getByText('Not on receipt: Jam')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Pair…' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Pair with an item' }));
   const options = screen.getAllByRole('option').map((o) => o.textContent);
   expect(options).toEqual(['Choose a chip', 'Jam']);
 });
