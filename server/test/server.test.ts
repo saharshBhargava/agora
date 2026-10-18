@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -302,5 +302,61 @@ describe('dibs server', () => {
     expect((await post(`/api/runs/${runId}/receipt`, { imageBase64: '' })).status).toBe(409);
     expect((await post(`/api/runs/${runId}/receipt/fix`, { lineIndex: 0, target: 'mine' })).status).toBe(409);
     expect((await confirm).status).toBe(200);
+  });
+
+  describe('live frames', () => {
+    const fx = (n: string) => readFileSync(join(import.meta.dirname, 'fixtures', 'frames', `${n}.jpg`)).toString('base64');
+    const seq = [...Array(6).fill('empty'), 'eggs-moving1', 'eggs-moving2', 'eggs-still', 'eggs-still', 'eggs-still'];
+
+    it('relays frames to claimers and turns a settled item into a chip', async () => {
+      const { runId, shopperId, A } = await setup();
+      const shopper = connect(runId, shopperId);
+      const wa = connect(runId, A);
+      await Promise.all([shopper.opened, wa.opened]);
+      for (let i = 0; i < seq.length; i++) shopper.send({ t: 'frame', jpegBase64: fx(seq[i]), at: i * 500 });
+      await wa.waitFor((m) => m.t === 'frame');
+      await shopper.waitFor((m) => m.t === 'identifying');
+      for (let i = 0; i < 200 && !(await getRun(runId)).chips.some((c) => c.state === 'open'); i++) await sleep(10);
+      const chip = (await getRun(runId)).chips[0];
+      expect(chip.name).toMatch(/Eggs/);
+      expect(chip.priceCents).toBe(872);
+      expect(shopper.msgs.some((m) => m.t === 'frame')).toBe(false);
+      expect(wa.msgs.some((m) => m.t === 'identifying')).toBe(true);
+    });
+
+    it('ignores frames from a claimer and after lock', async () => {
+      const { runId, shopperId, A } = await setup();
+      const shopper = connect(runId, shopperId);
+      const wa = connect(runId, A);
+      await Promise.all([shopper.opened, wa.opened]);
+      wa.send({ t: 'frame', jpegBase64: fx('empty'), at: 0 });
+      await sleep(100);
+      expect(wa.msgs.some((m) => m.t === 'frame')).toBe(false);
+      await post(`/api/runs/${runId}/checkout`, { personId: shopperId });
+      await wa.waitFor((m) => m.t === 'locked');
+      const n = wa.msgs.length;
+      for (let i = 0; i < seq.length; i++) shopper.send({ t: 'frame', jpegBase64: fx(seq[i]), at: i * 500 });
+      shopper.send({ t: 'identifyAt', x: 100, y: 100 });
+      await sleep(300);
+      expect(wa.msgs.length).toBe(n);
+      expect((await getRun(runId)).chips).toHaveLength(0);
+    });
+
+    it('identifies a tap on the latest frame', async () => {
+      const { runId, shopperId } = await setup();
+      const shopper = connect(runId, shopperId);
+      await shopper.opened;
+      shopper.send({ t: 'identifyAt', x: 5, y: 5 });
+      await sleep(50);
+      expect((await getRun(runId)).chips).toHaveLength(0);
+      shopper.send({ t: 'frame', jpegBase64: fx('eggs-still'), at: 0 });
+      await sleep(50);
+      shopper.send({ t: 'identifyAt', x: 5, y: 5 });
+      for (let i = 0; i < 200 && (await getRun(runId)).chips.length === 0; i++) await sleep(10);
+      for (let i = 0; i < 200 && (await getRun(runId)).chips[0]?.state !== 'open'; i++) await sleep(10);
+      const [chip] = (await getRun(runId)).chips;
+      expect(chip.state).toBe('open');
+      expect(chip.region).toMatchObject({ x: 0, y: 0, w: 200, h: 200 });
+    });
   });
 });

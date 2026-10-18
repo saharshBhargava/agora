@@ -6,18 +6,23 @@ import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import QRCode from 'qrcode';
-import { WebSocketServer } from 'ws';
+import sharp from 'sharp';
+import { WebSocketServer, type WebSocket } from 'ws';
 import { getPayments, type PaymentsProvider, type TestCard } from './payments/provider.js';
+import { identifyChip, identifyPipeline, type PipelineDeps } from './pipeline.js';
 import { getPrice, type PriceProvider } from './price/provider.js';
+import { createFrameRelay, shouldSendFrame } from './relay.js';
 import { parseClientMsg } from './protocol.js';
 import {
-  addChip, backToCart, checkout, claim, fixChip, join as joinRun, leave, lock, putBack, removeChip,
-  setAuthorization, setChipLive, setChipPrice, undoRemove, wish,
+  backToCart, checkout, claim, fixChip, join as joinRun, leave, lock, putBack, removeChip,
+  setAuthorization, undoRemove, wish,
 } from './run.js';
 import { seedRun } from './seed.js';
 import { applyReceipt, fixReceiptLine, matchReceipt, parseReceiptLines, settle } from './settle.js';
 import { createStore } from './store.js';
+import type { ServerMsg } from './protocol.js';
 import type { Run } from './types.js';
+import { getDetector, type Detector } from './vision/detect.js';
 import { getVision, type VisionProvider } from './vision/provider.js';
 
 export type Deps = {
@@ -27,6 +32,7 @@ export type Deps = {
   now?: () => number;
   lastCallMs?: number;
   dataDir?: string;
+  detector?: () => Detector;
 };
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -38,6 +44,23 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   const store = createStore(deps.dataDir ?? pathJoin(here, '..', '.data'));
   const app = Fastify();
   await app.register(cors, { origin: true });
+
+  const makeDetector = deps.detector ?? getDetector;
+  const relay = createFrameRelay();
+  type Live = { detector: Detector; queue: Promise<unknown> };
+  const live = new Map<string, Live>();
+  const conns = new Map<string, Map<WebSocket, string>>();
+  const toShopper = (runId: string, msg: ServerMsg) => {
+    const shopperId = store.get(runId)?.shopperId;
+    for (const [ws, pid] of conns.get(runId) ?? []) if (pid === shopperId) store.send(ws, msg);
+  };
+  const pipe: PipelineDeps = { store, vision, price, now, toShopper };
+  const accepting = (r: Run | undefined): r is Run => !!r && (r.state === 'open' || r.state === 'lastCall');
+  /** Discards the run's buffered frame and detector. */
+  const dropFrames = (runId: string) => {
+    relay.drop(runId);
+    live.delete(runId);
+  };
 
   const timers = new Map<string, NodeJS.Timeout>();
   const settling = new Map<string, Promise<unknown>>();
@@ -140,43 +163,13 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     async (req, reply) => {
       const run = guard(reply, req.params.id);
       if (!run) return;
-      const id = crypto.randomUUID();
-      const added = store.update(run.id, (r) =>
-        addChip(r, { id, name: '', priceCents: null, priceSource: 'none', photoUrl: null, region: null, quantity: 1 }, now()),
-      );
-      if ('error' in added) return fail(reply, added.error);
-      if (!added.run.chips.some((c) => c.id === id)) return fail(reply, 'cart closed');
-      let found;
-      try {
-        found = await vision.identify(req.body.imageBase64 ?? '', req.body.hint);
-      } catch {
-        store.update(run.id, (r) => ({ ...r, chips: r.chips.filter((c) => c.id !== id) }));
-        return reply.code(502).send({ error: 'identify failed' });
-      }
-      const source = found.priceCents === null ? 'none' : 'sticker';
-      const live = store.update(run.id, (r) => {
-        const next = setChipLive(r, id, found.name, found.priceCents, source, now());
-        return next.chips.find((c) => c.id === id)?.photoUrl === null
-          ? { ...next, chips: next.chips.map((c) => (c.id === id ? { ...c, photoUrl: `data:image/jpeg;base64,${found.cropBase64}` } : c)) }
-          : next;
+      const res = await identifyChip(pipe, run.id, req.body.imageBase64 ?? '', null, {
+        hint: req.body.hint,
+        removeOnFail: true,
       });
-      if ('error' in live) return fail(reply, live.error);
-      if (found.priceCents === null) {
-        void price
-          .lookup(found.name, run.store)
-          .then((hit) => {
-            if (!hit) return;
-            // Discard a late price unless the chip is still unpriced and the run still takes changes.
-            store.update(run.id, (r) => {
-              const c = r.chips.find((x) => x.id === id);
-              const open = r.state === 'open' || r.state === 'lastCall';
-              if (!c || !open || c.priceSource !== 'none' || c.state === 'removed' || c.dropped) return r;
-              return setChipPrice(r, id, hit.cents, 'web');
-            });
-          })
-          .catch(() => undefined);
-      }
-      return live.run.chips.find((c) => c.id === id) ?? fail(reply, 'cart closed');
+      if (res.error === 'identify failed') return reply.code(502).send({ error: 'identify failed' });
+      const chip = res.chipId ? store.get(run.id)?.chips.find((c) => c.id === res.chipId) : undefined;
+      return chip ?? fail(reply, 'cart closed');
     },
   );
 
@@ -228,7 +221,10 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
           timers.delete(run.id);
           try {
             const locked = store.update(run.id, (r) => lock(r, Math.max(now(), endsAt)));
-            if (!('error' in locked) && locked.run.state === 'locked') store.broadcast(run.id, { t: 'locked' });
+            if (!('error' in locked) && locked.run.state === 'locked') {
+              dropFrames(run.id);
+              store.broadcast(run.id, { t: 'locked' });
+            }
           } catch (e) {
             console.error('lock failed', e);
           }
@@ -295,6 +291,65 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     }
   });
 
+  // ---- live frames ----
+  async function onFrame(runId: string, frame: { jpegBase64: string; at: number }): Promise<void> {
+    try {
+      if (!accepting(store.get(runId))) return;
+      relay.set(runId, frame);
+      for (const [ws, pid] of conns.get(runId) ?? []) {
+        if (pid !== store.get(runId)?.shopperId && shouldSendFrame(ws.bufferedAmount)) {
+          store.send(ws, { t: 'frame', jpegBase64: frame.jpegBase64, at: frame.at });
+        }
+      }
+      let st = live.get(runId);
+      if (!st) live.set(runId, (st = { detector: makeDetector(), queue: Promise.resolve() }));
+      const mine = st;
+      mine.queue = mine.queue.then(async () => {
+        try {
+          const events = await mine.detector.push(frame);
+          if (live.get(runId) !== mine || !accepting(store.get(runId))) return;
+          for (const ev of events) {
+            if (ev.kind !== 'newItem') continue;
+            void identifyPipeline(pipe, runId, ev.frameBase64, ev.region).catch((e) => console.error('identify failed', e));
+          }
+        } catch (e) {
+          console.error('detector push failed', e);
+        }
+      });
+    } catch (e) {
+      console.error('frame failed', e);
+    }
+  }
+
+  async function onIdentifyAt(runId: string, x: number, y: number): Promise<void> {
+    try {
+      const run = store.get(runId);
+      const frame = relay.get(runId);
+      if (!accepting(run) || !frame) return;
+      const hit = run.chips.find(
+        (c) => c.state === 'identifying' && !c.dropped && c.region &&
+          x >= c.region.x && x <= c.region.x + c.region.w && y >= c.region.y && y <= c.region.y + c.region.h,
+      );
+      let region = hit?.region ?? null;
+      if (!region) {
+        const m = await sharp(Buffer.from(frame.jpegBase64, 'base64')).metadata();
+        const fw = m.width ?? 200;
+        const fh = m.height ?? 200;
+        const w = Math.min(200, fw);
+        const h = Math.min(200, fh);
+        region = {
+          x: Math.round(Math.max(0, Math.min(x - w / 2, fw - w))),
+          y: Math.round(Math.max(0, Math.min(y - h / 2, fh - h))),
+          w,
+          h,
+        };
+      }
+      await identifyPipeline(pipe, runId, frame.jpegBase64, region, hit?.id);
+    } catch (e) {
+      console.error('identifyAt failed', e);
+    }
+  }
+
   // ---- WebSocket ----
   const wss = new WebSocketServer({ noServer: true });
   app.server.on('upgrade', (req, socket, head) => {
@@ -312,6 +367,10 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         return;
       }
       store.attach(runId, ws);
+      let members = conns.get(runId);
+      if (!members) conns.set(runId, (members = new Map()));
+      members.set(ws, personId);
+      ws.on('close', () => members.delete(ws));
       store.send(ws, { t: 'run', run });
       ws.on('message', (data) => {
         const msg = parseClientMsg(String(data));
@@ -320,6 +379,15 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         const shopper = cur?.shopperId === personId;
         if ((msg.t === 'remove' || msg.t === 'undoRemove') && !shopper) {
           return store.send(ws, { t: 'error', reason: 'shopper only' });
+        }
+        if (msg.t === 'frame') {
+          if (shopper) void onFrame(runId, msg);
+          return;
+        }
+        if (msg.t === 'identifyAt') {
+          if (!shopper) return store.send(ws, { t: 'error', reason: 'shopper only' });
+          void onIdentifyAt(runId, msg.x, msg.y);
+          return;
         }
         try {
           const res = store.update(runId, (r) => {
