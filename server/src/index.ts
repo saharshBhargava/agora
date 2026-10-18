@@ -10,7 +10,7 @@ import sharp from 'sharp';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { getPayments, type PaymentsProvider, type TestCard } from './payments/provider.js';
 import { SimPayments, failingCaptures, simFailNames } from './payments/sim.js';
-import { identifyChip, identifyPipeline, type PipelineDeps } from './pipeline.js';
+import { resumePriceLookups, identifyChip, identifyPipeline, type PipelineDeps } from './pipeline.js';
 import type { AgentPrice } from './price/agent.js';
 import { getPriceSetup, type PriceProvider } from './price/provider.js';
 import { agentFunctionDeclarations, AGENT_SYSTEM } from './price/agent-tools.js';
@@ -78,6 +78,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   };
   const inflight = new Set<string>();
   const pipe: PipelineDeps = { store, vision, price, now, toShopper, inflight };
+  resumePriceLookups(pipe);
   const accepting = (r: Run | undefined): r is Run => !!r && (r.state === 'open' || r.state === 'lastCall');
   /** Discards the run's buffered frame and detector. */
   const dropFrames = (runId: string) => {
@@ -227,6 +228,8 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     app.post<{ Params: { id: string }; Body: { cents?: unknown; url?: unknown } }>(
       '/api/price-requests/:id',
       async (req, reply) => {
+        // Direct price posts skip Gemini entirely; the app never uses them, so they are off on a public URL.
+        if (process.env.PRICE_DIRECT_POST !== '1') return reply.code(404).send({ error: 'not found' });
         if (!agent.get(req.params.id)) return reply.code(404).send({ error: 'unknown request' });
         const { cents, url } = req.body ?? {};
         if (!validCents(cents) || !isHttps(url)) return reply.code(400).send({ error: 'invalid price' });
@@ -296,7 +299,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         const pr = agent.get(req.params.id);
         if (!pr) return reply.code(404).send({ error: 'unknown request' });
         const contents = req.body?.contents;
-        if (!Array.isArray(contents) || contents.length > 24 || JSON.stringify(contents).length > 60_000) {
+        if (!Array.isArray(contents) || contents.length > 24 || JSON.stringify(contents).length > 60_000 || !contents.every(agentTurn)) {
           return reply.code(400).send({ error: 'invalid contents' });
         }
         const url = searchUrl(pr.name, pr.store);
@@ -639,4 +642,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.error(e);
     process.exit(1);
   });
+}
+
+/** An agent-step turn may carry only text and browser tool calls, so the route can't proxy images or other Gemini features. */
+function agentTurn(t: unknown): boolean {
+  if (typeof t !== 'object' || t === null) return false;
+  const { role, parts, ...rest } = t as Record<string, unknown>;
+  if (Object.keys(rest).length || (role !== 'user' && role !== 'model') || !Array.isArray(parts) || parts.length === 0) return false;
+  const allowed = new Set(['text', 'functionCall', 'functionResponse', 'thoughtSignature', 'thought']);
+  return parts.every((p) => typeof p === 'object' && p !== null && Object.keys(p).every((k) => allowed.has(k)));
 }

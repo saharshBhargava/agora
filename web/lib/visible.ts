@@ -1,7 +1,7 @@
 import type { Chip } from './types';
 
 /** After this long, a named chip that never got a price shows for the shopper with "Add price". */
-export const NO_PRICE_MS = 60_000;
+export const NO_PRICE_MS = 20_000;
 
 /**
  * Items appear on the feed only once they are named and priced; wishes always show.

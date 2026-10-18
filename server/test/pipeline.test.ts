@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { identifyPipeline, type PipelineDeps } from '../src/pipeline.js';
+import { identifyPipeline, resumePriceLookups, type PipelineDeps } from '../src/pipeline.js';
 import { StubPrice } from '../src/price/stub.js';
 import { seedRun } from '../src/seed.js';
 import { createStore } from '../src/store.js';
@@ -145,6 +145,14 @@ describe('identifyPipeline', () => {
     const ev = await eggs();
     await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
     expect(store.get(run.id)!.chips).toEqual([]);
+  });
+
+  it('asks again for prices of named, unpriced chips after a restart', async () => {
+    const { store, run, deps } = setup();
+    store.update(run.id, (r) => ({ ...r, chips: [{ id: 'k', name: 'Kirkland Eggs 24 ct', priceCents: null, priceSource: 'none', photoUrl: null, region: null, quantity: 1, claimers: [], state: 'open', wishedBy: null, duplicateOf: null, putBack: false, dropped: false, overCap: [], removedAt: null, addedAt: 0 }] }));
+    expect(resumePriceLookups(deps)).toBe(1);
+    for (let i = 0; i < 50 && store.get(run.id)!.chips[0].priceCents === null; i++) await sleep(10);
+    expect(store.get(run.id)!.chips[0].priceCents).toBe(872);
   });
 });
 

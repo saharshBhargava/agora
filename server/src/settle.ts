@@ -101,9 +101,16 @@ function priceFromReceipt(run: Run, receipt: ReceiptState): Run {
   const lineCents = receipt.matches.map(
     (m) => splitChip(receipt.lines[m.lineIndex].cents, chipsByLine.get(m.lineIndex) ?? [m.chipId]).get(m.chipId) ?? 0,
   );
-  const tax = allocateTax(lineCents, taxCents);
+  // Tax is spread over every purchased line, matched or not; lines nobody claimed (and "Mine" lines)
+  // keep their share with the shopper, so a claimer never pays tax on the shopper's own items.
+  const purchased = receipt.lines.flatMap((l, i) => (l.isTax ? [] : [i]));
+  const lineTax = new Map<number, number>();
+  allocateTax(purchased.map((i) => receipt.lines[i].cents), taxCents).forEach((t, k) => lineTax.set(purchased[k], t));
   const priceByChip = new Map<string, number>();
-  receipt.matches.forEach((m, i) => priceByChip.set(m.chipId, lineCents[i] + tax[i]));
+  receipt.matches.forEach((m, i) => {
+    const tax = splitChip(lineTax.get(m.lineIndex) ?? 0, chipsByLine.get(m.lineIndex) ?? [m.chipId]).get(m.chipId) ?? 0;
+    priceByChip.set(m.chipId, lineCents[i] + tax);
+  });
   return {
     ...run,
     receipt,

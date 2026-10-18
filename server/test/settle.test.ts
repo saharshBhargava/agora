@@ -166,13 +166,28 @@ describe('applyReceipt', () => {
   it('allocates tax across matched lines', () => {
     const run = lockedRun();
     const lines = parseReceiptLines([
-      { text: 'EGGS', cents: 800, quantity: 1 },
-      { text: 'TOWELS', cents: 2200, quantity: 1 },
+      { text: 'KS EGGS 24CT', cents: 800, quantity: 1 },
+      { text: 'PAPER TOWELS 12PK', cents: 2200, quantity: 1 },
       { text: 'TAX', cents: 271, quantity: 1 },
     ]);
     const out = applyReceipt(run, matchReceipt(run, lines));
-    expect(get(out, 'eggs').priceCents).toBe(872);
-    expect(get(out, 'towels').priceCents).toBe(2399);
+    expect(out.receipt?.matches).toHaveLength(2);
+    expect(get(out, 'eggs')).toMatchObject({ priceCents: 872, state: 'matched' });
+    expect(get(out, 'towels')).toMatchObject({ priceCents: 2399, state: 'matched' });
+  });
+  it('keeps the tax share of unclaimed receipt lines with the shopper', () => {
+    const run = lockedRun();
+    const lines = parseReceiptLines([
+      { text: 'KS EGGS 24CT', cents: 800, quantity: 1 },
+      { text: 'PAPER TOWELS 12PK', cents: 2200, quantity: 1 },
+      { text: 'TIDE PODS', cents: 3000, quantity: 1 },
+      { text: 'TAX', cents: 540, quantity: 1 },
+    ]);
+    const out = applyReceipt(run, matchReceipt(run, lines));
+    expect(out.receipt?.matches).toHaveLength(2);
+    // 540 over 6000 of purchases is 9%: eggs 800 + 72, towels 2200 + 198; Tide's 270 stays with the shopper.
+    expect(get(out, 'eggs')).toMatchObject({ priceCents: 872, state: 'matched' });
+    expect(get(out, 'towels')).toMatchObject({ priceCents: 2398, state: 'matched' });
   });
   it('marks chips without a line unmatched, keeping claims', () => {
     const run = lockedRun();

@@ -109,7 +109,7 @@ async function identifyLive(
   }
   if (process.env.MERGE_DUPLICATES === '1') {
     const cur = store.get(runId);
-    const same = cur ? recentSameName(cur, found.name, now(), id) : undefined;
+    const same = cur ? recentSameName(cur, found.name, now(), id, Number(process.env.MERGE_WINDOW_MS) || 10_000) : undefined;
     if (same) {
       // The camera saw the same product again (a merged box, a re-detection, a double tap): keep one chip.
       store.update(runId, (r) => ({ ...r, chips: r.chips.filter((c) => c.id !== id) }));
@@ -125,22 +125,40 @@ async function identifyLive(
   });
   if ('error' in live || !live.run.chips.some((c) => c.id === id)) return { chipId: null, error: 'cart closed' };
 
-  if (found.priceCents === null) {
-    void price
-      .lookup(found.name, storeName)
-      .then((hit) => {
-        if (!hit) return;
-        // Discard a late price unless the chip is still unpriced and the run still takes changes.
-        store.update(runId, (r) => {
-          const c = r.chips.find((x) => x.id === id);
-          const open = r.state === 'open' || r.state === 'lastCall';
-          if (!c || !open || c.priceSource !== 'none' || c.state === 'removed' || c.dropped) return r;
-          return setChipPrice(r, id, hit.cents, 'web');
-        });
-      })
-      .catch(() => undefined);
-  }
+  if (found.priceCents === null) lookUpPrice(deps, runId, id, found.name, storeName);
   return { chipId: id };
+}
+
+/** Looks a chip's price up and applies it unless the chip got a price another way or the cart closed. */
+export function lookUpPrice(deps: PipelineDeps, runId: string, chipId: string, name: string, storeName: string): void {
+  const { store, price } = deps;
+  void price
+    .lookup(name, storeName)
+    .then((hit) => {
+      if (!hit) return;
+      // Discard a late price unless the chip is still unpriced and the run still takes changes.
+      store.update(runId, (r) => {
+        const c = r.chips.find((x) => x.id === chipId);
+        const open = r.state === 'open' || r.state === 'lastCall';
+        if (!c || !open || c.priceSource !== 'none' || c.state === 'removed' || c.dropped) return r;
+        return setChipPrice(r, chipId, hit.cents, 'web');
+      });
+    })
+    .catch(() => undefined);
+}
+
+/** After a restart, pending price lookups are gone: ask again for every named, unpriced chip in an open cart. */
+export function resumePriceLookups(deps: PipelineDeps): number {
+  let n = 0;
+  for (const run of deps.store.all()) {
+    if (run.state !== 'open' && run.state !== 'lastCall') continue;
+    for (const c of run.chips) {
+      if (c.priceCents !== null || !c.name.trim() || c.state === 'wish' || c.state === 'removed' || c.state === 'identifying' || c.dropped) continue;
+      lookUpPrice(deps, run.id, c.id, c.name, run.store);
+      n += 1;
+    }
+  }
+  return n;
 }
 
 export async function identifyPipeline(

@@ -14,6 +14,7 @@ import type { Identified } from '../src/vision/provider.js';
 
 let app: FastifyInstance | undefined;
 afterEach(async () => {
+  delete process.env.PRICE_DIRECT_POST;
   vi.useRealTimers();
   await app?.close();
   app = undefined;
@@ -74,6 +75,7 @@ describe('PRICE list', () => {
 
 describe('AgentPrice', () => {
   it('resolves on POST and lists only open requests', async () => {
+    process.env.PRICE_DIRECT_POST = '1';
     const agent = new AgentPrice();
     const a = await start({ agent });
     const p = agent.lookup('Honeycrisp apple & pears', 'QFC');
@@ -103,7 +105,26 @@ describe('AgentPrice', () => {
     expect(r.statusCode).toBe(404);
   });
 
+  it('direct price posts are off unless PRICE_DIRECT_POST=1', async () => {
+    delete process.env.PRICE_DIRECT_POST;
+    const agent = new AgentPrice();
+    const a = await start({ agent });
+    void agent.lookup('apple', 'QFC');
+    const id = agent.open()[0].id;
+    const r = await a.inject({ method: 'POST', url: `/api/price-requests/${id}`, payload: { cents: 1, url: 'https://x.test' } });
+    expect(r.statusCode).toBe(404);
+    expect(agent.open()).toHaveLength(1);
+  });
+  it('agent-step refuses turns with parts other than text and tool calls', async () => {
+    const agent = new AgentPrice();
+    const a = await start({ agent });
+    void agent.lookup('apple', 'QFC');
+    const id = agent.open()[0].id;
+    const r = await a.inject({ method: 'POST', url: `/api/price-requests/${id}/agent-step`, payload: { contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: 'x' } }] }] } });
+    expect(r.statusCode).toBe(400);
+  });
   it('validates cents and url', async () => {
+    process.env.PRICE_DIRECT_POST = '1';
     const agent = new AgentPrice();
     const a = await start({ agent });
     void agent.lookup('milk', 'QFC');

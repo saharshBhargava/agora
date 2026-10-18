@@ -59,6 +59,8 @@ export function matchProduct(item: string, products: PageProduct[], minScore = 0
     const have = new Set(tokens(p.name).map((t) => t.replace(/s$/, '')));
     const hits = want.filter((t) => have.has(t)).length;
     let score = hits / want.length;
+    // Prefer the tighter name: "Apple" should pick an apple, not "Apple Juice 64 oz".
+    score -= 0.03 * Math.max(0, have.size - hits);
     if (!MULTI.test(p.name) || MULTI.test(item)) score += 0.05;
     if (!best || score > best.score) best = { p, score };
   }
