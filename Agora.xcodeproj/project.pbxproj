@@ -9,13 +9,16 @@
 /* Begin PBXBuildFile section */
 		03406B1A40E5CA57ADAD24A4 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 831AD7A099E0A7D56607E1F7 /* ChatView.swift */; };
 		05FFF0EE258E16E7E0A0B1FA /* CapturePickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0E1B2C48ED10E23512AA2F /* CapturePickers.swift */; };
+		1B87F0C0ED822D5E329AF2EA /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = B7DF620AB084D89D613D5DDF /* GoogleSignInSwift */; };
 		1DAE5BC67E9D00BC0856827F /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AB33E9AFC57A2F607241511 /* Foundation.framework */; };
 		21807B9C72A7D293730B7A16 /* BrowserScripts.js in Resources */ = {isa = PBXBuildFile; fileRef = 53ED4944AABB5AFAB8E77288 /* BrowserScripts.js */; };
 		2A3088999406A8AA8526BAAF /* CaptionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE74BEEED1DE81A6C9EB8F0 /* CaptionController.swift */; };
 		325A454F8AC8D05744D4BD7B /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A910D2A694D670DFE0DCB5D7 /* HomeView.swift */; };
 		32E2DC2B067CA0C31D50EEA1 /* BrowserChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8238981FD4E643FA656A081F /* BrowserChatApp.swift */; };
+		35E58089858198F54B9D07CE /* AgoraAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F99CD812BC76B36C3C7D2E5D /* AgoraAPIClient.swift */; };
 		388C884619261DE7F69D6AFD /* TaskRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 089874F2A5F5DC56A4972E7B /* TaskRepository.swift */; };
 		38B185A9696E32AEBE5683B8 /* CaptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69584785EE382B97897F6C47 /* CaptionTests.swift */; };
+		390B08C874005C7DB2A3E8C2 /* GoogleCalendarAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0031D0335819D87FE16AEF8C /* GoogleCalendarAuthorization.swift */; };
 		475814F1BCEB9651E4C8EE62 /* CalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FA2E53318070AFAFE43447 /* CalendarTests.swift */; };
 		51C0E2A9D4B87F1E6A903C44 /* AgoraClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F3A6B21C9E047D5A2B1F880 /* AgoraClientTests.swift */; };
 		48F1879E8EA701FF86DCF925 /* CalendarConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B048E8F7517165BBAC352B /* CalendarConnection.swift */; };
@@ -30,6 +33,7 @@
 		8302AFD8D8B81A92CBEAD235 /* browser-fixture.html in Resources */ = {isa = PBXBuildFile; fileRef = 1EBB9EED3AC87495774DB9C3 /* browser-fixture.html */; };
 		8432C3CF2BA964919467BE02 /* CaptionPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F1BC7A4AD07422B58B4CBD /* CaptionPanel.swift */; };
 		8D0CCFFAB867BE1F82D17943 /* CaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BD2ABEE624DF14392818B91 /* CaptureTests.swift */; };
+		95033BAB8B8E0FA7F6557C87 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = E22CD0D2022AC21FB1593CC8 /* GoogleSignIn */; };
 		955855FBF03677594D4C70C9 /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0CEBF0DA029FF97E245B638 /* BrowserSession.swift */; };
 		95C9CA5BD07AC93F9805C30F /* BrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15815BEC3690BB246FAB930E /* BrowserTests.swift */; };
 		9E76D3E5F8E372903A639FEB /* CaptionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E8D513CC6D322C48CB177B1 /* CaptionModels.swift */; };
@@ -54,6 +58,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0031D0335819D87FE16AEF8C /* GoogleCalendarAuthorization.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GoogleCalendarAuthorization.swift; path = Agora/Calendar/GoogleCalendarAuthorization.swift; sourceTree = "<group>"; };
 		089874F2A5F5DC56A4972E7B /* TaskRepository.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TaskRepository.swift; path = Agora/Storage/TaskRepository.swift; sourceTree = "<group>"; };
 		0EFB306656DA7F8B908FD7AD /* ModelProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelProvider.swift; path = Agora/Agent/ModelProvider.swift; sourceTree = "<group>"; };
 		12B048E8F7517165BBAC352B /* CalendarConnection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarConnection.swift; path = Agora/Calendar/CalendarConnection.swift; sourceTree = "<group>"; };
@@ -82,6 +87,7 @@
 		99A4EFF4ADF48178439FDE70 /* MediaLibrary.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MediaLibrary.swift; path = Agora/Capture/MediaLibrary.swift; sourceTree = "<group>"; };
 		9AB33E9AFC57A2F607241511 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		A910D2A694D670DFE0DCB5D7 /* HomeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HomeView.swift; path = Agora/App/HomeView.swift; sourceTree = "<group>"; };
+		AFB5E3DC159E6C5ABA2617F4 /* Agora.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Agora.xcconfig; path = Config/Agora.xcconfig; sourceTree = "<group>"; };
 		C1982523DE11C44D26A8E91A /* CaptionHTTPClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionHTTPClient.swift; path = Agora/Capture/CaptionHTTPClient.swift; sourceTree = "<group>"; };
 		D63E8A1F4D704E4944DE1118 /* CalendarOnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarOnboardingView.swift; path = Agora/Calendar/CalendarOnboardingView.swift; sourceTree = "<group>"; };
 		E0CEBF0DA029FF97E245B638 /* BrowserSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserSession.swift; path = Agora/Browser/BrowserSession.swift; sourceTree = "<group>"; };
@@ -89,6 +95,7 @@
 		F7F7975FBBF93E36BFD498E9 /* BrowserToolExecutor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserToolExecutor.swift; path = Agora/Browser/BrowserToolExecutor.swift; sourceTree = "<group>"; };
 		8F3A6B21C9E047D5A2B1F880 /* AgoraClientTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgoraClientTests.swift; path = AgoraTests/AgoraClientTests.swift; sourceTree = "<group>"; };
 		F8FA2E53318070AFAFE43447 /* CalendarTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarTests.swift; path = AgoraTests/CalendarTests.swift; sourceTree = "<group>"; };
+		F99CD812BC76B36C3C7D2E5D /* AgoraAPIClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgoraAPIClient.swift; path = Agora/Storage/AgoraAPIClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -97,6 +104,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				1DAE5BC67E9D00BC0856827F /* Foundation.framework in Frameworks */,
+				95033BAB8B8E0FA7F6557C87 /* GoogleSignIn in Frameworks */,
+				1B87F0C0ED822D5E329AF2EA /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -148,6 +157,9 @@
 				5EB5DD92CDB24C7884F2F633 /* CalendarTools.swift */,
 				F8FA2E53318070AFAFE43447 /* CalendarTests.swift */,
 				8F3A6B21C9E047D5A2B1F880 /* AgoraClientTests.swift */,
+				AFB5E3DC159E6C5ABA2617F4 /* Agora.xcconfig */,
+				0031D0335819D87FE16AEF8C /* GoogleCalendarAuthorization.swift */,
+				F99CD812BC76B36C3C7D2E5D /* AgoraAPIClient.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -192,6 +204,10 @@
 			dependencies = (
 			);
 			name = Agora;
+			packageProductDependencies = (
+				E22CD0D2022AC21FB1593CC8 /* GoogleSignIn */,
+				B7DF620AB084D89D613D5DDF /* GoogleSignInSwift */,
+			);
 			productName = Agora;
 			productReference = 34AE695D1E8550998371F613 /* Agora.app */;
 			productType = "com.apple.product-type.application";
@@ -238,6 +254,9 @@
 				Base,
 			);
 			mainGroup = 165B961B61F0A78E9BD13536;
+			packageReferences = (
+				F080BEE1AFEC008098E6659E /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			productRefGroup = 6CA1606ADF00BEEA3ADAC2E5 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -309,6 +328,8 @@
 				4A7C1E90B2D84F6EA1C0D3F1 /* AgoraClient.swift in Sources */,
 				48F1879E8EA701FF86DCF925 /* CalendarConnection.swift in Sources */,
 				4FC355EA8D6BE5C8BB446EBF /* CalendarTools.swift in Sources */,
+				390B08C874005C7DB2A3E8C2 /* GoogleCalendarAuthorization.swift in Sources */,
+				35E58089858198F54B9D07CE /* AgoraAPIClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -326,8 +347,8 @@
 /* Begin XCBuildConfiguration section */
 		1689C1808BF24A52F21DDEA5 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AFB5E3DC159E6C5ABA2617F4 /* Agora.xcconfig */;
 			buildSettings = {
-				AGORA_API_BASE_URL = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_OBJC_WEAK = NO;
@@ -485,8 +506,8 @@
 		};
 		968C862FD74C7BDB16D14E26 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AFB5E3DC159E6C5ABA2617F4 /* Agora.xcconfig */;
 			buildSettings = {
-				AGORA_API_BASE_URL = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_OBJC_WEAK = NO;
@@ -557,6 +578,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F080BEE1AFEC008098E6659E /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = exactVersion;
+				version = 9.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B7DF620AB084D89D613D5DDF /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F080BEE1AFEC008098E6659E /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+		E22CD0D2022AC21FB1593CC8 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F080BEE1AFEC008098E6659E /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = AEB89DC71046CB101FF3D5BD /* Project object */;
 }

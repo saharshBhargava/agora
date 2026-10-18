@@ -26,6 +26,7 @@ final class AgentCoordinator: ObservableObject {
     private var history: [[String: Any]] = []
     private var task: Task<Void, Never>?
     private var generation = UUID()
+    private var calendarMutationInFlight: UUID?
     private var approvalReply: CheckedContinuation<Bool, Never>?
     var providerOverride: ModelProvider?
 
@@ -61,10 +62,14 @@ final class AgentCoordinator: ObservableObject {
     }
     func stop(reason: String = "Stopped. The browser is still available.", paused: Bool = false) {
         AppLog.$taskID.withValue(generation.uuidString) { AppLog.event(.agent, paused ? "task.paused" : "task.stopped", count: running ? 1 : 0) }
-        let old = generation, wasRunning = running; generation = UUID(); task?.cancel(); task = nil
-        resolveApproval(false); browser.revoke(); running = false; self.paused = paused; status = reason
-        browser.state.status = reason
-        if wasRunning { try? repository.record(task: old, operation: "task", phase: browser.state.busy ? "outcome_unknown" : "stopped") }
+        let old = generation, wasRunning = running
+        let uncertainCalendar = calendarMutationInFlight == old
+        generation = UUID(); task?.cancel(); task = nil; calendarMutationInFlight = nil
+        resolveApproval(false); browser.revoke(); running = false; self.paused = paused && !uncertainCalendar
+        status = uncertainCalendar ? "A Calendar event may have been saved. Check Google Calendar before retrying." : reason
+        browser.state.status = status
+        if uncertainCalendar { messages.append(ChatMessage(role: "notice", text: status)) }
+        if wasRunning { try? repository.record(task: old, operation: "task", phase: browser.state.busy || uncertainCalendar ? "outcome_unknown" : "stopped") }
     }
     func newChat() {
         AppLog.event(.agent, "chat.new")
@@ -94,6 +99,7 @@ final class AgentCoordinator: ObservableObject {
         var failures = 0
         let deadline = ContinuousClock.now + .seconds(240)
         defer {
+            if calendarMutationInFlight == id { calendarMutationInFlight = nil }
             if generation == id { running = false; task = nil; browser.state.status = status }
         }
         do {
@@ -124,6 +130,7 @@ final class AgentCoordinator: ObservableObject {
                     do {
                         if let name = raw["name"] as? String, CalendarCall.names.contains(name) {
                             guard let calendar, calendar.connected else { throw BrowserError("calendar_reconnect_required") }
+                            let approvedAccountID = calendar.accountID
                             let call = try CalendarCall(raw)
                             if call.name == "calendar_create_event" {
                                 approval = ActionApproval(title: "Add this Google Calendar event?", detail: call.approvalDetail)
@@ -134,11 +141,13 @@ final class AgentCoordinator: ObservableObject {
                             try Task.checkCancellation(); guard generation == id else { return }
                             status = call.name == "calendar_create_event" ? "Adding Calendar event…" : "Checking availability…"
                             try repository.record(task: id, operation: call.name, phase: "dispatched")
-                            result = try await calendar.execute(call, taskID: id)
+                            if call.name == "calendar_create_event" { calendarMutationInFlight = id }
+                            result = try await calendar.execute(call, taskID: id, expectedAccountID: approvedAccountID)
+                            if calendarMutationInFlight == id { calendarMutationInFlight = nil }
                             try repository.record(task: id, operation: call.name, phase: "observed")
                         } else {
                             let call = try BrowserCall(raw)
-                            if call.name == "browser_close" || (call.name == "browser_act" && call.arguments["action"] as? String != "scroll") {
+                            if call.name == "browser_close" || (call.name == "browser_act" && !["click", "type", "scroll"].contains(call.arguments["action"] as? String ?? "")) {
                                 let epoch = browser.epoch, lease = browser.lease, document = browser.documentEpoch
                                 guard await requestApproval(call) else { throw BrowserError("approval_denied", "Do not retry this action.") }
                                 try browser.check(epoch: epoch, lease: lease)
@@ -153,6 +162,7 @@ final class AgentCoordinator: ObservableObject {
                         failures = 0
                     } catch {
                         try Task.checkCancellation(); guard generation == id else { return }
+                        if calendarMutationInFlight == id { calendarMutationInFlight = nil }
                         AppLog.failure(.agent, "tool.failed", error: error)
                         result = ["error": error.localizedDescription]; failures += 1
                         try repository.record(task: id, operation: raw["name"] as? String ?? "invalid_tool", phase: "failed_or_uncertain")

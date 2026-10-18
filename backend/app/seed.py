@@ -98,7 +98,17 @@ async def seed_catalog(db: Database) -> None:
 
 async def seed_history(db: Database, handle: str, display_name: str, days: int = 21, rng_seed: int = 7) -> bool:
     user_id = await ensure_user(db, f"dev:{handle}", handle, display_name)
-    rng = random.Random(f"{rng_seed}:{handle}")  # noqa: S311 - demo data, not security
+    return await seed_household(db, user_id, f"{rng_seed}:{handle}", days)
+
+
+async def seed_new_user(db: Database, user_id) -> bool:
+    """Sample history for a freshly created (demo) account. Skips households that already have items."""
+    await seed_catalog(db)
+    return await seed_household(db, user_id, str(user_id))
+
+
+async def seed_household(db: Database, user_id, rng_key: str, days: int = 21) -> bool:
+    rng = random.Random(rng_key)  # noqa: S311 - demo data, not security
     async with db.scoped(user_id) as conn:
         household_id = await conn.fetchval(
             "SELECT household_id FROM household_members WHERE user_id = $1 ORDER BY joined_at LIMIT 1", user_id)

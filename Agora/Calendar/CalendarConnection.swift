@@ -1,177 +1,183 @@
 import SwiftUI
-import AuthenticationServices
 import CryptoKit
-import Security
 
 @MainActor
-final class CalendarConnection: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
+final class CalendarConnection: ObservableObject {
     @Published private(set) var connected = false
     @Published private(set) var checking = true
     @Published private(set) var connecting = false
     @Published private(set) var email: String?
+    @Published private(set) var accountID: String?
     @Published var message: String?
-    private var authentication: ASWebAuthenticationSession?
-    let client: AgoraClient
+    let authorization: GoogleCalendarAuthorizing
+    private let http: URLSession
+    private var revision = UUID()
+    private var restoring = false
+    var configurationIssue: String? { authorization.configurationIssue }
 
-    typealias Account = AgoraClient.Account
-
-    init(client: AgoraClient) {
-        self.client = client
-        email = client.email
-        message = client.sessionLoadError
-        super.init()
+    init(authorization: GoogleCalendarAuthorizing? = nil, http: URLSession? = nil) {
+        self.authorization = authorization ?? GoogleCalendarAuthorization()
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 30
+        self.http = http ?? URLSession(configuration: config, delegate: NoCredentialRedirect(), delegateQueue: nil)
     }
-
-    /// Test helper — builds a dedicated `AgoraClient` with the given base URL / session / Keychain service.
-    convenience init(baseURL: URL? = nil, http: URLSession? = nil, service: String = "app.agora.account") {
-        self.init(client: AgoraClient(baseURL: baseURL, http: http, service: service))
+    private func apply(_ account: GoogleCalendarAccount?) {
+        accountID = account?.id; email = account?.email
+        connected = account.map { GoogleCalendarAuthorization.scopes.isSubset(of: $0.scopes) } ?? false
+        message = account != nil && !connected ? "Approve Google Calendar permissions to finish onboarding." : nil
     }
-
-    private func request(
-        _ path: String,
-        method: String = "GET",
-        body: [String: Any]? = nil,
-        key: String? = nil,
-        authenticated: Bool = true
-    ) async throws -> [String: Any] {
-        do {
-            if authenticated && !client.hasSession {
-                throw BrowserError("calendar_reconnect_required", "Connect Google Calendar to continue.")
-            }
-            return try await client.request(path, method: method, body: body, key: key, authenticated: authenticated)
-        } catch let error as BrowserError {
-            if !client.signedIn {
-                connected = false
-                email = nil
-            }
-            if ["calendar_reconnect_required", "calendar_access_denied"].contains(error.code) {
-                message = "Reconnect Google Calendar to continue."
-                connected = false
-            }
-            if path == "v1/calendar/events" {
-                if error.code == "connection_failed" || error.code == "invalid_server_response" {
-                    throw BrowserError("outcome_unknown", "Check Google Calendar before retrying; event creation could not be confirmed.")
-                }
-                if let status = error.status, status >= 500 {
-                    throw BrowserError("outcome_unknown", "Check Google Calendar before retrying; event creation could not be confirmed.", status: status)
-                }
-            }
-            if error.code == "service_unavailable" {
-                throw BrowserError("service_unavailable", "Calendar connection is unavailable in this build. Please try again later.")
-            }
-            if error.code == "sign_in_required" {
-                throw BrowserError("calendar_reconnect_required", "Connect Google Calendar to continue.")
-            }
-            if error.code == "request_failed" {
-                throw BrowserError("calendar_request_failed", error.detail.isEmpty ? "Calendar request failed. Please try again." : error.detail, status: error.status)
-            }
-            throw error
-        }
-    }
-
     func refresh() async {
-        guard !connecting else { return }
-        defer { checking = false }
-        guard client.hasSession else { connected = false; email = nil; return }
+        guard !connecting, !restoring else { return }
+        restoring = true
+        let version = revision
+        defer { restoring = false; checking = false }
+        if let configurationIssue { message = configurationIssue; connected = false; return }
         do {
-            let status = try await request("v1/integrations/google")
-            connected = status["connected"] as? Bool == true
-            email = status["email"] as? String ?? client.email
-            message = connected ? nil : "Reconnect Google Calendar to continue."
-        } catch { message = error.localizedDescription }
+            let account = try await authorization.restore()
+            guard revision == version else { return }
+            apply(account)
+        } catch {
+            guard revision == version else { return }
+            handle(error)
+        }
     }
-
     func connect() async {
-        guard !connecting else { return }
-        connecting = true; message = nil
-        defer { connecting = false; authentication = nil; checking = false }
-        do {
-            var random = [UInt8](repeating: 0, count: 32)
-            guard SecRandomCopyBytes(kSecRandomDefault, random.count, &random) == errSecSuccess else { throw BrowserError("sign_in_failed") }
-            let verifier = Self.base64URL(Data(random))
-            let challenge = Self.base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
-            let started = try await request("v1/integrations/google/start", method: "POST", body: ["code_challenge": challenge], authenticated: client.hasSession)
-            guard let state = started["state"] as? String, let address = started["authorization_url"] as? String,
-                  let url = URL(string: address), url.scheme == "https", url.host == "accounts.google.com" else { throw BrowserError("invalid_sign_in_response") }
-            let callback = try await authenticate(url)
-            let code = try Self.authorizationCode(callback: callback, expectedState: state)
-            let result = try await request("v1/integrations/google/exchange", method: "POST", body: ["state": state, "code": code, "code_verifier": verifier], authenticated: false)
-            guard let token = result["access_token"] as? String, let email = result["email"] as? String,
-                  let user = result["user_id"] as? String, let expires = result["expires_at"] as? String else { throw BrowserError("invalid_sign_in_response") }
-            try client.save(Account(token: token, email: email, userID: user, expiresAt: expires))
-            self.email = email
-            connected = true
-        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
-            message = "Connect Google Calendar to finish setting up Agora."
-        } catch let error as BrowserError where error.code == "account_keychain_error" {
-            message = error.detail.isEmpty ? error.localizedDescription : error.detail
-        } catch { message = error.localizedDescription }
+        guard !connecting, !restoring else { return }
+        connecting = true; message = nil; revision = UUID()
+        defer { connecting = false; checking = false }
+        do { apply(try await authorization.connect()) }
+        catch { handle(error) }
     }
-
-    static func base64URL(_ data: Data) -> String {
-        data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
-    }
-
-    static func authorizationCode(callback: URL, expectedState: String) throws -> String {
-        guard callback.scheme == "dev.agora.browserchat", callback.host == "google-callback",
-              let parts = URLComponents(url: callback, resolvingAgainstBaseURL: false) else { throw BrowserError("invalid_oauth_callback") }
-        let items = parts.queryItems ?? []
-        guard items.filter({ $0.name == "state" }).count == 1,
-              items.first(where: { $0.name == "state" })?.value == expectedState else { throw BrowserError("invalid_oauth_state") }
-        if items.contains(where: { $0.name == "error" }) { throw BrowserError("calendar_permission_required", "Approve Google Calendar access to finish onboarding.") }
-        guard items.filter({ $0.name == "code" }).count == 1,
-              let code = items.first(where: { $0.name == "code" })?.value, !code.isEmpty else { throw BrowserError("invalid_oauth_callback") }
-        return code
-    }
-
-    private func authenticate(_ url: URL) async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
-            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "dev.agora.browserchat") { url, error in
-                if let error { continuation.resume(throwing: error) }
-                else if let url { continuation.resume(returning: url) }
-                else { continuation.resume(throwing: BrowserError("sign_in_failed")) }
-            }
-            session.presentationContextProvider = self
-            // Use the system Google session to minimize repeated sign-in prompts.
-            session.prefersEphemeralWebBrowserSession = false
-            authentication = session
-            if !session.start() { continuation.resume(throwing: BrowserError("sign_in_failed")) }
-        }
-    }
-
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows).first(where: \.isKeyWindow) ?? ASPresentationAnchor()
-    }
-
-    func disconnect() async {
-        connecting = true; defer { connecting = false }
-        do {
-            _ = try await request("v1/integrations/google", method: "DELETE")
-            client.clear()
-            connected = false
-            email = nil
-            message = nil
-        } catch { message = error.localizedDescription }
-    }
-
     func signOut() async {
-        do {
-            _ = try await request("v1/auth/logout", method: "POST")
-            client.clear()
-            connected = false
-            email = nil
-            message = nil
-        } catch { message = error.localizedDescription }
+        guard !connecting else { return }
+        revision = UUID(); authorization.signOut(); apply(nil); checking = false
     }
-
-    func execute(_ call: CalendarCall, taskID: UUID) async throws -> [String: Any] {
-        guard connected else { throw BrowserError("calendar_reconnect_required", "Reconnect Google Calendar in Settings.") }
-        var body = call.arguments
-        if call.name == "calendar_create_event" {
-            body["confirmed"] = true // Set by the app only after the native approval completes.
-            return try await request("v1/calendar/events", method: "POST", body: body, key: call.requestKey(taskID: taskID))
+    func disconnect() async {
+        guard !connecting else { return }
+        connecting = true; revision = UUID()
+        defer { connecting = false }
+        do { try await authorization.disconnect(); apply(nil) }
+        catch { handle(error) }
+    }
+    private func handle(_ error: Error) {
+        if let error = error as? BrowserError {
+            message = error.detail.isEmpty ? "Could not connect to Google Calendar. Please try again." : error.detail
+            if ["calendar_reconnect_required", "calendar_account_changed"].contains(error.code) { connected = false }
+        } else if !(error is CancellationError) {
+            message = "Could not connect to Google Calendar. Please try again."
         }
-        return try await request("v1/calendar/freebusy", method: "POST", body: body)
+    }
+    private func checkAccount(_ id: String, revision version: UUID) throws {
+        try Task.checkCancellation()
+        guard connected, accountID == id, revision == version else {
+            throw BrowserError("calendar_account_changed", "Your Google connection changed. Start a new request.")
+        }
+    }
+    private func request(_ path: String, method: String, body: [String: Any]? = nil,
+                         account id: String, revision version: UUID, creating: Bool = false) async throws -> (Int, [String: Any]) {
+        let token: String
+        do { token = try await authorization.accessToken(for: id) }
+        catch { handle(error); throw error }
+        try checkAccount(id, revision: version)
+        var url = URLComponents(string: "https://www.googleapis.com/calendar/v3/" + path)!
+        if creating { url.queryItems = [URLQueryItem(name: "sendUpdates", value: "none")] }
+        var request = URLRequest(url: url.url!)
+        request.httpMethod = method
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        }
+        let data: Data, response: URLResponse
+        do { (data, response) = try await http.data(for: request) }
+        catch {
+            if creating { throw BrowserError("outcome_unknown", "Google did not confirm event creation. Check Calendar before retrying.") }
+            try Task.checkCancellation()
+            throw BrowserError("connection_failed", "Could not reach Google Calendar. Please try again.")
+        }
+        try checkAccount(id, revision: version)
+        guard let response = response as? HTTPURLResponse else {
+            throw BrowserError(creating ? "outcome_unknown" : "invalid_calendar_response")
+        }
+        // Raw Google error bodies can contain private details and never go to the model or logs.
+        if response.statusCode == 401 {
+            let error = BrowserError("calendar_reconnect_required", "Google access expired. Reconnect Google Calendar.")
+            handle(error); throw error
+        }
+        if response.statusCode == 403 {
+            let result = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let reasons = ((result?["error"] as? [String: Any])?["errors"] as? [[String: Any]] ?? []).compactMap { $0["reason"] as? String }
+            if reasons.contains("insufficientPermissions") {
+                let error = BrowserError("calendar_reconnect_required", "Approve Google Calendar permissions to continue.")
+                handle(error); throw error
+            }
+            throw BrowserError("calendar_access_denied", "Google denied Calendar access. The Calendar API may need to be enabled for this app, or access may be restricted by your organization.")
+        }
+        if response.statusCode == 409 { return (409, [:]) }
+        guard (200..<300).contains(response.statusCode) else {
+            throw BrowserError(creating && response.statusCode >= 500 ? "outcome_unknown" : "calendar_request_failed",
+                               creating ? "Google did not confirm event creation. Check Calendar before retrying." : "Could not check your Calendar. Please try again.")
+        }
+        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw BrowserError(creating ? "outcome_unknown" : "invalid_calendar_response")
+        }
+        return (response.statusCode, json)
+    }
+    func execute(_ call: CalendarCall, taskID: UUID, expectedAccountID: String? = nil) async throws -> [String: Any] {
+        guard connected, let id = accountID else {
+            throw BrowserError("calendar_reconnect_required", "Reconnect Google Calendar to continue.")
+        }
+        if let expectedAccountID, expectedAccountID != id {
+            throw BrowserError("calendar_account_changed", "Your Google account changed. Review a new request.")
+        }
+        let version = revision
+        if call.name == "calendar_freebusy" {
+            let (_, response) = try await request("freeBusy", method: "POST", body: [
+                "timeMin": call.arguments["start"]!, "timeMax": call.arguments["end"]!,
+                "timeZone": call.arguments["timezone"]!, "items": [["id": "primary"]]
+            ], account: id, revision: version)
+            guard let primary = (response["calendars"] as? [String: Any])?["primary"] as? [String: Any],
+                  (primary["errors"] as? [Any] ?? []).isEmpty, let busy = primary["busy"] as? [[String: Any]],
+                  busy.allSatisfy({ ($0["start"] as? String).flatMap(CalendarCall.date) != nil && ($0["end"] as? String).flatMap(CalendarCall.date) != nil }) else {
+                throw BrowserError("availability_unknown", "Google could not confirm availability. Do not assume the time is free.")
+            }
+            return ["busy": busy.map { ["start": $0["start"]!, "end": $0["end"]!] }, "timezone": call.arguments["timezone"]!]
+        }
+        let key = try call.requestKey(taskID: taskID)
+        let eventID = Self.hash(Data("agora:\(id):\(key)".utf8))
+        let fingerprint = Self.hash(try JSONSerialization.data(withJSONObject: call.arguments, options: [.sortedKeys]))
+        let payload: [String: Any] = [
+            "id": eventID, "summary": call.arguments["title"]!,
+            "description": call.arguments["description"] ?? "", "location": call.arguments["location"] ?? "",
+            "start": ["dateTime": call.arguments["start"]!, "timeZone": call.arguments["timezone"]!],
+            "end": ["dateTime": call.arguments["end"]!, "timeZone": call.arguments["timezone"]!],
+            "extendedProperties": ["private": ["agora_request": fingerprint]]
+        ]
+        var (status, event) = try await request("calendars/primary/events", method: "POST", body: payload, account: id, revision: version, creating: true)
+        if status == 409 {
+            // A previous attempt may have succeeded even if the phone missed the response.
+            do {
+                (status, event) = try await request("calendars/primary/events/\(eventID)", method: "GET", account: id, revision: version)
+            } catch { throw BrowserError("outcome_unknown", "An event with this ID already exists, but could not be verified. Check Calendar before retrying.") }
+            let properties = (event["extendedProperties"] as? [String: Any])?["private"] as? [String: Any]
+            guard properties?["agora_request"] as? String == fingerprint else {
+                throw BrowserError("outcome_unknown", "The existing event does not match this request. Check Google Calendar.")
+            }
+        }
+        guard event["id"] as? String == eventID, event["status"] as? String != "cancelled",
+              let link = event["htmlLink"] as? String, let url = URL(string: link), url.scheme == "https",
+              ["www.google.com", "calendar.google.com"].contains(url.host ?? ""), url.user == nil, url.password == nil else {
+            throw BrowserError("outcome_unknown", "Google did not return a confirmed event. Check Calendar before retrying.")
+        }
+        return ["created": true, "id": eventID, "url": link]
+    }
+    private static func hash(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+final class NoCredentialRedirect: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
     }
 }

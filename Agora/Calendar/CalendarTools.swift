@@ -12,9 +12,11 @@ struct CalendarCall {
         let allowed: Set<String> = event ? ["start", "end", "timezone", "title", "description", "location"] : ["start", "end", "timezone"]
         guard Set(args.keys).isSubset(of: allowed),
               let start = args["start"] as? String, let end = args["end"] as? String,
-              let zone = args["timezone"] as? String, TimeZone(identifier: zone) != nil,
+              let zone = args["timezone"] as? String, let timezone = TimeZone(identifier: zone),
               let startDate = Self.date(start), let endDate = Self.date(end), endDate > startDate,
-              endDate.timeIntervalSince(startDate) <= 31 * 86400 else {
+              endDate.timeIntervalSince(startDate) <= 31 * 86400,
+              Self.offset(start) == timezone.secondsFromGMT(for: startDate),
+              Self.offset(end) == timezone.secondsFromGMT(for: endDate) else {
             throw BrowserError("invalid_calendar_time", "Provide start/end timestamps with UTC offsets and a valid IANA timezone.")
         }
         for (key, limit) in [("title", 200), ("description", 4000), ("location", 500)] {
@@ -28,6 +30,13 @@ struct CalendarCall {
             }
         }
         self.name = name; self.arguments = args
+    }
+    private static func offset(_ value: String) -> Int? {
+        if value.hasSuffix("Z") { return 0 }
+        guard value.range(of: #"[+-][0-9]{2}:[0-9]{2}$"#, options: .regularExpression) != nil else { return nil }
+        let tail = String(value.suffix(6))
+        guard let hours = Int(tail.dropFirst().prefix(2)), let minutes = Int(tail.suffix(2)), hours <= 23, minutes <= 59 else { return nil }
+        return (tail.first == "-" ? -1 : 1) * (hours * 3600 + minutes * 60)
     }
     static func date(_ value: String) -> Date? {
         let formatter = ISO8601DateFormatter()
