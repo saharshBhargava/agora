@@ -140,6 +140,9 @@ final class PriceWorker {
     private(set) var outcomes: [Outcome] = []
     /// Items whose final attempt ended without a price.
     private(set) var gaveUpNames: Set<String> = []
+    /// The store the site was verified to show; nil until store setup succeeds.
+    /// Lookups never wait for it: they price at whatever store the site has.
+    private(set) var activeStore: StoreLocation?
 
     /// True once the worker has stopped trying to price `name` ("No price found · Add price").
     func gaveUp(for name: String) -> Bool { gaveUpNames.contains(name) }
@@ -169,12 +172,8 @@ final class PriceWorker {
     @MainActor private final class Slot {
         let browser: PriceBrowsing
         var busy = false
-        /// Warm-up and store setup; lookups on this browser wait for it.
-        var ready: Task<Void, Never>?
-        /// The store the header was verified to show.
-        var store: StoreLocation?
-        var storeTried: Set<StoreLocation> = []
-        var storeAgentTried: Set<StoreLocation> = []
+        /// Home-page warm-up; a lookup cuts it short.
+        var warm: Task<Void, Never>?
         init(_ browser: PriceBrowsing) { self.browser = browser }
     }
 
@@ -189,6 +188,12 @@ final class PriceWorker {
     @ObservationIgnored private let storeLocation: StoreLocation
     @ObservationIgnored private let giveUpSteps: Int
     @ObservationIgnored private let giveUpSeconds: Double
+    @ObservationIgnored private let storeAttempts: Int
+    @ObservationIgnored private let storeRetryInterval: Duration
+    @ObservationIgnored private let makeStoreBrowser: @MainActor () -> PriceBrowsing
+    @ObservationIgnored private var storeBrowser: PriceBrowsing?
+    @ObservationIgnored private var storeTask: Task<Void, Never>?
+    @ObservationIgnored private var storeTarget: StoreLocation?
     @ObservationIgnored private var slots: [Slot] = []
     @ObservationIgnored private var inFlight: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var lookupBrowsers: [String: PriceBrowsing] = [:]
@@ -205,7 +210,9 @@ final class PriceWorker {
          retryDelay: Duration = .seconds(20),
          storeLocation: StoreLocation = .universityVillage,
          giveUpSteps: Int = 3, giveUpSeconds: Double = 10,
-         makeBrowser: @escaping @MainActor () -> PriceBrowsing = { BrowserToolExecutor(session: StoreBrowser()) }) {
+         storeAttempts: Int = 3, storeRetryInterval: Duration = .seconds(60),
+         makeBrowser: @escaping @MainActor () -> PriceBrowsing = { BrowserToolExecutor(session: StoreBrowser()) },
+         makeStoreBrowser: (@MainActor () -> PriceBrowsing)? = nil) {
         self.pollInterval = pollInterval
         self.poolSize = max(1, poolSize)
         self.warmUpURL = warmUpURL
@@ -216,7 +223,10 @@ final class PriceWorker {
         self.storeLocation = storeLocation
         self.giveUpSteps = giveUpSteps
         self.giveUpSeconds = giveUpSeconds
+        self.storeAttempts = max(1, storeAttempts)
+        self.storeRetryInterval = storeRetryInterval
         self.makeBrowser = makeBrowser
+        self.makeStoreBrowser = makeStoreBrowser ?? makeBrowser
     }
 
     func start(api: DibsAPI) {
@@ -226,24 +236,16 @@ final class PriceWorker {
         PriceLog.event("price worker start \(api.base.absoluteString)")
         while slots.count < poolSize { slots.append(Slot(makeBrowser())) }
         if let warmUpURL {
-            // One browser after the other: the first sets the store cookie, so the second's
-            // fresh page usually shows the store already.
-            var previous: Task<Void, Never>?
-            let location = storeLocation
-            for (i, slot) in slots.enumerated() where !slot.busy && slot.ready == nil {
-                let before = previous
+            for (i, slot) in slots.enumerated() where !slot.busy && slot.warm == nil {
                 let browser = slot.browser
-                let task = Task { [weak self] in
-                    await before?.value
+                slot.warm = Task {
                     let t0 = ContinuousClock.now
                     await browser.warmUp(warmUpURL)
-                    PriceLog.event("price browser \(i) warm-up \(Self.ms(since: t0)) ms")
-                    await self?.ensureStore(location, on: slot)
+                    PriceLog.event("price browser \(i) warm-up \(Self.ms(since: t0)) ms\(Task.isCancelled ? " (cut short)" : "")")
                 }
-                slot.ready = task
-                previous = task
             }
         }
+        setUpStore(storeLocation)
         let interval = pollInterval
         loop = Task { [weak self] in
             while !Task.isCancelled {
@@ -261,9 +263,13 @@ final class PriceWorker {
         isRunning = false
         inFlight.values.forEach { $0.cancel() }
         inFlight = [:]
+        storeTask?.cancel()
+        storeTask = nil
+        storeTarget = nil
+        storeBrowser?.close()
         for slot in slots {
-            slot.ready?.cancel()
-            slot.ready = nil
+            slot.warm?.cancel()
+            slot.warm = nil
             slot.busy = false
             slot.browser.close()
         }
@@ -330,11 +336,13 @@ final class PriceWorker {
             inFlight[request.id] = nil
             lookupBrowsers[request.id] = nil
         }
-        if let ready = slot.ready {
-            await ready.value
-            slot.ready = nil
+        if let warm = slot.warm {
+            // The search page replaces the home page; cookies and caches are already warming.
+            warm.cancel()
+            await warm.value
+            slot.warm = nil
         }
-        await prepareStore(for: request, on: slot, api: api)
+        if let location = request.storeLocation { setUpStore(location) }
         let outcome = await handle(request, browser: slot.browser, api: api)
         if Task.isCancelled { return }
         lastOutcome = outcome
@@ -352,40 +360,40 @@ final class PriceWorker {
 
     // MARK: store
 
-    /// Runs the scripted store switch once per browser and store; logs the result.
-    private func ensureStore(_ location: StoreLocation, on slot: Slot) async {
-        guard slot.store != location, !slot.storeTried.contains(location), !Task.isCancelled else { return }
-        slot.storeTried.insert(location)
-        let t0 = ContinuousClock.now
-        let result = await slot.browser.setStore(location)
-        switch result {
-        case .already: PriceLog.event("price store already \(location.name)")
-        case .set: PriceLog.event("price store set \(location.name) (\(Self.ms(since: t0)) ms)")
-        case .failed(let step): PriceLog.event("price store setup failed at \(step)")
+    /// Switches the site's pickup store in the background, on its own browser (cookies are shared,
+    /// so the lookup browsers price there from their next page). Never blocks or uses a lookup.
+    /// Up to `storeAttempts` tries, `storeRetryInterval` apart.
+    func setUpStore(_ location: StoreLocation) {
+        guard storeTarget != location else { return }
+        storeTarget = location
+        storeTask?.cancel()
+        storeTask = Task { [weak self] in await self?.runStoreSetup(location) }
+    }
+
+    private func runStoreSetup(_ location: StoreLocation) async {
+        let browser = storeBrowser ?? makeStoreBrowser()
+        storeBrowser = browser
+        defer { if !Task.isCancelled { browser.close() } }
+        for attempt in 1...storeAttempts {
+            if Task.isCancelled { return }
+            let t0 = ContinuousClock.now
+            let result = await browser.setStore(location)
+            if Task.isCancelled { return }
+            switch result {
+            case .already:
+                PriceLog.event("price store already \(location.name)")
+                activeStore = location
+                return
+            case .set:
+                PriceLog.event("price store set \(location.name) (\(Self.ms(since: t0)) ms)")
+                activeStore = location
+                return
+            case .failed(let step):
+                PriceLog.event("price store setup attempt \(attempt)/\(storeAttempts) failed at \(step)")
+            }
+            if attempt < storeAttempts { try? await Task.sleep(for: storeRetryInterval) }
         }
-        if result.ok { slot.store = location }
-    }
-
-    /// Before a lookup: make sure the browser prices at the request's store. If the script
-    /// failed, let the agent switch it once (on this request's agent-step), then check again.
-    private func prepareStore(for request: PriceRequest, on slot: Slot, api: PriceAPI) async {
-        let location = request.storeLocation ?? storeLocation
-        await ensureStore(location, on: slot)
-        guard slot.store != location, !slot.storeAgentTried.contains(location), !Task.isCancelled else { return }
-        slot.storeAgentTried.insert(location)
-        PriceLog.event("price \(request.id) asking the agent to set the store to \(location.name)")
-        _ = try? await agentLoop(request, browser: slot.browser, api: api, seed: Self.storeSeed(location), maxSteps: 6)
-        let result = await slot.browser.setStore(location)
-        PriceLog.event(result.ok ? "price store set \(location.name) by agent" : "price store still not \(location.name); pricing anyway")
-        if result.ok { slot.store = location }
-    }
-
-    static func storeSeed(_ location: StoreLocation) -> String {
-        let place = location.address.map { "\(location.name) (\($0))" } ?? location.name
-        return "Set the store only; do not look up prices. On qfc.com, click the button that says how you are shopping "
-            + "(for example \"Pickup at Harvard Market\"), search postal code \(location.postalCode), choose \(place), then click "
-            + "Start Shopping. When the page header says \"Pickup at \(location.name)\", call report_price with found false. "
-            + "Start at https://www.qfc.com/."
+        PriceLog.event("price store setup gave up; pricing at the site's current store")
     }
 
     private struct Timing {

@@ -108,7 +108,10 @@ final class BrowserToolExecutor: PriceBrowsing {
 
     func warmUp(_ url: URL) async {
         restrict(to: url)
-        guard (try? await session.open(url)) != nil else { return }
+        do { _ = try await session.open(url) } catch {
+            if !Task.isCancelled { PriceLog.event("price browser warm-up failed: \(error.localizedDescription)") }
+            return
+        }
         // open returns at commit; let the page finish loading (scripts, consent, caches).
         let deadline = ContinuousClock.now + .seconds(10)
         while session.webView.isLoading, ContinuousClock.now < deadline, !Task.isCancelled {

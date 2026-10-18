@@ -30,14 +30,27 @@ enum StoreSetupScript {
     const norm = s => (s || '').replace(/\s+/g, ' ').trim();
     const low = s => norm(s).toLowerCase();
     const visible = e => { if (!e) return false; const s = getComputedStyle(e); return s.visibility !== 'hidden' && s.display !== 'none' && e.getClientRects().length > 0; };
-    async function waitFor(fn, ms) { const end = Date.now() + ms; while (Date.now() < end) { const v = fn(); if (v) return v; await sleep(200); } return null; }
-    const modeButton = () => Array.from(document.querySelectorAll('button,[role="button"],a')).find(e => visible(e) && low(e.getAttribute('aria-label')).includes('change how you are shopping'));
+    async function waitFor(fn, ms) { const end = Date.now() + ms; while (Date.now() < end) { const v = fn(); if (v) return v; await sleep(250); } return null; }
+    const modeButtons = () => Array.from(document.querySelectorAll('button,[role="button"],a')).filter(e => low(e.getAttribute('aria-label')).includes('change how you are shopping'));
+    const modeButton = () => modeButtons().find(visible);
+    // What the page actually shows, for the log when a step fails.
+    const diagnose = () => {
+      const buttons = Array.from(document.querySelectorAll('button,[role="button"]')).filter(visible)
+        .map(b => norm(b.getAttribute('aria-label') || b.innerText).slice(0, 60)).filter(Boolean).slice(0, 10);
+      const dialog = document.querySelector('[role="dialog"]');
+      return 'url ' + location.origin + location.pathname + ', readyState ' + document.readyState + ', title "' + norm(document.title).slice(0, 80)
+        + '", radios ' + document.querySelectorAll('input[type="radio"],[role="radio"]').length
+        + ', hidden store buttons ' + modeButtons().filter(e => !visible(e)).length
+        + ', dialog "' + norm(dialog ? dialog.innerText : 'none').slice(0, 160) + '"'
+        + ', buttons [' + buttons.join(' | ') + ']'
+        + ', body "' + norm(document.body ? document.body.innerText : '').slice(0, 300) + '"';
+    };
     const headerText = e => norm((e.getAttribute('aria-label') || '') + ' | ' + (e.innerText || ''));
     """#
 
     /// Reads the header's shopping-mode button. Returns `{header}` or `{header: null}`.
     static let header = helpers + #"""
-    const b = await waitFor(modeButton, 3000);
+    const b = (await waitFor(modeButton, 3000)) || modeButtons()[0];
     return JSON.stringify({ header: b ? headerText(b) : null });
     """#
 
@@ -45,19 +58,22 @@ enum StoreSetupScript {
     /// The page may reload after Start Shopping, so the caller verifies the header afterwards.
     static let run = helpers + #"""
     const want = low(name), addrKey = low((address || '').split(' ')[0]);
-    const fail = step => {
-      const dialog = document.querySelector('[role="dialog"]');
-      const radios = document.querySelectorAll('input[type="radio"],[role="radio"]').length;
-      return JSON.stringify({ status: 'failed', step: step + ' (radios ' + radios + ', dialog: ' + norm(dialog ? dialog.innerText : 'none').slice(0, 160) + ')' });
-    };
-    const button = await waitFor(modeButton, 12000);
+    const fail = step => JSON.stringify({ status: 'failed', step: step + ' (' + diagnose() + ')' });
+    // Up to 10 s for the header button (5 s, then again from the top of the page).
+    let button = await waitFor(modeButton, 5000);
+    if (!button) { window.scrollTo(0, 0); button = await waitFor(modeButton, 5000); }
+    if (!button) button = modeButtons()[0];   // present but not laid out: clicking still opens the modal
     if (!button) return fail('store button');
-    if (low(button.innerText).includes(want)) return JSON.stringify({ status: 'already', header: headerText(button) });
-    button.click();
-
+    if (low((button.getAttribute('aria-label') || '') + ' ' + button.innerText).includes(want)) return JSON.stringify({ status: 'already', header: headerText(button) });
     const postal = e => /postal|zip/i.test([e.placeholder, e.getAttribute('aria-label'), e.name, e.id,
       Array.from(e.labels || []).map(l => l.textContent).join(' ')].join(' '));
-    const input = await waitFor(() => Array.from(document.querySelectorAll('input')).find(e => visible(e) && postal(e)), 10000);
+    const postalInput = () => Array.from(document.querySelectorAll('input')).find(e => visible(e) && postal(e));
+    // Before the page hydrates the button ignores clicks: click again every 3 s, up to 15 s.
+    let input = null;
+    for (let i = 0; i < 5 && !input; i++) {
+      (modeButton() || modeButtons()[0] || button).click();
+      input = await waitFor(postalInput, 3000);
+    }
     if (!input) return fail('postal code input');
     await sleep(600);   // let the modal finish mounting before typing
     const type = () => {
@@ -87,9 +103,9 @@ enum StoreSetupScript {
     };
     let radio = await waitFor(findRadio, 3000);
     if (!radio) {
-      // Untrusted Enter may not submit: type again, then submit the form or press the search button.
+      // Untrusted Enter may not search: type again, then press the search button next to the field.
+      // (No native form submit: it navigates the page away mid-script.)
       type(); await sleep(300); enter();
-      if (input.form && input.form.requestSubmit) { try { input.form.requestSubmit(); } catch (e) {} }
       const scope = input.closest('[role="dialog"]') || document;
       const search = Array.from(scope.querySelectorAll('button')).find(b => visible(b) && /search/i.test((b.getAttribute('aria-label') || '') + ' ' + b.innerText));
       if (search) search.click();
@@ -108,21 +124,30 @@ enum StoreSetupScript {
 }
 
 extension BrowserToolExecutor {
-    /// Switches the store browser's pickup store, or confirms it is already set. A failed script
-    /// (seen once in three live runs: a page script threw mid-flow) gets one retry on a fresh home page.
+    /// Switches the site's pickup store, or confirms it is already set: one attempt on a freshly
+    /// loaded home page (the worker spaces out retries).
     func setStore(_ location: StoreLocation) async -> StoreSetupResult {
         guard let home = URL(string: "https://www.qfc.com/") else { return .failed("home url") }
-        var result = StoreSetupResult.failed("not run")
-        for attempt in 1...2 {
-            if attempt == 2 || !session.isOpen {
-                restrict(to: home)
-                guard (try? await session.open(home)) != nil else { result = .failed("home page"); continue }
-            }
+        restrict(to: home)
+        do { _ = try await session.open(home) } catch { return .failed("home page: \(error.localizedDescription)") }
+        await settle()
+        var result = await runStoreScript(location)
+        if case .failed(let step) = result, step.contains("no longer reachable") {
+            // The page navigated mid-script (a redirect or late reload): once more on the new page.
+            PriceLog.event("price store page navigated during setup; running it again")
+            await settle()
             result = await runStoreScript(location)
-            if result.ok || Task.isCancelled { return result }
-            PriceLog.event("price store script attempt \(attempt) failed: \(result)")
         }
         return result
+    }
+
+    /// Lets the page finish loading (up to 10 s) so its scripts handle clicks.
+    private func settle() async {
+        let deadline = ContinuousClock.now + .seconds(10)
+        while session.webView.isLoading, ContinuousClock.now < deadline, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        try? await Task.sleep(for: .milliseconds(500))
     }
 
     private func runStoreScript(_ location: StoreLocation) async -> StoreSetupResult {

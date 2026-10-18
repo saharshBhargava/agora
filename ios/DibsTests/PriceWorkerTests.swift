@@ -106,6 +106,7 @@ final class FakeBrowser: PriceBrowsing {
     /// What setStore answers, in order (the last repeats).
     var storeResults: [StoreSetupResult] = [.already]
     var storeCalls: [StoreLocation] = []
+    var storeDelay: Duration = .zero
     /// Shared across fakes to check ordering.
     var events: EventLog?
     private var reloaded = false
@@ -116,6 +117,7 @@ final class FakeBrowser: PriceBrowsing {
     func warmUp(_ url: URL) async { warmedUp.append(url); events?.add("warm \(ObjectIdentifier(self).hashValue)") }
     func setStore(_ location: StoreLocation) async -> StoreSetupResult {
         storeCalls.append(location)
+        if storeDelay > .zero { try? await Task.sleep(for: storeDelay) }
         events?.add("store \(ObjectIdentifier(self).hashValue)")
         let result = storeResults[min(storeCalls.count - 1, storeResults.count - 1)]
         return result
@@ -138,6 +140,7 @@ final class PriceWorkerTests: XCTestCase {
     private var api: DibsAPI!
     private var browser: FakeBrowser!
     private var worker: PriceWorker!
+    private var storeFake: FakeBrowser!
 
     private let openOne = #"[{"id":"r1","name":"cosmic crisp apple","store":"QFC","searchUrl":"https://www.qfc.com/search?query=cosmic%20crisp%20apple"}]"#
     private let notFound = #"{"found":false}"#
@@ -148,6 +151,7 @@ final class PriceWorkerTests: XCTestCase {
         api = DibsAPI(base: URL(string: "https://dibs.example.com/")!, session: URLSession(configuration: config))
         PriceStub.reset()
         browser = FakeBrowser()
+        storeFake = FakeBrowser()
         let fake = browser!
         worker = makeWorker { fake }
     }
@@ -283,8 +287,9 @@ final class PriceWorkerTests: XCTestCase {
         worker.start(api: api)
         try await Task.sleep(for: .milliseconds(100))
         worker.stop()
-        XCTAssertEqual(made.count, 2)
-        XCTAssertEqual(made.map(\.warmedUp), [[URL(string: "https://www.qfc.com/")!], [URL(string: "https://www.qfc.com/")!]])
+        XCTAssertEqual(made.count, 3, "two lookup browsers and one for store setup")
+        XCTAssertEqual(made.map(\.warmedUp), [[URL(string: "https://www.qfc.com/")!], [URL(string: "https://www.qfc.com/")!], []])
+        XCTAssertEqual(made.map(\.storeCalls), [[], [], [.universityVillage]])
     }
 
     func testUnreadablePageWithoutAPriceIsRetriedOnceAfterTheDelay() async throws {
@@ -545,62 +550,78 @@ final class PriceWorkerTests: XCTestCase {
 
     // MARK: store
 
-    func testStartSetsTheStoreOnEachBrowserInTurn() async throws {
-        let log = EventLog()
-        var made: [FakeBrowser] = []
-        worker = makeWorker(pool: 2, warmUp: URL(string: "https://www.qfc.com/")) {
-            let b = FakeBrowser(); b.events = log; made.append(b)
-            b.storeResults = made.count == 1 ? [.set] : [.already]
-            return b
-        }
-        PriceStub.route("GET /api/price-requests?open=1", .json(200, "[]"))
-        worker.start(api: api)
-        let deadline = Date().addingTimeInterval(3)
-        while log.items.count < 4 && Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
-        worker.stop()
-        XCTAssertEqual(made.map(\.storeCalls), [[.universityVillage], [.universityVillage]])
-        let first = ObjectIdentifier(made[0]).hashValue, second = ObjectIdentifier(made[1]).hashValue
-        XCTAssertEqual(log.items, ["warm \(first)", "store \(first)", "warm \(second)", "store \(second)"],
-                       "the second browser loads after the first set the store")
+    private func storeWorker(storeFake: FakeBrowser, attempts: Int = 3) -> PriceWorker {
+        let fake = browser!
+        let w = PriceWorker(pollInterval: .milliseconds(20), poolSize: 1, warmUpURL: nil,
+                            renderPoll: .milliseconds(10), retryDelay: .seconds(60),
+                            storeAttempts: attempts, storeRetryInterval: .milliseconds(20),
+                            makeBrowser: { fake }, makeStoreBrowser: { storeFake })
+        w.use(api: api)
+        return w
     }
 
-    func testStoreSetupRunsOncePerBrowserAndIsSkippedWhenAlreadySet() async throws {
+    private func waitFor(_ condition: @autoclosure () -> Bool, seconds: Double = 3) async {
+        let deadline = Date().addingTimeInterval(seconds)
+        while !condition() && Date() < deadline { try? await Task.sleep(for: .milliseconds(10)) }
+    }
+
+    func testStoreSetupNeverBlocksALookup() async throws {
+        let storeFake = FakeBrowser()
+        storeFake.storeDelay = .seconds(30)   // a store setup that hangs
+        worker = storeWorker(storeFake: storeFake)
         PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
         PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":110}"#))
-        await poll()
-        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne.replacingOccurrences(of: "r1", with: "r2")))
-        PriceStub.route("POST /api/price-requests/r2/extract", .json(200, #"{"found":true,"priceCents":110}"#))
-        await poll()
-        XCTAssertEqual(browser.storeCalls, [.universityVillage])
-        XCTAssertTrue(PriceStub.requests("POST /api/price-requests/r1/agent-step").isEmpty)
+        PriceStub.route("POST /api/price-requests/r1/agent-step", .json(500, #"{"error":"must not be called"}"#))
+        worker.start(api: api)
+        let t0 = Date()
+        await waitFor(self.worker.lastOutcome != nil)
+        XCTAssertLessThan(Date().timeIntervalSince(t0), 1.5)
+        XCTAssertEqual(worker.lastOutcome?.cents, 110)
+        XCTAssertEqual(storeFake.storeCalls, [.universityVillage], "setup runs on its own browser")
+        XCTAssertTrue(browser.storeCalls.isEmpty, "the lookup browser is never used for setup")
+        XCTAssertTrue(PriceStub.requests("POST /api/price-requests/r1/agent-step").isEmpty, "no price request steps spent on the store")
+        XCTAssertNil(worker.activeStore)
+        worker.stop()
     }
 
-    func testFailedStoreScriptFallsBackToTheAgentOnce() async throws {
-        browser.storeResults = [.failed("store row"), .already]
-        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
-        PriceStub.route("POST /api/price-requests/r1/agent-step",
-                        .json(200, #"{"parts":[{"functionCall":{"name":"report_price","args":{"found":false}}}]}"#))
-        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":175}"#))
+    func testStoreSetupRetriesUpToThreeTimesThenStops() async throws {
+        let storeFake = FakeBrowser()
+        storeFake.storeResults = [.failed("store button"), .failed("store button"), .failed("store button"), .set]
+        worker = storeWorker(storeFake: storeFake)
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, "[]"))
+        worker.start(api: api)
+        await waitFor(storeFake.storeCalls.count >= 3)
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(storeFake.storeCalls.count, 3)
+        XCTAssertNil(worker.activeStore)
+        XCTAssertTrue(storeFake.closed, "the setup browser is released")
+        worker.stop()
+    }
 
-        await poll()
-
-        let steps = PriceStub.requests("POST /api/price-requests/r1/agent-step")
-        XCTAssertEqual(steps.count, 1)
-        let seed = ((steps[0].json["contents"] as? [[String: Any]])?.first?["parts"] as? [[String: Any]])?.first?["text"] as? String ?? ""
-        XCTAssertTrue(seed.hasPrefix("Set the store only"))
-        XCTAssertTrue(seed.contains("98105") && seed.contains("University Village (2746 NE 45th St)"))
-        XCTAssertEqual(browser.storeCalls.count, 2, "script, then a header check after the agent")
-        XCTAssertEqual(worker.lastOutcome?.cents, 175)
+    func testStoreSetupStopsOnceTheStoreIsSet() async throws {
+        let storeFake = FakeBrowser()
+        storeFake.storeResults = [.failed("store row"), .set]
+        worker = storeWorker(storeFake: storeFake)
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, "[]"))
+        worker.start(api: api)
+        await waitFor(self.worker.activeStore != nil)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(storeFake.storeCalls.count, 2)
+        XCTAssertEqual(worker.activeStore, .universityVillage)
+        worker.stop()
     }
 
     func testServerCanNameTheStore() async throws {
+        worker = storeWorker(storeFake: storeFake)
         PriceStub.route("GET /api/price-requests?open=1", .json(200, #"""
         [{"id":"r1","name":"eggs","store":"QFC","searchUrl":"https://www.qfc.com/search?query=eggs",
           "storeLocation":{"name":"Harvard Market","postalCode":"98102","address":"1401 Broadway"}}]
         """#))
         PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":499}"#))
         await poll()
-        XCTAssertEqual(browser.storeCalls, [StoreLocation(name: "Harvard Market", postalCode: "98102", address: "1401 Broadway")])
+        XCTAssertEqual(worker.lastOutcome?.cents, 499, "priced without waiting for the store")
+        await waitFor(self.storeFake.storeCalls.count == 1)
+        XCTAssertEqual(storeFake.storeCalls, [StoreLocation(name: "Harvard Market", postalCode: "98102", address: "1401 Broadway")])
     }
 
     func testPolicyKeepsTheBrowserOnTheStore() throws {
