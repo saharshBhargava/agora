@@ -67,6 +67,18 @@ async def migrate(dsn: str) -> list[str]:
     return applied
 
 
+async def migration_status(conn: asyncpg.Connection, timescale: bool) -> dict:
+    """What this build expects versus what the database has. ``pending`` must be empty for a healthy release;
+    extra applied names are fine (an older build running on a newer, backward-compatible schema)."""
+    expected = sorted(p.name for p in MIGRATIONS.glob("*.sql")
+                      if timescale or not p.name.endswith(".timescale.sql"))
+    applied = set()
+    if await conn.fetchval("SELECT to_regclass('public.schema_migrations') IS NOT NULL"):
+        applied = {r["name"] for r in await conn.fetch("SELECT name FROM schema_migrations")}
+    return {"latest": expected[-1] if expected else None, "expected": len(expected),
+            "pending": [name for name in expected if name not in applied]}
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     asyncio.run(migrate(get_settings().database_url.get_secret_value()))
