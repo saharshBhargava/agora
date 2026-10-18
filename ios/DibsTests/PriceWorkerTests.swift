@@ -1,4 +1,5 @@
 import XCTest
+import WebKit
 @testable import Dibs
 
 /// Routes requests by "METHOD /path" to queued replies (the last reply repeats). No network.
@@ -83,6 +84,7 @@ final class FakeBrowser: PriceBrowsing {
     var warmedUp: [URL] = []
     private var reloaded = false
 
+    var pageView: WKWebView? { nil }
     func restrict(to url: URL) { restrictedTo = url }
     func close() { closed = true }
     func warmUp(_ url: URL) async { warmedUp.append(url) }
@@ -405,6 +407,40 @@ final class PriceWorkerTests: XCTestCase {
         let polls = PriceStub.requests("GET /api/price-requests?open=1").count
         try await Task.sleep(for: .milliseconds(150))
         XCTAssertLessThanOrEqual(PriceStub.requests("GET /api/price-requests?open=1").count, polls + 1)
+    }
+
+    func testThumbnailShowsOnlyWhileALookupRunsAndPicksTheFirstStarted() {
+        let a = PriceWorker.Lookup(requestId: "a", name: "apple", host: "qfc.com")
+        let b = PriceWorker.Lookup(requestId: "b", name: "eggs", host: "qfc.com")
+        XCTAssertNil(PriceWorker.shownLookup([]))
+        XCTAssertEqual(PriceWorker.shownLookup([a]), a)
+        XCTAssertEqual(PriceWorker.shownLookup([a, b]), a, "two at once: the one started first")
+        XCTAssertEqual(PriceWorker.shownLookup([b]), b)
+    }
+
+    func testSheetCaptionFollowsTheLookup() {
+        let a = PriceWorker.Lookup(requestId: "a", name: "Honeycrisp apple", host: "qfc.com")
+        XCTAssertEqual(PriceWorker.caption(requestId: "a", active: [a], outcomes: []), "Checking qfc.com…")
+        XCTAssertEqual(PriceWorker.caption(requestId: "a", active: [], outcomes: [
+            .init(requestId: "a", name: "Honeycrisp apple", via: .page, cents: 175, productName: "Large Honeycrisp Apple")]),
+                       "Found $1.75 · Large Honeycrisp Apple")
+        XCTAssertEqual(PriceWorker.caption(requestId: "a", active: [], outcomes: [
+            .init(requestId: "a", name: "Honeycrisp apple", via: .agent, cents: 175, productName: "")]),
+                       "Found $1.75 · Honeycrisp apple")
+        XCTAssertEqual(PriceWorker.caption(requestId: "a", active: [], outcomes: [
+            .init(requestId: "a", name: "Honeycrisp apple", via: .notFound)]), "No price found")
+    }
+
+    func testActiveLookupIsListedWhileRunning() async throws {
+        browser.observeDelay = .milliseconds(100)
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
+        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":110}"#))
+        await worker.pollOnce()
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(PriceWorker.shownLookup(worker.active)?.requestId, "r1")
+        XCTAssertEqual(worker.currentName, "cosmic crisp apple")
+        await worker.waitUntilIdle()
+        XCTAssertNil(PriceWorker.shownLookup(worker.active), "hidden once the lookup ends")
     }
 
     func testPolicyKeepsTheBrowserOnTheStore() throws {

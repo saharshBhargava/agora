@@ -1,5 +1,6 @@
 import Foundation
 import CoreFoundation
+import WebKit
 
 // Ported from Agora/Browser/BrowserPolicy.swift and BrowserToolExecutor.swift. The worker runs
 // unattended, so actions that needed a person's approval there are refused here.
@@ -102,6 +103,8 @@ final class BrowserToolExecutor: PriceBrowsing {
     }
 
     func close() { session.close() }
+
+    var pageView: WKWebView? { session.webView }
 
     func warmUp(_ url: URL) async {
         restrict(to: url)

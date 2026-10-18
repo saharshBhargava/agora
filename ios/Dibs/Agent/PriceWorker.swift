@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import WebKit
 import os
 
 /// `DIBS: <time> price ...` lines on stdout (same shape as the app's remote-debug log) and os_log.
@@ -28,6 +29,8 @@ protocol PriceBrowsing: AnyObject {
     func restrict(to url: URL)
     /// Runs one browser tool (`browser_open`, `browser_observe`, ...) and returns its JSON result.
     func run(tool name: String, args: [String: Any]) async throws -> [String: Any]
+    /// The page being driven, for the on-screen thumbnail (nil in tests).
+    var pageView: WKWebView? { get }
     /// Loads the store's home page so cookies, consent, scripts and caches are ready. Stops early when cancelled.
     func warmUp(_ url: URL) async
     func close()
@@ -110,7 +113,9 @@ final class PriceWorker {
     struct Lookup: Equatable, Sendable {
         let requestId: String
         let name: String
-        let phase: String
+        /// "qfc.com"
+        let host: String
+        var phase: String { "Checking \(host)…" }
     }
 
     static let maxAgentSteps = 12
@@ -135,6 +140,21 @@ final class PriceWorker {
     /// "Checking qfc.com…" while `name` is being looked up, else nil.
     func status(for name: String) -> String? { active.last(where: { $0.name == name })?.phase }
 
+    /// The lookup the thumbnail shows: the one started first, or nil (thumbnail hidden).
+    static func shownLookup(_ active: [Lookup]) -> Lookup? { active.first }
+
+    /// "Checking qfc.com…" while running, then "Found $1.75 · Large Honeycrisp Apple" or "No price found".
+    static func caption(requestId: String, active: [Lookup], outcomes: [Outcome]) -> String {
+        if let lookup = active.first(where: { $0.requestId == requestId }) { return lookup.phase }
+        guard let outcome = outcomes.last(where: { $0.requestId == requestId }) else { return "" }
+        guard let cents = outcome.cents else { return "No price found" }
+        let product = outcome.productName.flatMap { $0.isEmpty ? nil : $0 } ?? outcome.name
+        return "Found \(Money.format(cents)) · \(product)"
+    }
+
+    /// The live page for a running lookup.
+    func pageView(for requestId: String) -> WKWebView? { lookupBrowsers[requestId]?.pageView }
+
     @MainActor private final class Slot {
         let browser: PriceBrowsing
         var busy = false
@@ -152,6 +172,7 @@ final class PriceWorker {
     @ObservationIgnored private let retryDelay: Duration
     @ObservationIgnored private var slots: [Slot] = []
     @ObservationIgnored private var inFlight: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var lookupBrowsers: [String: PriceBrowsing] = [:]
     @ObservationIgnored private var api: PriceAPI?
     @ObservationIgnored private var loop: Task<Void, Never>?
     /// Lookups started per request id; a request that ends without a price gets one retry.
@@ -271,9 +292,11 @@ final class PriceWorker {
     }
 
     private func lookUp(_ request: PriceRequest, attempt: Int, on slot: Slot, api: PriceAPI) async {
+        lookupBrowsers[request.id] = slot.browser
         defer {
             slot.busy = false
             inFlight[request.id] = nil
+            lookupBrowsers[request.id] = nil
         }
         if let warm = slot.warm {
             // The search page replaces the home page; cookies and caches are already warming.
@@ -306,7 +329,7 @@ final class PriceWorker {
             return Outcome(requestId: request.id, name: request.name, via: .failed)
         }
         let host = BrowserPolicy.domain(of: url) ?? "the store"
-        active.append(Lookup(requestId: request.id, name: request.name, phase: "Checking \(host)…"))
+        active.append(Lookup(requestId: request.id, name: request.name, host: host))
         let start = ContinuousClock.now
         var timing = Timing()
         defer {
