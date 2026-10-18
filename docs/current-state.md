@@ -1,5 +1,22 @@
 # Current state — mandatory read before resuming work
 
+## Local checkout reconciliation — October 18, 2026
+
+The shared checkout's local changes were saved in checkpoint `a45161a`, retained by
+`backup/local-work-20261018`. Review branch `review/local-work-reconciled-20261018` merges
+`origin/main` at `401603d` through `bf26470`, preserving native image displays, automatic-watch UI,
+shared-browser fallback and the latest remote chat, authorization, notification and trip fixes.
+Local `main` was fast-forwarded to `401603d`. Earlier entries describing these native files as
+uncommitted are superseded by this checkpoint; the changes remain local, unpublished source.
+
+Backend application code and migrations match `401603d` exactly. The remaining backend difference
+is the native browser-test support server. Validation on the combined checkout passed **673 backend
+tests** against disposable local PostgreSQL, Ruff, diff checks, and **117 selected iOS simulator tests**
+covering images, browser fallback, watches, shopping, trips, chat, local models and account boundaries.
+Logs: `/tmp/agora-reconciliation-backend.log` and `/tmp/agora-reconciliation-ios.log`; simulator results:
+`/tmp/agora-reconciliation-tests.xcresult`. This work did not push branches, deploy, or write production data.
+Open the existing Xcode project on the review branch to verify the combined app.
+
 ## Product discovery correction — deployed October 18, 2026, 09:44 UTC
 
 PR [#36](https://github.com/saharshBhargava/agora/pull/36) fixes automatic checks spending their page
