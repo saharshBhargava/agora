@@ -15,7 +15,7 @@ from app.db import Database
 from app.errors import Problem, handle_problem, handle_validation, problem_response
 from app.google_calendar import GoogleCalendar
 from app.jobs import Worker
-from app.payments import make_payment_provider
+from app.payments import SimulatedPaymentProvider, make_payment_provider
 from app.pipeline import Pipeline
 from app.routers import (
     account,
@@ -71,6 +71,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.storage, app.state.broadcaster = pipeline.storage, broadcaster
         app.state.calendar = GoogleCalendar(settings, db, client)
         app.state.payments = make_payment_provider(settings)
+        # Process-scoped simulator for the demo account only. Must outlive a single request so provider
+        # idempotency keys still dedupe after a rolled-back propose→checkout transaction.
+        app.state.demo_payments = SimulatedPaymentProvider()
         app.state.verifier = TokenVerifier(settings)
         app.state.worker = Worker(db, pipeline.handlers, settings.worker_concurrency)
         worker_task = None

@@ -25,8 +25,8 @@ from app.payments import (
     SIMULATED_DEFAULT_METHOD,
     ChargeRequest,
     PaymentOutcomeUnknown,
-    SimulatedPaymentProvider,
-    charge_key,
+    intent_charge_key,
+    propose_charge_key,
 )
 from app.routers.account import require_household
 from app.schemas import (
@@ -100,18 +100,24 @@ async def _set_status(conn: asyncpg.Connection, intent_id: UUID, status: str, **
 
 
 async def _execute_checkout(request: Request, conn: asyncpg.Connection, intent: asyncpg.Record, actor_type: str,
-                            user_id: UUID) -> asyncpg.Record:
-    """Agora-native checkout through the configured PaymentProvider. Runs once per intent: the intent row is
-    locked, the provider key is derived from the intent ID, and orders are unique per intent."""
+                            user_id: UUID, *, provider_idempotency_key: str | None = None) -> asyncpg.Record:
+    """Agora-native checkout through the configured PaymentProvider.
+
+    The provider idempotency key must be stable across retries of the *same client attempt*. For propose→allow
+    it is derived from the client Idempotency-Key (the intent row may roll back after a successful charge); for
+    approve it defaults to the intent ID (the row already exists). Demo checkout uses the app-scoped simulator
+    so those keys actually dedupe across requests; it never calls a real provider.
+    """
     provider = request.app.state.payments
     if await is_demo_user(conn, user_id):
-        provider = SimulatedPaymentProvider()
+        provider = request.app.state.demo_payments
     elif provider.name == "simulated":
         raise Problem(503, "payments_unavailable", "Checkout is not available yet. No payment was taken.")
     intent = await _set_status(conn, intent["id"], "executing")
-    charge = ChargeRequest(idempotency_key=charge_key(intent["id"]), amount_cents=intent["amount_cents"],
-                           currency=intent["currency"], description=intent["title"],
-                           payment_method_ref=intent["payload"].get("payment_method_ref") or SIMULATED_DEFAULT_METHOD)
+    charge = ChargeRequest(
+        idempotency_key=provider_idempotency_key or intent_charge_key(intent["id"]),
+        amount_cents=intent["amount_cents"], currency=intent["currency"], description=intent["title"],
+        payment_method_ref=intent["payload"].get("payment_method_ref") or SIMULATED_DEFAULT_METHOD)
     meta: dict = {"provider": provider.name}
     try:
         result = await provider.charge(charge)
@@ -262,7 +268,8 @@ async def propose_intent(body: IntentIn, request: Request, user: Principal = Cur
                           "reasons": verdict.codes, "evidence": len(body.evidence),
                           "mandate_id": verdict.mandate_id})
         if verdict.decision == "allow" and body.execution == "agora":
-            await _execute_checkout(request, conn, row, "agent", user.user_id)
+            await _execute_checkout(request, conn, row, "agent", user.user_id,
+                                    provider_idempotency_key=propose_charge_key(user.user_id, key))
         await notify(conn, household_id, "agent.updated", row["id"])
         result = (await _load(conn, row["id"], user.user_id)).model_dump(mode="json")
         if not await idempotency.claim(conn, user.user_id, key, digest, 201, {"id": result["id"]}):
