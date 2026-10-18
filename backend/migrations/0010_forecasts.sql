@@ -2,7 +2,7 @@
 --
 -- consumption_forecasts keeps every forecast we compute (after each confirmed scan and nightly), not just the
 -- latest, so the app can show "forecast vs actual". It is a time series: insert-only, the time column is in the
--- primary key, and nothing references it. 0007_forecasts.timescale.sql turns it into a hypertable.
+-- primary key, and nothing references it. 0010_forecasts.timescale.sql turns it into a hypertable.
 --
 -- Shopping lists are ordinary mutable household data. Items added by the system or the agent always carry an
 -- explanation, so the user can see why something is on the list.

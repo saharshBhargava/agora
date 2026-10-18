@@ -26,6 +26,7 @@ from app.auth import ensure_user
 from app.config import Settings
 from app.core.wishlist import title_key
 from app.db import Database, audit
+from app.forecasting import refresh
 from app.inventory_ops import sync_purchase_origins
 from app.seed import seed_catalog, seed_household
 
@@ -48,6 +49,7 @@ async def ensure_demo_account(db: Database, settings: Settings) -> UUID:
     async with db.system() as conn:
         existing = await conn.fetchval("SELECT id FROM users WHERE auth_subject = $1", DEMO_SUBJECT)
     if existing:
+        await _forecasts_and_lists(db, existing)
         return existing
     user_id = await ensure_user(db, DEMO_SUBJECT, VISIBLE_HANDLE, settings.demo_display_name)
     async with db.system() as conn:
@@ -105,6 +107,27 @@ async def _seed(db: Database, user_id: UUID) -> None:
         await _wishlist(conn, household_id, user_id, items, now)
         await audit(conn, "demo.ready", actor_type="system", household_id=household_id, target_type="user",
                     target_id=user_id)
+    await _forecasts_and_lists(db, user_id)
+
+
+async def _forecasts_and_lists(db: Database, user_id: UUID) -> None:
+    """Backfill newly shipped features for an existing demo without resetting rehearsed data."""
+    async with db.scoped(user_id) as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo.features'), hashtext($1))", str(user_id))
+        household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
+        if not await conn.fetchval("SELECT 1 FROM consumption_forecasts WHERE household_id = $1 LIMIT 1", household_id):
+            await refresh(conn, household_id, user_id, timescale=db.timescale)
+        if await conn.fetchval("SELECT 1 FROM shopping_lists WHERE household_id = $1 LIMIT 1", household_id):
+            return
+        merchant = await conn.fetchval("SELECT id FROM merchants WHERE name = 'PCC Community Markets' LIMIT 1")
+        list_id = await conn.fetchval(
+            """INSERT INTO shopping_lists (household_id, name, merchant_id, source, created_by)
+               VALUES ($1, 'Saturday groceries', $2, 'user', $3) RETURNING id""", household_id, merchant, user_id)
+        await conn.executemany(
+            """INSERT INTO shopping_list_items (list_id, household_id, title, quantity, reason, added_by,
+                 merchant_id, created_by) VALUES ($1, $2, $3, $4, 'manual', 'user', $5, $6)""",
+            [(list_id, household_id, 'Sourdough bread', 1, merchant, user_id),
+             (list_id, household_id, 'Honeycrisp apples', 4, merchant, user_id)])
 
 
 async def _detections_and_purchases(conn: asyncpg.Connection, household_id: UUID, user_id: UUID,
