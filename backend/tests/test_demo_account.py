@@ -1,0 +1,160 @@
+"""The demo account: one account, realistic data in every feature, isolated from real accounts.
+
+If ``test_demo_account_covers_every_feature_table`` fails after you add a table, add realistic demo rows for it
+in app/demo_account.py (or, if it can never hold demo data, add it to NO_DEMO_DATA with the reason).
+"""
+
+import time
+from types import SimpleNamespace
+from uuid import uuid4
+
+import httpx
+import jwt
+import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
+
+from app.config import Settings
+from app.demo_account import DEMO_SUBJECT, ensure_demo_account, reset_demo_account
+from app.main import create_app
+
+CLIENT_ID = "123-native.apps.googleusercontent.com"
+DEMO_EMAIL = "alex.rivera.agora@gmail.com"
+PASSWORD = "correct-horse-battery-staple"
+
+# Tables that are household/user scoped but can never hold seeded demo rows, and why.
+NO_DEMO_DATA = {
+    "vision_cache": "filled only by real vision provider calls",
+    "idempotency_keys": "request bookkeeping",
+    "google_oauth_states": "transient OAuth handshake state (legacy server-side flow)",
+    "app_sessions": "issued only by the legacy server-side Google flow",
+    "google_calendar_connections": "needs a real Google refresh token; the iOS app talks to Calendar directly",
+}
+
+
+@pytest.fixture(scope="module")
+def signing_key():
+    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+
+def google_token(key, **claims):
+    now = int(time.time())
+    return jwt.encode({"iss": "https://accounts.google.com", "aud": CLIENT_ID, "sub": uuid4().hex, "iat": now,
+                       "exp": now + 3600, **claims}, key, algorithm="RS256")
+
+
+@pytest.fixture(scope="module")
+async def demo_app(database_url, tmp_path_factory, signing_key):
+    settings = Settings(env="demo", auth_mode="google", google_ios_client_id=CLIENT_ID, database_url=database_url,
+                        storage_dir=tmp_path_factory.mktemp("demo-media"), run_worker_in_process=False,
+                        dev_jwt_secret="a-real-random-secret-for-the-demo-0123456789",
+                        demo_password=PASSWORD, demo_google_emails=f" {DEMO_EMAIL.upper()} ,other@example.com")
+    app = create_app(settings)
+    async with app.router.lifespan_context(app):
+        public_key = signing_key.public_key()
+        app.state.verifier._jwks = SimpleNamespace(get_signing_key_from_jwt=lambda _: SimpleNamespace(key=public_key))
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test") as client:
+            yield app, client
+
+
+async def demo_headers(client) -> dict[str, str]:
+    response = await client.post("/v1/dev/login", json={"handle": "demo", "password": PASSWORD})
+    assert response.status_code == 200, response.text
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+async def test_demo_account_covers_every_feature_table(demo_app):
+    app, _ = demo_app
+    user_id = await ensure_demo_account(app.state.db, app.state.settings)
+    async with app.state.db.system() as conn:
+        household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
+        scoped = await conn.fetch(
+            """SELECT table_name, bool_or(column_name = 'household_id') AS by_household,
+                      bool_or(column_name = 'user_id') AS by_user
+               FROM information_schema.columns
+               WHERE table_schema = 'public' AND column_name IN ('household_id', 'user_id')
+               GROUP BY table_name ORDER BY table_name""")
+        missing = []
+        for t in scoped:
+            if t["table_name"] in NO_DEMO_DATA:
+                continue
+            column, value = ("household_id", household_id) if t["by_household"] else ("user_id", user_id)
+            if not await conn.fetchval(f'SELECT EXISTS (SELECT 1 FROM "{t["table_name"]}" WHERE {column} = $1)', value):
+                missing.append(t["table_name"])
+    assert not missing, (f"demo account has no rows in {missing}: add realistic demo data in app/demo_account.py "
+                         "(see CLAUDE.md), or list the table in NO_DEMO_DATA with a reason")
+
+
+async def test_demo_account_looks_real_and_is_full(demo_app):
+    _, client = demo_app
+    headers = await demo_headers(client)
+    me = (await client.get("/v1/me", headers=headers)).json()
+    assert me["display_name"] == "Alex Rivera" and me["handle"] == "alexrivera"
+    assert "demo" not in str(me).lower() and "is_demo" not in str(me)
+
+    items = (await client.get("/v1/inventory", headers=headers)).json()
+    assert len(items) >= 10 and any(i["last_purchased_from"] for i in items)
+    detail = (await client.get(f"/v1/inventory/{items[0]['id']}?days=28", headers=headers)).json()
+    assert len(detail["observations"]) >= 20 and detail["purchase_history"]
+    scans = (await client.get("/v1/scans?limit=5", headers=headers)).json()
+    assert scans and all(s["detections"] for s in scans)
+    assert all(s["provider"] not in ("seed", "replay", "fixtures") for s in scans)  # nothing says "fake"
+    wishlist = (await client.get("/v1/wishlist", headers=headers)).json()
+    assert len(wishlist) >= 3 and wishlist[0]["pinned"]
+    assert (await client.get("/v1/wishlist/suggestions", headers=headers)).json()
+    assert (await client.get("/v1/wishlist/agent-context", headers=headers)).json()["recently_rejected"]
+
+
+async def test_google_sign_in_with_the_demo_address_reaches_the_same_account(demo_app, signing_key):
+    _, client = demo_app
+    by_password = (await client.get("/v1/me", headers=await demo_headers(client))).json()["id"]
+    google = {"Authorization": "Bearer " + google_token(signing_key, email=DEMO_EMAIL, email_verified=True)}
+    assert (await client.get("/v1/me", headers=google)).json()["id"] == by_password
+
+    # An unverified address doesn't count, and neither does anyone else's: they get their own, empty account.
+    unverified = {"Authorization": "Bearer " + google_token(signing_key, email=DEMO_EMAIL, email_verified=False)}
+    stranger = {"Authorization": "Bearer " + google_token(signing_key, email="judge@example.com",
+                                                          email_verified=True)}
+    for headers in (unverified, stranger):
+        me = (await client.get("/v1/me", headers=headers)).json()
+        assert me["id"] != by_password
+        assert (await client.get("/v1/inventory", headers=headers)).json() == []  # no mock data for real users
+        assert (await client.get("/v1/wishlist", headers=headers)).json() == []
+
+
+async def test_demo_login_needs_the_password(demo_app):
+    _, client = demo_app
+    wrong = await client.post("/v1/dev/login", json={"handle": "demo", "password": "guess"})
+    missing = await client.post("/v1/dev/login", json={"handle": "demo"})
+    assert wrong.status_code == missing.status_code == 401
+    assert (await client.post("/v1/dev/login", json={"handle": "mallory", "password": PASSWORD})).status_code == 403
+
+
+async def test_requests_cannot_flag_themselves_as_demo(demo_app):
+    app, client = demo_app
+    me = (await client.get("/v1/me", headers=await demo_headers(client))).json()
+    async with app.state.db.system() as conn:
+        other = await conn.fetchval("SELECT id FROM users WHERE NOT is_demo LIMIT 1")
+    with pytest.raises(Exception, match="permission denied"):
+        async with app.state.db.scoped(other) as conn:
+            await conn.execute("UPDATE users SET is_demo = true WHERE id = app_user_id()")
+    assert me["id"]
+
+
+async def test_reset_restores_a_fresh_demo_account_and_nothing_else(demo_app, signing_key):
+    app, client = demo_app
+    stranger = {"Authorization": "Bearer " + google_token(signing_key, email="keep@example.com", email_verified=True)}
+    household = (await client.get("/v1/me", headers=stranger)).json()["households"][0]["id"]
+    await client.post("/v1/inventory", headers=stranger, json={"household_id": household, "display_name": "Mine"})
+
+    headers = await demo_headers(client)
+    item = (await client.get("/v1/inventory", headers=headers)).json()[0]
+    await client.patch(f"/v1/inventory/{item['id']}", headers=headers, json={"display_name": "Changed during demo"})
+    await reset_demo_account(app.state.db, app.state.settings)
+
+    headers = await demo_headers(client)
+    names = {i["display_name"] for i in (await client.get("/v1/inventory", headers=headers)).json()}
+    assert "Changed during demo" not in names and "2% milk" in names
+    assert [i["display_name"] for i in (await client.get("/v1/inventory", headers=stranger)).json()] == ["Mine"]
+    async with app.state.db.system() as conn:
+        assert await conn.fetchval("SELECT count(*) FROM users WHERE is_demo") == 1
+        assert await conn.fetchval("SELECT auth_subject FROM users WHERE is_demo") == DEMO_SUBJECT

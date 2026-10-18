@@ -9,6 +9,16 @@ audit trail, seed data, and offline replay for demos.
 
 ## Run locally
 
+The fastest way, configured exactly like the hosted demo (Docker optional; falls back to an embedded
+Postgres):
+
+```bash
+cd backend && uv run python -m app.tools.local_demo --tunnel
+```
+
+See [SETUP.md](../SETUP.md) section 9 (Plan B) for running against the hosted database or a snapshot of it.
+The manual steps:
+
 ```bash
 cd backend
 docker compose up -d          # TimescaleDB on 127.0.0.1:5433 (same image family as Tiger Cloud)
@@ -208,8 +218,9 @@ server scheduling are not implemented. Settings provides reconnect, local sign-o
 
 ### Optional inventory backend
 
-The Home screen's inventory feature uses `AgoraAPIClient`, separately from `CalendarConnection`.
-Leaving the backend unconfigured displays an inventory availability message and does not block Calendar.
+The Home screen's inventory feature uses shared `AgoraClient` (Google ID token auth), separate from
+Calendar's Google access-token calls. Leaving the backend unconfigured displays an availability message
+and does not block Calendar.
 To enable inventory, deploy the existing FastAPI/Postgres service and configure:
 
 ```dotenv

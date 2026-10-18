@@ -148,6 +148,24 @@ Send `PATCH /v1/wishlist/{id}` with only the fields that changed.
   calls `POST /v1/wishlist/suggestions` with an `Idempotency-Key`.
 - Checkout and purchase flows.
 
+
+## Requested frontend feature: offline demo fallback (iOS, small)
+
+**Why:** if venue internet and hosting both fail, the backend can still run on the demo Mac
+(`uv run python -m app.tools.local_demo`, see SETUP.md, Plan B). Today `AgoraAPIClient` only accepts
+`https://` origins, so the app can reach a laptop backend only through a tunnel, which needs internet.
+
+**Request (DEBUG builds only):**
+- In `AgoraAPIClient.validOrigin`, also accept `http://localhost`, `http://127.0.0.1`, and
+  `http://<mac-name>.local` / private LAN IPs when compiled with `#if DEBUG`. Release builds stay HTTPS-only.
+- Add `NSAppTransportSecurity > NSAllowsLocalNetworking = YES` to the Debug Info.plist, so ATS permits those
+  local addresses.
+- The simulator then works with `AGORA_API_BASE_URL = http:/$()/localhost:8000`. A phone on the same hotspot
+  works with the Mac's `.local` name.
+
+Google sign-in, Calendar and Gemini chat still need internet, so this only covers inventory, scans (with replay
+fixtures), merchants and the wishlist.
+
 ---
 
 Backend URL and accounts for testing: see [SETUP.md](../SETUP.md). The "Purchased from / on" contract is in

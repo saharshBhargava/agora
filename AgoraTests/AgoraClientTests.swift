@@ -1,6 +1,25 @@
 import XCTest
-import Security
 @testable import Agora
+
+@MainActor
+private final class ClientFakeGoogle: GoogleCalendarAuthorizing {
+    var configurationIssue: String?
+    var account: GoogleCalendarAccount? = GoogleCalendarAccount(
+        id: "alice", email: "alice@example.com", scopes: GoogleCalendarAuthorization.scopes
+    )
+    var idTokenValue = "google-identity-alice"
+    var idTokenCalls = 0
+    func restore() async throws -> GoogleCalendarAccount? { account }
+    func connect() async throws -> GoogleCalendarAccount { account! }
+    func accessToken(for accountID: String) async throws -> String { "access-\(accountID)" }
+    func idToken(for accountID: String) async throws -> String {
+        idTokenCalls += 1
+        guard accountID == account?.id else { throw BrowserError("calendar_account_changed") }
+        return idTokenValue
+    }
+    func signOut() { account = nil }
+    func disconnect() async throws { account = nil }
+}
 
 private final class AgoraURLProtocol: URLProtocol {
     static var handler: ((URLRequest) -> (Int, Any))!
@@ -8,7 +27,10 @@ private final class AgoraURLProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         let (status, json) = Self.handler(request)
-        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: status, httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: json))
         client?.urlProtocolDidFinishLoading(self)
@@ -16,13 +38,22 @@ private final class AgoraURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+private struct InventoryRow: Decodable, Equatable {
+    let id: String
+    let displayName: String
+}
+
 @MainActor
 final class AgoraClientTests: XCTestCase {
-    private var service = ""
+    private var auth: ClientFakeGoogle!
+    private var calendar: CalendarConnection!
     private var http: URLSession!
 
     override func setUp() async throws {
-        service = "test.agora.client.\(UUID().uuidString)"
+        auth = ClientFakeGoogle()
+        calendar = CalendarConnection(authorization: auth)
+        await calendar.refresh()
+        XCTAssertTrue(calendar.connected)
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [AgoraURLProtocol.self]
         http = URLSession(configuration: config)
@@ -30,57 +61,63 @@ final class AgoraClientTests: XCTestCase {
 
     override func tearDown() async throws {
         http.invalidateAndCancel()
-        SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service] as CFDictionary)
         AgoraURLProtocol.handler = nil
+        calendar = nil
+        auth = nil
     }
 
-    func testBearerRequestAndSessionClearOnUnauthorized() async throws {
-        let account = AgoraClient.Account(token: "ags_test", email: "alice@example.com", userID: UUID().uuidString, expiresAt: "2099-01-01T00:00:00Z")
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: "session",
-            kSecValueData as String: try JSONEncoder().encode(account)
-        ]
-        XCTAssertEqual(SecItemAdd(query as CFDictionary, nil), errSecSuccess)
-
+    func testIDTokenBearerAndSoftUnauthorized() async throws {
         var sawAuth: String?
         AgoraURLProtocol.handler = { request in
             sawAuth = request.value(forHTTPHeaderField: "Authorization")
-            if request.url!.path == "/v1/me" { return (200, ["email": "alice@example.com"]) }
-            return (401, ["title": "session_expired", "detail": "Sign in again."])
+            if request.url!.path.hasSuffix("/v1/me") {
+                return (200, ["email": "alice@example.com"])
+            }
+            return (401, ["title": "invalid_token", "detail": "Sign in again."])
         }
 
-        let client = AgoraClient(baseURL: URL(string: "https://api.example.com"), http: http, service: service)
-        XCTAssertTrue(client.signedIn)
+        let client = AgoraClient(calendar: calendar, baseURL: URL(string: "https://api.example.com"), http: http)
         let me = try await client.request("v1/me")
-        XCTAssertEqual(sawAuth, "Bearer ags_test")
+        XCTAssertEqual(sawAuth, "Bearer google-identity-alice")
         XCTAssertEqual(me["email"] as? String, "alice@example.com")
+        XCTAssertEqual(auth.idTokenCalls, 1)
+        XCTAssertTrue(calendar.connected)
 
-        AgoraURLProtocol.handler = { _ in (401, ["title": "session_expired", "detail": "Sign in again."]) }
         do {
             _ = try await client.request("v1/inventory")
             XCTFail("Expected 401")
         } catch let error as BrowserError {
-            XCTAssertEqual(error.code, "session_expired")
+            XCTAssertEqual(error.code, "invalid_token")
             XCTAssertEqual(error.status, 401)
-            XCTAssertFalse(client.signedIn)
+            XCTAssertTrue(calendar.connected, "Agora 401 must not sign out of Google")
         }
     }
 
-    func testListJSONAndUnavailableBaseURL() async throws {
-        AgoraURLProtocol.handler = { _ in (200, [["id": "item-1"], ["id": "item-2"]]) }
-        let client = AgoraClient(baseURL: URL(string: "https://api.example.com"), http: http, service: service)
-        try client.save(AgoraClient.Account(token: "ags", email: "a@b.c", userID: "u", expiresAt: "2099-01-01T00:00:00Z"))
-        let list = try await client.requestJSON("v1/inventory") as? [[String: Any]]
-        XCTAssertEqual(list?.count, 2)
-
-        let missing = AgoraClient(baseURL: nil, http: http, service: service + ".empty")
-        do {
-            _ = try await missing.request("v1/me")
-            XCTFail("Expected unavailable")
-        } catch let error as BrowserError {
-            XCTAssertEqual(error.code, "service_unavailable")
+    func testDecodableFetchListAndMissingBaseURL() async throws {
+        AgoraURLProtocol.handler = { _ in
+            (200, [["id": "item-1", "display_name": "Milk"], ["id": "item-2", "display_name": "Eggs"]])
         }
+        let client = AgoraClient(calendar: calendar, baseURL: URL(string: "https://api.example.com"), http: http)
+        let items = try await client.fetch("v1/inventory", as: [InventoryRow].self)
+        XCTAssertEqual(items, [InventoryRow(id: "item-1", displayName: "Milk"), InventoryRow(id: "item-2", displayName: "Eggs")])
+
+        let missing = AgoraClient(calendar: calendar, baseURL: nil, http: http)
+        do {
+            _ = try await missing.fetch("v1/inventory", as: [InventoryRow].self)
+            XCTFail("Expected not configured")
+        } catch let error as BrowserError {
+            XCTAssertEqual(error.code, "agora_not_configured")
+        }
+    }
+
+    func testIdempotencyKeyOnMutatingRequest() async throws {
+        var sawKey: String?
+        AgoraURLProtocol.handler = { request in
+            sawKey = request.value(forHTTPHeaderField: "Idempotency-Key")
+            return (201, ["ok": true])
+        }
+        let client = AgoraClient(calendar: calendar, baseURL: URL(string: "https://api.example.com"), http: http)
+        _ = try await client.request("v1/wishlist", method: "POST", body: ["title": "Oat milk"], key: "idem-123")
+        XCTAssertEqual(sawKey, "idem-123")
     }
 }

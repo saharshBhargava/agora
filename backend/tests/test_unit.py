@@ -105,8 +105,12 @@ def test_config_refuses_unsafe_deploys():
     with pytest.raises(ValueError, match="not allowed"):
         Settings(env="prod", auth_mode="dev")
     with pytest.raises(ValueError, match="unique"):
-        Settings(env="demo", auth_mode="dev")
-    Settings(env="demo", auth_mode="dev", dev_jwt_secret="a-real-random-secret-for-the-demo-0123456789")
+        Settings(env="demo", auth_mode="dev", demo_password="a-long-demo-password")
+    with pytest.raises(ValueError, match="at least 12"):
+        Settings(env="demo", demo_password="short")
+    assert not Settings(env="demo", auth_mode="dev").dev_login_enabled  # hosted dev login needs a password
+    Settings(env="demo", auth_mode="dev", dev_jwt_secret="a-real-random-secret-for-the-demo-0123456789",
+             demo_password="a-long-demo-password")
 
 
 async def test_missing_vision_key_degrades_to_replay_instead_of_crashing():

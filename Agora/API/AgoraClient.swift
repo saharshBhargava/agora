@@ -1,150 +1,122 @@
 import Foundation
-import Security
 
-/// Shared Agora API session: Keychain bearer token + HTTPS JSON requests.
-/// Feature modules (calendar, scans, inventory) should use this instead of owning their own auth HTTP.
+/// Shared Agora API client. Identity comes from native Google Sign-In (ID token);
+/// Google access/refresh tokens never leave the device for these calls.
 @MainActor
-final class AgoraClient: ObservableObject {
-    struct Account: Codable {
-        let token: String
-        let email: String
-        let userID: String
-        let expiresAt: String
-    }
-
-    @Published private(set) var signedIn = false
-    @Published private(set) var email: String?
-    /// Set when Keychain session data exists but cannot be read/decoded.
-    private(set) var sessionLoadError: String?
+final class AgoraClient {
+    private let calendar: CalendarConnection
     private let baseURL: URL?
     private let http: URLSession
-    private let service: String
-    private var account: Account?
 
-    init(baseURL: URL? = nil, http: URLSession? = nil, service: String = "app.agora.account") {
+    var isConfigured: Bool { Self.validOrigin(baseURL) }
+
+    init(calendar: CalendarConnection, baseURL: URL? = nil, http: URLSession? = nil) {
+        self.calendar = calendar
         self.baseURL = baseURL ?? (Bundle.main.object(forInfoDictionaryKey: "AgoraAPIBaseURL") as? String).flatMap(URL.init(string:))
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 30
-        self.http = http ?? URLSession(configuration: config, delegate: AgoraNoRedirect(), delegateQueue: nil)
-        self.service = service
-        do {
-            account = try readAccount()
-            email = account?.email
-            signedIn = account != nil
-        } catch {
-            account = nil
-            email = nil
-            signedIn = false
-            sessionLoadError = "Could not read your saved sign-in. Please reconnect."
-        }
+        self.http = http ?? URLSession(configuration: config, delegate: NoCredentialRedirect(), delegateQueue: nil)
     }
 
-    var hasSession: Bool { account != nil }
-
-    func save(_ account: Account) throws {
-        let attributes: [String: Any] = [
-            kSecValueData as String: try JSONEncoder().encode(account),
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        ]
-        var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        if status == errSecItemNotFound {
-            status = SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil)
-        }
-        guard status == errSecSuccess, try readAccount()?.token == account.token else {
-            throw BrowserError("account_keychain_error", "Could not securely save your sign-in. Please try again.")
-        }
-        self.account = account
-        email = account.email
-        signedIn = true
+    private static func validOrigin(_ url: URL?) -> Bool {
+        guard let url else { return false }
+        return url.scheme == "https" && url.host != nil
+            && url.user == nil && url.password == nil
+            && url.query == nil && url.fragment == nil
     }
 
-    func clear() {
-        SecItemDelete(query as CFDictionary)
-        account = nil
-        email = nil
-        signedIn = false
+    /// Typed JSON (`Decodable`, snake_case). Preferred for inventory and similar list/detail routes.
+    func fetch<Value: Decodable>(
+        _ path: String,
+        as type: Value.Type,
+        method: String = "GET",
+        body: [String: Any]? = nil,
+        key: String? = nil
+    ) async throws -> Value {
+        let data = try await perform(path, method: method, body: body, key: key)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(type, from: data)
     }
 
-    /// JSON object responses (`{...}`). Prefer this for most `/v1` routes.
+    /// JSON object responses (`{...}`).
     func request(
         _ path: String,
         method: String = "GET",
         body: [String: Any]? = nil,
-        key: String? = nil,
-        authenticated: Bool = true
+        key: String? = nil
     ) async throws -> [String: Any] {
-        let value = try await requestJSON(path, method: method, body: body, key: key, authenticated: authenticated)
+        let value = try await requestJSON(path, method: method, body: body, key: key)
         guard let object = value as? [String: Any] else { throw BrowserError("invalid_server_response") }
         return object
     }
 
-    /// Any JSON value (object or array). Use for list endpoints like `/v1/inventory`.
+    /// Any JSON value (object or array). Use for untyped list endpoints.
     func requestJSON(
         _ path: String,
         method: String = "GET",
         body: [String: Any]? = nil,
-        key: String? = nil,
-        authenticated: Bool = true
+        key: String? = nil
     ) async throws -> Any {
-        guard let baseURL, baseURL.scheme == "https", baseURL.host != nil,
-              baseURL.user == nil, baseURL.password == nil, baseURL.query == nil, baseURL.fragment == nil else {
-            throw BrowserError("service_unavailable", "Agora is unavailable in this build. Please try again later.")
+        let data = try await perform(path, method: method, body: body, key: key)
+        guard let json = try? JSONSerialization.jsonObject(with: data) else {
+            throw BrowserError("invalid_server_response")
         }
+        return json
+    }
+
+    private func perform(
+        _ path: String,
+        method: String,
+        body: [String: Any]?,
+        key: String?
+    ) async throws -> Data {
+        guard isConfigured, let baseURL else {
+            throw BrowserError(
+                "agora_not_configured",
+                "Agora isn’t available in this build yet. Calendar and chat are ready to use."
+            )
+        }
+        guard calendar.connected, let accountID = calendar.accountID else {
+            throw BrowserError("sign_in_required", "Sign in with Google to continue.")
+        }
+        let token = try await calendar.authorization.idToken(for: accountID)
+        try Task.checkCancellation()
+        guard calendar.accountID == accountID, calendar.connected else {
+            throw BrowserError("account_changed", "Your Google connection changed. Please try again.")
+        }
+
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.httpMethod = method
-        if authenticated {
-            guard let account else { throw BrowserError("sign_in_required", "Sign in to continue.") }
-            request.setValue("Bearer \(account.token)", forHTTPHeaderField: "Authorization")
-        }
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let key { request.setValue(key, forHTTPHeaderField: "Idempotency-Key") }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
+
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await http.data(for: request)
         } catch {
+            try Task.checkCancellation()
             throw BrowserError("connection_failed", "Could not reach Agora. Check your connection and try again.")
         }
-        guard let httpResponse = response as? HTTPURLResponse else { throw BrowserError("invalid_server_response") }
-        let json = try? JSONSerialization.jsonObject(with: data)
+        try Task.checkCancellation()
+        guard calendar.accountID == accountID, calendar.connected else {
+            throw BrowserError("account_changed", "Your Google connection changed. Please try again.")
+        }
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BrowserError("invalid_server_response")
+        }
         guard (200..<300).contains(httpResponse.statusCode) else {
-            let object = json as? [String: Any]
-            let code = object?["title"] as? String ?? "request_failed"
-            let detail = object?["detail"] as? String ?? "Request failed. Please try again."
-            if httpResponse.statusCode == 401 && authenticated { clear() }
+            // Do not sign the user out of Google when the Agora API rejects a call.
+            let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let code = object?["title"] as? String ?? "agora_unavailable"
+            let detail = object?["detail"] as? String ?? "Couldn’t reach Agora. Please try again later."
             throw BrowserError(code, detail, status: httpResponse.statusCode)
         }
-        guard let json else { throw BrowserError("invalid_server_response") }
-        return json
-    }
-
-    private var query: [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "session"]
-    }
-
-    private func readAccount() throws -> Account? {
-        var q = query
-        q[kSecReturnData as String] = true
-        q[kSecMatchLimit as String] = kSecMatchLimitOne
-        var value: CFTypeRef?
-        let status = SecItemCopyMatching(q as CFDictionary, &value)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let data = value as? Data else { throw BrowserError("account_keychain_error") }
-        return try JSONDecoder().decode(Account.self, from: data)
-    }
-}
-
-private final class AgoraNoRedirect: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest,
-        completionHandler: @escaping (URLRequest?) -> Void
-    ) {
-        completionHandler(nil)
+        return data
     }
 }

@@ -20,7 +20,7 @@ struct HomeInventoryItem: Decodable, Identifiable {
 struct HomeView: View {
     @Binding var selectedTab: AppTab
     @ObservedObject var calendar: CalendarConnection
-    let backend: AgoraAPIClient
+    let api: AgoraClient
     @State private var inventory: [HomeInventoryItem] = []
     @State private var loading = true
     @State private var inventoryError: String?
@@ -213,7 +213,7 @@ struct HomeView: View {
         loading = true
         defer { loading = false }
         do {
-            let items = try await backend.fetch("v1/inventory", as: [HomeInventoryItem].self)
+            let items = try await api.fetch("v1/inventory", as: [HomeInventoryItem].self)
             try Task.checkCancellation()
             inventory = items
             inventoryError = nil
