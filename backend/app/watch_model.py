@@ -20,6 +20,18 @@ async def openai_generate(settings, client, body):
         if '_openai_message' in content:
             messages.append(content['_openai_message'])
             continue
+        if any('inlineData' in part for part in content['parts']):
+            # Public product thumbnails are sent as bytes, never as credential-bearing remote URLs.
+            parts = []
+            for part in content['parts']:
+                if 'text' in part:
+                    parts.append({'type': 'text', 'text': part['text']})
+                elif 'inlineData' in part:
+                    inline = part['inlineData']
+                    parts.append({'type': 'image_url', 'image_url': {
+                        'url': 'data:' + inline['mimeType'] + ';base64,' + inline['data']}})
+            messages.append({'role': 'user', 'content': parts})
+            continue
         for part in content['parts']:
             if 'functionResponse' in part:
                 reply = part['functionResponse']
