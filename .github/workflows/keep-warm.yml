@@ -1,24 +1,53 @@
 name: keep-warm
 
-# Render's free plan sleeps after 15 idle minutes and takes ~1 minute to wake. This pings /readyz (which also
-# touches the database) every 10 minutes so the demo server stays awake. GitHub may delay scheduled runs, so
-# for the demo itself also use an uptime monitor or open /healthz a few minutes beforehand.
-# Set the repository variable AGORA_API_URL (Settings > Secrets and variables > Actions > Variables), e.g.
-# https://agora-api.onrender.com. Without it, this workflow does nothing.
+# Production monitor, every 10 minutes (a few seconds per run; free on a public repo).
+# - Keeps Render's free instance awake: it sleeps after 15 idle minutes and takes ~1 minute to wake.
+#   Scheduled runs can be delayed by GitHub, so also open /healthz before a live demo.
+# - Goes red if the API is down, so the Actions tab shows an outage.
+# - Warns (without failing) when production runs a different commit than main's latest tested backend
+#   commit, e.g. a release that is still in progress or one that failed. The deploy workflow has the details.
+# Uses the repository variable AGORA_API_URL (falls back to the team API).
 
 on:
   schedule:
     - cron: "*/10 * * * *"
   workflow_dispatch:
 
-permissions: {}
+permissions:
+  actions: read
 
 jobs:
   ping:
-    if: ${{ vars.AGORA_API_URL != '' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 5
+    env:
+      URL: ${{ vars.AGORA_API_URL || 'https://agora-api-yq3m.onrender.com' }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
-      - run: curl -fsS --retry 3 --retry-delay 30 --retry-all-errors --max-time 90 "$URL/readyz"
+      - name: Production is up
+        id: ready
+        run: |
+          body=$(curl -fsS --retry 4 --retry-delay 30 --retry-all-errors --max-time 90 "$URL/readyz") || {
+            echo "::error::Production API is not ready at $URL/readyz. Check the latest deploy run, or run deploy with action=status / restart. See docs/deployment.md#when-production-is-down"
+            exit 1; }
+          echo "$body"
+          echo "commit=$(echo "$body" | jq -r '.commit // empty')" >> "$GITHUB_OUTPUT"
+      - name: Production runs main's latest tested backend
+        if: steps.ready.outputs.commit != ''
         env:
-          URL: ${{ vars.AGORA_API_URL }}
+          LIVE: ${{ steps.ready.outputs.commit }}
+        run: |
+          read -r sha finished < <(gh run list --workflow backend.yml --branch main --event push --status success \
+            --limit 1 --json headSha,updatedAt --jq '.[0] | "\(.headSha) \(.updatedAt)"')
+          [ -z "$sha" ] && exit 0
+          age=$(( $(date +%s) - $(date -d "$finished" +%s) ))
+          # Commits that change nothing the image is built from are intentionally never released.
+          changed=$(gh api "repos/$GH_REPO/compare/$LIVE...$sha" \
+            --jq '[.files[].filename | select(startswith("backend/") or . == "render.yaml")] | length' \
+            2>/dev/null || echo 1)
+          if [ "$sha" != "$LIVE" ] && [ "$changed" != "0" ] && [ "$age" -gt 2700 ]; then
+            echo "::warning::Production runs ${LIVE:0:12}, but main's latest tested backend commit ${sha:0:12} finished CI $((age / 60)) min ago. Check the deploy workflow for that commit."
+          else
+            echo "Production is on ${LIVE:0:12}; latest tested backend commit ${sha:0:12}."
+          fi

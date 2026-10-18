@@ -10,7 +10,9 @@ Changes publish events on `GET /v1/events`: `forecast.updated` (id = household) 
 
 The examples below were captured from the app running against the seeded three-week demo history (`kedar`
 dev account, time zone `America/Los_Angeles`, captured on Friday 17 Oct 2026 at 17:38 PDT). IDs and
-timestamps will differ. Long responses are trimmed where marked.
+timestamps will differ. Long responses are trimmed where marked. These are historical local fixtures,
+not hosted login instructions. Use username `demo` plus the private Render password for the current
+populated account; ordinary hosted users do not receive those legacy histories. See [current state](../current-state.md).
 
 ## Contents
 

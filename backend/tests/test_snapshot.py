@@ -48,3 +48,21 @@ async def test_snapshot_round_trip_preserves_rows_and_audit_chain(app, client, t
     finally:
         await admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
         await admin.close()
+
+
+async def test_encrypted_snapshot_needs_the_passphrase(app, tmp_path):
+    import pytest
+
+    from app.tools.snapshot import MAGIC, decrypt, export
+
+    archive = tmp_path / "backup.agora"
+    await export(app.state.db.dsn, str(archive), passphrase="correct horse battery staple")
+    blob = archive.read_bytes()
+    assert blob.startswith(MAGIC) and b"users.csv" not in blob  # nothing readable without the key
+    assert decrypt(blob, "correct horse battery staple").startswith(b"PK")  # a zip inside
+    for wrong in (None, "wrong passphrase"):
+        with pytest.raises(SystemExit):
+            decrypt(blob, wrong)
+    tampered = blob[:-1] + bytes([blob[-1] ^ 1])
+    with pytest.raises(SystemExit):
+        decrypt(tampered, "correct horse battery staple")

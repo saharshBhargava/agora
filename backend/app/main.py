@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager, suppress
@@ -8,6 +9,7 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.auth import TokenVerifier
 from app.config import Settings, get_settings
@@ -15,6 +17,7 @@ from app.db import Database
 from app.errors import Problem, handle_problem, handle_validation, problem_response
 from app.google_calendar import GoogleCalendar
 from app.jobs import Worker
+from app.migrate import migration_status
 from app.payments import SimulatedPaymentProvider, make_payment_provider
 from app.pipeline import Pipeline
 from app.routers import (
@@ -40,6 +43,8 @@ from app.vision.providers import make_provider
 from app.vision.service import VisionService
 
 log = logging.getLogger("agora.http")
+# The git commit this process runs: set by Render for Git-backed services, or AGORA_GIT_COMMIT elsewhere.
+RELEASE_COMMIT = os.environ.get("RENDER_GIT_COMMIT") or os.environ.get("AGORA_GIT_COMMIT") or None
 
 
 def _provider(kind: str, settings: Settings, client: httpx.AsyncClient):
@@ -66,6 +71,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db = Database(settings.database_url.get_secret_value(), settings.db_pool_min, settings.db_pool_max,
                       pgbouncer=settings.db_pgbouncer)
         await db.connect()
+        async with db.raw() as conn:
+            app.state.migrations = await migration_status(conn, db.timescale)
         client = httpx.AsyncClient(follow_redirects=False)
         pipeline = build_pipeline(settings, db, client)
         broadcaster = Broadcaster(db)
@@ -138,10 +145,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"ok": True}
 
     @app.get("/readyz", tags=["ops"])
-    async def readyz(request: Request) -> dict:
+    async def readyz(request: Request) -> JSONResponse:
+        """Health check for Render and the deploy pipeline. Reports the running commit (Render sets
+        RENDER_GIT_COMMIT) and fails while any migration this build expects is missing, so a release whose
+        schema didn't apply never receives traffic."""
         async with request.app.state.db.raw() as conn:
             await conn.fetchval("SELECT 1")
-        return {"ok": True, "timescale": request.app.state.db.timescale, "version": app.version}
+        migrations = request.app.state.migrations
+        body = {"ok": not migrations["pending"], "timescale": request.app.state.db.timescale,
+                "version": app.version, "commit": RELEASE_COMMIT, "migrations": migrations}
+        return JSONResponse(body, status_code=200 if body["ok"] else 503)
 
     for router in (account.router, inventory.router, merchants.router, scans.router, events.router,
                    audit.router, calendar.router, wishlist.router, forecasts.router, lists.router,
