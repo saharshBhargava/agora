@@ -17,11 +17,19 @@ struct ShopperView: View {
     /// Opens the receipt camera ("I've paid · snap the receipt"). The routed screen passes
     /// `model.openReceipt(ref)`; nil (the debug auto-shop root, which has no navigation) hides it.
     let onSnapReceipt: (() -> Void)?
+    /// Called after "Leave the cart?" is confirmed and the camera and price worker are stopped. The
+    /// routed screen goes Home; nil (the debug auto-shop root) just stops.
+    let onLeave: (() -> Void)?
     @State private var camera: ShopperCamera
     /// Finds QFC prices for unpriced chips with the in-app browser while this shopper is in the run.
     @State private var priceWorker = PriceWorker()
 
-    @State private var fixing: Chip?
+    @State private var fixing: FixTarget?
+    @State private var confirmLeave = false
+    /// Chips already seen removed; a chip newly removed (by anyone, the camera watcher too) gets the undo.
+    @State private var removedIds: Set<String>?
+    /// Ticks every few seconds for "No price found".
+    @State private var clock = Date()
     /// "Removed 2% Milk · Undo · 5s" (the shared UndoToast).
     @State private var toast: Toast?
     @State private var kept: Set<String> = []
@@ -36,15 +44,23 @@ struct ShopperView: View {
     /// A row being dragged toward the remove zone; `location` is in the "shopper" coordinate space.
     private struct Lift: Equatable { let chip: Chip; var location: CGPoint }
 
+    private struct FixTarget: Identifiable {
+        let chip: Chip
+        var focusPrice = false
+        var id: String { chip.id }
+    }
+
     private static let tip = "Tap the item on the screen to identify it"
     private static let space = "shopper"
 
-    init(store: RunStore, api: DibsAPI, runId: String, personId: String, onSnapReceipt: (() -> Void)? = nil) {
+    init(store: RunStore, api: DibsAPI, runId: String, personId: String,
+         onSnapReceipt: (() -> Void)? = nil, onLeave: (() -> Void)? = nil) {
         self.store = store
         self.api = api
         self.runId = runId
         self.personId = personId
         self.onSnapReceipt = onSnapReceipt
+        self.onLeave = onLeave
         _camera = State(initialValue: ShopperCamera(store: store, api: api, runId: runId))
     }
 
@@ -91,9 +107,25 @@ struct ShopperView: View {
         .toolbarBackground(Color.paper, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.light, for: .navigationBar)
+        // The way out is the close button, which asks first (leaving stops the stream).
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { confirmLeave = true } label: {
+                    Image(systemName: "xmark").font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.ink)
+                }
+                .accessibilityLabel("Leave the cart")
+            }
+        }
+        .confirmationDialog("Leave the cart? Housemates will stop seeing your stream.",
+                            isPresented: $confirmLeave, titleVisibility: .visible) {
+            Button("Leave", role: .destructive) { leave() }
+            Button("Stay", role: .cancel) {}
+        }
         .preferredColorScheme(.light)
-        .sheet(item: $fixing) { chip in
-            FixChipSheet(chip: chip, onSave: { name, cents in save(chip, name: name, cents: cents) },
+        .sheet(item: $fixing) { target in
+            FixChipSheet(chip: target.chip, focusPrice: target.focusPrice,
+                         onSave: { name, cents in save(target.chip, name: name, cents: cents) },
                          onCancel: { fixing = nil })
                 .presentationDetents([.height(440)])
                 .presentationBackground(Color.paper)
@@ -113,6 +145,18 @@ struct ShopperView: View {
             if let e = store.lastError, let n = ShopperLogic.notice(forError: e) { notice = n }
         }
         .onChange(of: camera.lastAddError) { _, e in if let e { notice = e } }
+        .onChange(of: store.run?.chips, initial: true) { _, chips in
+            guard let chips else { return }
+            let r = ShopperLogic.removals(previous: removedIds, chips: chips)
+            removedIds = r.ids
+            if let chip = r.new.last { showUndo(chip) }
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                clock = Date()
+            }
+        }
         // A new identify attempt (a region) clears the hint.
         .onChange(of: store.identifyingRegion) { _, r in if r != nil { notice = nil } }
         .task(id: notice) {
@@ -238,9 +282,10 @@ struct ShopperView: View {
     private func row(_ chip: Chip) -> some View {
         let removable = ShopperLogic.isRemovable(chip)
         let view = CartRowView(chip: chip, people: run?.people ?? [], me: personId,
-                               checking: priceWorker.status(for: chip.name))
+                               checking: priceWorker.status(for: chip.name), now: clock,
+                               onAddPrice: { fixing = FixTarget(chip: chip, focusPrice: true) })
             .opacity(lift?.chip.id == chip.id ? 0.3 : 1)
-            .onTapGesture { if chip.state != .wish { fixing = chip } }
+            .onTapGesture { if chip.state != .wish { fixing = FixTarget(chip: chip) } }
             .accessibilityAddTraits(chip.state != .wish ? .isButton : [])
             .accessibilityHint(chip.state != .wish ? "Fix the name or price" : "")
         if removable {
@@ -465,8 +510,12 @@ struct ShopperView: View {
 
     // MARK: actions
 
+    /// Sends the removal; the undo toast comes from the chip turning `.removed` (same as a camera removal).
     private func remove(_ chip: Chip) {
-        guard store.remove(chip.id) else { return }
+        store.remove(chip.id)
+    }
+
+    private func showUndo(_ chip: Chip) {
         let countdown = UndoCountdown(chipId: chip.id, label: "Removed \(chip.name.isEmpty ? "item" : chip.name)",
                                       startedAt: Date())
         toast = Toast(label: countdown.label, seconds: countdown.duration, undo: { undoRemove(countdown) })
@@ -490,6 +539,13 @@ struct ShopperView: View {
     }
 
     private func adopt(_ r: Run) { store.adopt(r) }
+
+    private func leave() {
+        camera.stop()
+        priceWorker.stop()
+        DibsLog.event("shopper left the cart")
+        onLeave?()
+    }
 
     private func act(_ work: @escaping @MainActor () async throws -> Void) {
         busy = true

@@ -9,6 +9,10 @@ struct CartRowView: View {
     let me: String
     /// The price worker's status for this item ("Checking qfc.com…"), nil when it isn't checking it.
     var checking: String?
+    /// The clock for "No price found" (nil never shows it).
+    var now: Date?
+    /// "Add price" on a row whose lookup gave up.
+    var onAddPrice: (() -> Void)?
 
     var body: some View {
         let wish = chip.state == .wish
@@ -29,11 +33,20 @@ struct CartRowView: View {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color.ink)
                     .lineLimit(2)
-                switch ShopperLogic.subline(chip, people: people, checking: checking) {
+                switch ShopperLogic.subline(chip, people: people, checking: checking, now: now) {
                 case .wish(let text, _):
                     Text(text).font(.system(size: 13, weight: .medium)).foregroundStyle(wishColor)
                 case .muted(let text):
                     Text(text).font(.system(size: 13)).foregroundStyle(Color.muted)
+                case .noPrice:
+                    Button { onAddPrice?() } label: {
+                        (Text("\(ShopperLogic.noPriceText) · ").foregroundStyle(Color.muted)
+                         + Text(ShopperLogic.addPriceText).foregroundStyle(Color.ink).fontWeight(.bold).underline())
+                            .font(.system(size: 13))
+                            .frame(minHeight: 24, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 case nil:
                     EmptyView()
                 }
@@ -68,6 +81,11 @@ struct CartRowView: View {
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Self.label(chip, people: people))
+        .accessibilityActions {
+            if ShopperLogic.subline(chip, people: people, checking: checking, now: now) == .noPrice {
+                Button(ShopperLogic.addPriceText) { onAddPrice?() }
+            }
+        }
     }
 
     /// Same wording as the web `chipLabel`.

@@ -87,11 +87,19 @@ enum ShopperLogic {
         case wish(String, wisherId: String?)
         /// Secondary line in muted ink.
         case muted(String)
+        /// "No price found · Add price": the price lookup gave up; "Add price" opens the fix sheet.
+        case noPrice
     }
+
+    /// How long a row waits for a price before offering "Add price".
+    static let noPriceAfter: TimeInterval = 60
+    static let noPriceText = "No price found"
+    static let addPriceText = "Add price"
 
     /// The line under a row's name. `checking` is the price worker's status for this item
     /// (`priceWorker.status(for: chip.name)`, "Checking qfc.com…"), nil when it isn't looking it up.
-    static func subline(_ chip: Chip, people: [Person], checking: String?) -> Subline? {
+    /// `now` enables "No price found" for a row still unpriced `noPriceAfter` after it was added.
+    static func subline(_ chip: Chip, people: [Person], checking: String?, now: Date? = nil) -> Subline? {
         switch chip.state {
         case .wish:
             let wisher = people.first { $0.id == chip.wishedBy }
@@ -101,6 +109,7 @@ enum ShopperLogic {
         default:
             if chip.priceCents == nil {
                 if let checking { return .muted(checking.isEmpty ? "Checking qfc.com…" : checking) }
+                if let now, now.timeIntervalSince1970 - chip.addedAt / 1000 >= noPriceAfter { return .noPrice }
                 return .muted("Finding price…")
             }
             return chip.claimers.isEmpty ? .muted("Nobody yet · stays yours") : nil
@@ -125,6 +134,17 @@ enum ShopperLogic {
     }
 
     static func duplicateLine(_ chip: Chip) -> String { "\(chip.name) showed up again" }
+
+    // MARK: removals
+
+    /// Chips that just turned `.removed` (by this phone, the camera watcher or anyone), so each gets
+    /// the undo toast. `previous` nil (the first snapshot) records the removed set without reporting.
+    static func removals(previous: Set<String>?, chips: [Chip]) -> (ids: Set<String>, new: [Chip]) {
+        let removed = chips.filter { $0.state == .removed }
+        let ids = Set(removed.map(\.id))
+        guard let previous else { return (ids, []) }
+        return (ids, removed.filter { !previous.contains($0.id) })
+    }
 
     // MARK: modes
 

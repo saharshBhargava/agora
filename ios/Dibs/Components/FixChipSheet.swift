@@ -6,6 +6,8 @@ struct FixChipSheet: View {
     /// Called with the changed fields (both nil: nothing changed).
     let onSave: (_ name: String?, _ priceCents: Int?) -> Void
     let onCancel: () -> Void
+    /// Start in the price field ("Add price" on a row with no price found).
+    var focusPrice = false
 
     @State private var name: String
     @State private var price: String
@@ -13,8 +15,10 @@ struct FixChipSheet: View {
 
     private enum Field { case name, price }
 
-    init(chip: Chip, onSave: @escaping (_ name: String?, _ priceCents: Int?) -> Void, onCancel: @escaping () -> Void) {
+    init(chip: Chip, focusPrice: Bool = false, onSave: @escaping (_ name: String?, _ priceCents: Int?) -> Void,
+         onCancel: @escaping () -> Void) {
         self.chip = chip
+        self.focusPrice = focusPrice
         self.onSave = onSave
         self.onCancel = onCancel
         _name = State(initialValue: chip.name)
@@ -60,7 +64,7 @@ struct FixChipSheet: View {
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.paper)
-        .onAppear { focus = .name }
+        .onAppear { focus = focusPrice ? .price : .name }
     }
 
     private func field(_ label: String, @ViewBuilder input: () -> some View) -> some View {

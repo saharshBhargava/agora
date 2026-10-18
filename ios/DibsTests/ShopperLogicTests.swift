@@ -103,6 +103,41 @@ final class ShopperLogicTests: XCTestCase {
                        .muted("Identifying… tap to name it"))
     }
 
+    func testNoPriceFoundAfterSixtySecondsUnlessBeingChecked() throws {
+        let added = 1_792_293_590_000.0
+        let chip = Chip(id: "bagel", name: "Bagels", priceCents: nil, state: .open, addedAt: added)
+        let at = { (s: Double) in Date(timeIntervalSince1970: added / 1000 + s) }
+        XCTAssertEqual(ShopperLogic.subline(chip, people: [], checking: nil, now: at(59)), .muted("Finding price…"))
+        XCTAssertEqual(ShopperLogic.subline(chip, people: [], checking: nil, now: at(60)), .noPrice)
+        XCTAssertEqual(ShopperLogic.subline(chip, people: [], checking: "Checking qfc.com…", now: at(90)),
+                       .muted("Checking qfc.com…"))
+        var priced = chip
+        priced.priceCents = 199
+        XCTAssertEqual(ShopperLogic.subline(priced, people: [], checking: nil, now: at(90)), .muted("Nobody yet · stays yours"))
+        XCTAssertEqual(ShopperLogic.noPriceText, "No price found")
+        XCTAssertEqual(ShopperLogic.addPriceText, "Add price")
+    }
+
+    func testEveryRemovalRaisesTheUndoOnceWhoeverRemovedIt() throws {
+        var run = try withMilk()
+        // The first snapshot only records what is already removed.
+        run.chips.append(Chip(id: "old", name: "Old", priceCents: 100, state: .removed, removedAt: 1))
+        let first = ShopperLogic.removals(previous: nil, chips: run.chips)
+        XCTAssertEqual(first.ids, ["old"])
+        XCTAssertTrue(first.new.isEmpty)
+        // The camera (or this phone) removes the milk: one new removal.
+        run.chips = run.chips.map { c in var c = c; if c.id == "milk" { c.state = .removed }; return c }
+        let second = ShopperLogic.removals(previous: first.ids, chips: run.chips)
+        XCTAssertEqual(second.new.map(\.id), ["milk"])
+        // Same snapshot again: nothing new.
+        XCTAssertTrue(ShopperLogic.removals(previous: second.ids, chips: run.chips).new.isEmpty)
+        // Undone, then removed again: new again.
+        run.chips = run.chips.map { c in var c = c; if c.id == "milk" { c.state = .open }; return c }
+        let undone = ShopperLogic.removals(previous: second.ids, chips: run.chips)
+        run.chips = run.chips.map { c in var c = c; if c.id == "milk" { c.state = .removed }; return c }
+        XCTAssertEqual(ShopperLogic.removals(previous: undone.ids, chips: run.chips).new.map(\.id), ["milk"])
+    }
+
     func testRowPrices() throws {
         let run = try withMilk()
         XCTAssertEqual(ShopperLogic.price(run.chip("milk")!), "$4.29")
