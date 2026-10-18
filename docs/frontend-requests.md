@@ -152,3 +152,95 @@ Send `PATCH /v1/wishlist/{id}` with only the fields that changed.
 
 Backend URL and accounts for testing: see [SETUP.md](../SETUP.md). The "Purchased from / on" contract is in
 [docs/api/purchased-from.md](api/purchased-from.md).
+
+---
+
+## Requested frontend features: run-outs and shopping lists
+
+**Backend status:** done. **API contract:** [docs/api/forecasts-and-lists.md](api/forecasts-and-lists.md).
+**For:** iOS first; the laptop/desktop view can reuse the same screens.
+
+This is the hero demo moment: "your fridge is a time series". The app shows when each item will run out,
+explains why it thinks so, and turns that into a shopping list per store in one tap.
+
+### 1. "Running out soon" card on the home screen
+
+- Load `GET /v1/forecasts/runouts?within=7d`. Show rows **in the order returned** (soonest first; items that
+  have probably run out are first).
+- Each row: item name, a day chip from `forecast.runout_at` in the user's time zone ("Today", "Tomorrow",
+  "Thu"), and the range from `runout_lo`/`runout_hi` when it spans different days ("Wed–Fri").
+- Colour by `forecast.status`: `out` = red ("Probably out"), `runs_out` within 2 days = amber, otherwise
+  neutral.
+- Tapping a row opens the item detail (section 2).
+- If `on_list_id` is set, show a small "On list" tick instead of an add button.
+- Otherwise show an add button: `POST /v1/lists/{id}/items` with `{"inventory_item_id": …, "quantity":
+  suggested_quantity}` to a list the user picks, or run "Make my lists" (section 3).
+- Empty state: "Nothing's running out this week."
+- A 3-day / 7-day / 14-day toggle maps to `within=3d|7d|14d`.
+
+### 2. Forecast on the item detail screen
+
+`GET /v1/inventory/{id}` now has `forecast` (or `null` before the first reading).
+
+- Headline: `forecast.explanation`, shown as-is. It's written for users and is safe to display. Example:
+  "2% milk will run out on Fri. Based on 21 scans over 20 days, you use about one every 5.4 days."
+- On the existing quantity chart (`daily`), draw a dashed projection from (`last_observed_at`,
+  `last_quantity`) down to zero at `runout_at`, with a shaded band between `runout_lo` and `runout_hi`.
+  This is the money shot for the demo, so please make it look good.
+- Show `confidence` as a subtle badge (Low / Medium / High). For `method: "prior"`, add the hint "Scan it a
+  few more times to personalize this" (it's already in the explanation; a badge is optional).
+- `status: "steady"` → no projection line; `status: "unknown"` → hide the forecast block, show the
+  explanation as a hint.
+
+### 3. "Make my lists" button
+
+- On the run-outs card and the Lists tab: one button that calls `POST /v1/lists/generate` with
+  `{"within_days": 7}` and a fresh `Idempotency-Key` (a UUID) **per tap**. Reuse the same key if you retry
+  the same tap after a network error.
+- On success, show a toast from the response: "Added 8 items to 2 lists" (`added`, `lists.length`). When
+  `added == 0` and everything was skipped as `already_on_list`: "Everything's already on a list."
+- Navigate to the Lists tab, or to the list if exactly one came back.
+
+### 4. Lists tab
+
+- `GET /v1/lists` (open lists). Show **in the order returned** (most urgent trip first).
+- Each list card: `name`, store (`merchant.name` + locality), `open_count`, and "Needed by Thu" from
+  `needed_by`. Generated lists can carry a small "Auto" tag (`source == "generated"`).
+- "New list" button: `POST /v1/lists` with an optional name and store (reuse the store picker from the
+  "Purchased from" feature, see [purchased-from.md](api/purchased-from.md)).
+- A "Done" / "History" segment can load `?status=done&status=archived`.
+
+### 5. List screen
+
+- Lines in the order returned: unticked first, by `needed_by`.
+- Each line: checkbox, `title`, `quantity` (+ `unit` if present), `note`. If `explanation` is present, show
+  a small "Why?" disclosure with it, and a badge for `added_by` = `system` ("From run-outs") or `agent`
+  ("Suggested by Agora"). Every non-user line has an explanation. This is part of the trust story, so
+  don't hide it entirely.
+- Tick: `PATCH /v1/lists/{id}/items/{item_id}` with `{"checked": true}` (or `false` to untick). Ticked lines
+  move to the bottom, greyed out.
+- Swipe to delete: `DELETE /v1/lists/{id}/items/{item_id}` (204).
+- Quick add field at the bottom: `POST /v1/lists/{id}/items` with `{"title": "..."}`. Offer
+  autocomplete from inventory items and send `inventory_item_id` instead when one is picked.
+- Edit sheet: title, quantity, unit, note via `PATCH` with only the changed fields.
+- List menu: rename, change store, "Mark done" (`PATCH /v1/lists/{id}` `{"status": "done"}`), "Archive".
+  Done/archived lists are read-only; show a "Reopen" button (`{"status": "open"}`).
+
+### 6. Live refresh
+
+- On SSE `type == "forecast.updated"`: refetch run-outs and, if open, the item detail. This arrives a second
+  or two after a scan is confirmed, so the forecast visibly updates after a review. Worth showing in the demo.
+- On `type == "list.updated"`: refetch that list (`GET /v1/lists/{id}`, the event `id`) or the Lists tab.
+
+### 7. Errors
+
+- RFC 7807: switch on `title`, show `detail`.
+- `409 already_on_list`: "Already on this list". Refetch.
+- `409 list_closed`: another device finished the list. Refetch and show it read-only.
+- `422 invalid_within`: a client bug. Only send `Nd`, 1–90.
+
+### Out of scope for this request
+
+- Scheduling the trip in Google Calendar (P3; will use the list's `needed_by` as the deadline).
+- Checkout from a list, and turning ticked lines into purchases/restocks (receipts, P1 follow-up).
+- Price-drop lines (`reason: "price_drop"` is reserved).

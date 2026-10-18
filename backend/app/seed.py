@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from app.auth import ensure_user
 from app.config import get_settings
 from app.db import Database
+from app.forecasting import refresh
 from app.migrate import migrate
 
 PRODUCTS = [
@@ -146,6 +147,8 @@ async def seed_household(db: Database, user_id, rng_key: str, days: int = 21) ->
                                                                source, scan_id, confidence, recorded_by)
                            VALUES ($1, $2, $3, $4, 'scan', $5, $6, $7)""",
                         when, household_id, items[name], seen, scan_id, round(rng.uniform(0.82, 0.97), 2), user_id)
+        # Forecast straight away so run-outs show on the first click, without waiting for the worker.
+        await refresh(conn, household_id, user_id, timescale=db.timescale)
     return True
 
 
