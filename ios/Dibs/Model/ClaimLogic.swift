@@ -72,10 +72,11 @@ enum ClaimLogic {
 
     // MARK: chips
 
-    /// What the shelf shows: everything not removed or dropped, wishes first, then newest first.
+    /// What the shelf shows: everything not removed or dropped and on the feed (wishes, and items
+    /// once named and priced: `Chip.isOnFeed`), wishes first, then newest first.
     static func shelfChips(_ run: Run) -> [Chip] {
         run.chips
-            .filter { $0.state != .removed && !$0.dropped }
+            .filter { $0.state != .removed && !$0.dropped && $0.isOnFeed }
             .sorted { a, b in
                 let aw = a.state == .wish, bw = b.state == .wish
                 if aw != bw { return aw }

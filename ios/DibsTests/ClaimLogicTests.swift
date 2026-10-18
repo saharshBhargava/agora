@@ -120,6 +120,18 @@ final class ClaimLogicTests: XCTestCase {
         XCTAssertEqual(ClaimLogic.shelfChips(r).map(\.id), ["wish", "new", "old"])
     }
 
+    func testShelfShowsItemsOnlyOnceNamedAndPriced() {
+        let r = run([
+            chip("eggs", 872, addedAt: 1),
+            chip("pending", nil, addedAt: 2),
+            Chip(id: "naming", name: "", state: .identifying, addedAt: 3),
+            Chip(id: "nameless", name: "", priceCents: 199, state: .open, addedAt: 4),
+            chip("wish", nil, state: .wish, addedAt: 5, wishedBy: "priya"),
+        ])
+        XCTAssertEqual(ClaimLogic.shelfChips(r).map(\.id), ["wish", "eggs"])
+        XCTAssertTrue(ClaimLogic.trayChips(r, me: "priya").isEmpty)
+    }
+
     func testChipTag() {
         let p = people
         XCTAssertEqual(ClaimLogic.chipTag(chip("a", 1), people: p, me: "priya"), .init(text: "open", colorHex: nil))

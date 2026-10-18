@@ -69,9 +69,11 @@ enum ShopperLogic {
 
     // MARK: cart rows
 
-    /// The cart: wishes first, then newest first. Removed and dropped chips are left out.
-    static func rows(_ chips: [Chip]) -> [Chip] {
-        chips.filter { $0.state != .removed && !$0.dropped }
+    /// The cart: wishes first, then newest first. Removed and dropped chips are left out, and so is
+    /// anything not on the feed yet (see `Chip.isOnFeed`). With `now`, a named chip still unpriced
+    /// `noPriceAfter` after it was added shows too ("No price found · Add price") so it isn't lost.
+    static func rows(_ chips: [Chip], now: Date? = nil) -> [Chip] {
+        chips.filter { $0.state != .removed && !$0.dropped && ($0.isOnFeed || gaveUpOnPrice($0, now: now)) }
             .enumerated()
             .sorted { a, b in
                 let wa = a.element.state == .wish, wb = b.element.state == .wish
@@ -105,7 +107,7 @@ enum ShopperLogic {
             let wisher = people.first { $0.id == chip.wishedBy }
             return .wish(wisher.map { "\($0.name) wants this" } ?? "Someone wants this", wisherId: wisher?.id)
         case .identifying:
-            return .muted("Identifying… tap to name it")
+            return nil // never rendered: items show once named and priced
         default:
             if chip.priceCents == nil {
                 if let checking { return .muted(checking.isEmpty ? "Checking qfc.com…" : checking) }
@@ -123,14 +125,26 @@ enum ShopperLogic {
         return chip.priceCents.map(Money.format) ?? ""
     }
 
+    /// A named, identified chip with no price `noPriceAfter` after it was added.
+    static func gaveUpOnPrice(_ chip: Chip, now: Date?) -> Bool {
+        guard let now, chip.state != .wish, chip.state != .identifying, chip.priceCents == nil,
+              !chip.name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        return now.timeIntervalSince1970 - chip.addedAt / 1000 >= noPriceAfter
+    }
+
     /// Whether a row can be lifted to the remove zone or swiped away.
     static func isRemovable(_ chip: Chip) -> Bool { chip.state != .wish && chip.state != .identifying }
 
     // MARK: duplicates
 
-    /// Chips the server flagged as a possible second add, minus the ones the shopper kept.
+    /// Chips the server flagged as a possible second add, minus the ones the shopper kept. Only for
+    /// chips on the feed whose original is still in the cart.
     static func duplicates(_ chips: [Chip], kept: Set<String>) -> [Chip] {
-        chips.filter { $0.duplicateOf != nil && !kept.contains($0.id) && $0.state != .removed && !$0.dropped }
+        let present = Set(chips.filter { $0.state != .removed && !$0.dropped }.map(\.id))
+        return chips.filter { c in
+            guard let original = c.duplicateOf else { return false }
+            return present.contains(original) && present.contains(c.id) && c.isOnFeed && !kept.contains(c.id)
+        }
     }
 
     static func duplicateLine(_ chip: Chip) -> String { "\(chip.name) showed up again" }
@@ -229,6 +243,15 @@ enum ShopperLogic {
         if reason == "Reconnecting…" { return nil }
         if reason == "identify failed" { return "Couldn't identify. Tap it again or name it" }
         return RunText.capitalize(reason)
+    }
+}
+
+extension Chip {
+    /// On the feed (shopper rows, claim shelf and tray): wishes, and items once identified, named and
+    /// priced. Items still being named or priced don't pop up yet.
+    var isOnFeed: Bool {
+        if state == .wish { return true }
+        return state != .identifying && !name.trimmingCharacters(in: .whitespaces).isEmpty && priceCents != nil
     }
 }
 

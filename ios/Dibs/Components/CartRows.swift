@@ -29,7 +29,7 @@ struct CartRowView: View {
                 CartThumb(chip: chip, size: 40, radius: 10)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(chip.name.isEmpty ? "Identifying" : chip.name)
+                Text(chip.name)
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color.ink)
                     .lineLimit(2)

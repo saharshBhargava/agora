@@ -149,7 +149,7 @@ struct ShopperView: View {
             guard let chips else { return }
             let r = ShopperLogic.removals(previous: removedIds, chips: chips)
             removedIds = r.ids
-            if let chip = r.new.last { showUndo(chip) }
+            if let chip = r.new.last(where: { !$0.name.isEmpty }) { showUndo(chip) }
         }
         .task {
             while !Task.isCancelled {
@@ -190,7 +190,7 @@ struct ShopperView: View {
 
     private var sheet: some View {
         let chips = run?.chips ?? []
-        let rows = ShopperLogic.rows(chips)
+        let rows = ShopperLogic.rows(chips, now: clock)
         let dupes = ShopperLogic.duplicates(chips, kept: kept)
         let people = run?.people ?? []
         let cover = ShopperLogic.coverage(people: people, chips: chips)

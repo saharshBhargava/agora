@@ -84,7 +84,28 @@ final class ShopperLogicTests: XCTestCase {
     func testRowsPutWishesFirstThenNewestAndHideRemovedOnes() throws {
         var run = try withMilk()
         run.chips.append(Chip(id: "gone", name: "Gone", priceCents: 100, state: .removed, removedAt: 1, addedAt: 1_792_293_700_000))
-        XCTAssertEqual(ShopperLogic.rows(run.chips).map(\.id), [oat, "milk", "bagel", towels, eggs])
+        // The unpriced bagel is not on the feed yet.
+        XCTAssertEqual(ShopperLogic.rows(run.chips).map(\.id), [oat, "milk", towels, eggs])
+    }
+
+    func testRowsShowItemsOnlyOnceNamedAndPricedExceptAGivenUpPrice() throws {
+        var run = try withMilk()
+        run.chips.append(Chip(id: "naming", name: "", state: .identifying, addedAt: 1_792_293_595_000))
+        run.chips.append(Chip(id: "nameless", name: "", priceCents: 199, state: .open, addedAt: 1_792_293_596_000))
+        let bagelAdded = Date(timeIntervalSince1970: 1_792_293_590)
+        // Unpriced, unnamed and identifying chips stay off the feed; wishes show.
+        XCTAssertEqual(ShopperLogic.rows(run.chips, now: bagelAdded.addingTimeInterval(59)).map(\.id),
+                       [oat, "milk", towels, eggs])
+        // A named chip still unpriced after 60 s shows, as "No price found · Add price".
+        XCTAssertEqual(ShopperLogic.rows(run.chips, now: bagelAdded.addingTimeInterval(60)).map(\.id),
+                       [oat, "milk", "bagel", towels, eggs])
+        XCTAssertEqual(ShopperLogic.subline(run.chip("bagel")!, people: run.people, checking: nil,
+                                            now: bagelAdded.addingTimeInterval(60)), .noPrice)
+        XCTAssertTrue(run.chip(eggs)!.isOnFeed)
+        XCTAssertTrue(run.chip(oat)!.isOnFeed)
+        XCTAssertFalse(run.chip("bagel")!.isOnFeed)
+        XCTAssertFalse(run.chip("naming")!.isOnFeed)
+        XCTAssertFalse(run.chip("nameless")!.isOnFeed)
     }
 
     func testRowSublines() throws {
@@ -98,9 +119,9 @@ final class ShopperLogicTests: XCTestCase {
         XCTAssertEqual(sub("bagel"), .muted("Finding price…"))
         XCTAssertEqual(sub("bagel", checking: "Checking qfc.com…"), .muted("Checking qfc.com…"))
         XCTAssertEqual(sub("bagel", checking: ""), .muted("Checking qfc.com…"))
+        // Identifying chips are never rendered, so they have no line of their own.
         let identifying = Chip(id: "i", name: "", state: .identifying)
-        XCTAssertEqual(ShopperLogic.subline(identifying, people: run.people, checking: nil),
-                       .muted("Identifying… tap to name it"))
+        XCTAssertNil(ShopperLogic.subline(identifying, people: run.people, checking: nil))
     }
 
     func testNoPriceFoundAfterSixtySecondsUnlessBeingChecked() throws {
@@ -157,6 +178,20 @@ final class ShopperLogicTests: XCTestCase {
         // Remove one hides it.
         run.chips[run.chips.count - 1].state = .removed
         XCTAssertTrue(ShopperLogic.duplicates(run.chips, kept: []).isEmpty)
+    }
+
+    func testNoDuplicateCardWhenTheOriginalIsGone() throws {
+        var run = try fixture()
+        run.chips.append(Chip(id: "ghost", name: "Milk", priceCents: 429, state: .open, duplicateOf: "deleted-chip", addedAt: 5))
+        run.chips.append(Chip(id: "eggs2", name: "Kirkland Eggs 24 ct", priceCents: 872, state: .open, duplicateOf: eggs, addedAt: 6))
+        XCTAssertEqual(ShopperLogic.duplicates(run.chips, kept: []).map(\.id), ["eggs2"])
+        // The original removed: no card either.
+        run.chips = run.chips.map { c in var c = c; if c.id == eggs { c.state = .removed }; return c }
+        XCTAssertTrue(ShopperLogic.duplicates(run.chips, kept: []).isEmpty)
+        // A duplicate not yet priced isn't on the feed, so no card.
+        var fresh = try fixture()
+        fresh.chips.append(Chip(id: "eggs3", name: "Kirkland Eggs 24 ct", priceCents: nil, state: .open, duplicateOf: eggs, addedAt: 7))
+        XCTAssertTrue(ShopperLogic.duplicates(fresh.chips, kept: []).isEmpty)
     }
 
     func testNoDuplicateCardWithoutDuplicateOf() throws {
