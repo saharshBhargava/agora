@@ -9,9 +9,12 @@ struct DibsApp: App {
             if DebugLaunch.autoShop {
                 // Unattended device testing: `-DibsAutoShop YES` skips Home and opens the shopper camera.
                 AutoShopRoot(base: ServerConfig.current())
+                    .preferredColorScheme(.light)
             } else {
                 RootView()
                     .environment(model)
+                    // The design is light only (paper and ink); dark mode left rows unreadable.
+                    .preferredColorScheme(.light)
                     .onOpenURL { model.open(url: $0) }
                     .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                         if let url = activity.webpageURL { model.open(url: url) }
@@ -34,6 +37,8 @@ struct RootView: View {
                 }
         }
         .tint(Color.ink)
+        // A claim or shopper screen moves to Settle (or the receipt check) when the live run gets there.
+        .onChange(of: model.store.run.map { "\($0.id)|\($0.state.rawValue)" }) { model.followRun() }
         .confirmationDialog(
             "This link is from \(model.pendingLink?.server?.host ?? "another server"). Use it as your Dibs server?",
             isPresented: Binding(
@@ -61,8 +66,7 @@ struct RootView: View {
         case .shopper(let ref):
             ShopperView(store: model.store, api: model.api, runId: ref.runId, personId: ref.personId)
         case .settle(let ref):
-            // Task 8 replaces this with SettleView.
-            RunPendingView(ref: ref)
+            SettleView(ref: ref)
         }
     }
 }

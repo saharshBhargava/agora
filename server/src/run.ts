@@ -6,7 +6,8 @@ type NewChip = Pick<Chip, 'id' | 'name' | 'priceCents' | 'priceSource' | 'photoU
 type Err<E extends string> = { error: E };
 
 const UNDO_MS = 5000;
-const DUPLICATE_MS = 5000;
+/** Same-name chips added within this window show the "Added twice?" card. */
+const DUPLICATE_MS = Number(process.env.DUPLICATE_MS) > 0 ? Number(process.env.DUPLICATE_MS) : 5000;
 
 const normalize = (name: string): string => name.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[^a-z0-9]/g, '');
 const accepting = (run: Run): boolean => run.state === 'open' || run.state === 'lastCall';

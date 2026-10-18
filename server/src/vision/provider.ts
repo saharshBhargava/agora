@@ -5,7 +5,8 @@ import { StubVision } from './stub.js';
 export type Identified = { name: string; priceCents: number | null; cropBase64: string; confidence: number; barcode: string | null };
 export type RawReceiptLine = { text: string; cents: number; quantity: number };
 
-export type IdentifyContext = { runId: string };
+/** `cartNames`: names already in the run, so the same product keeps one name across detections. */
+export type IdentifyContext = { runId: string; cartNames?: string[] };
 
 export interface VisionProvider {
   /** `context` lets a provider keep per-run state (the stub's drop order). */

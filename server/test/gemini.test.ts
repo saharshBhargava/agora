@@ -5,7 +5,7 @@ import { GeminiPrice } from '../src/price/gemini.js';
 import { firstJSONObject } from '../src/gemini/json.js';
 import { generate, geminiModels } from '../src/gemini/client.js';
 import { getVision } from '../src/vision/provider.js';
-import { GeminiVision } from '../src/vision/gemini.js';
+import { GeminiVision, identifyPrompt } from '../src/vision/gemini.js';
 
 type Req = { url: string; headers: Record<string, string>; body: any };
 function fakeFetch(reply: unknown, reqs: Req[] = []): typeof fetch {
@@ -52,6 +52,27 @@ describe('GeminiVision', () => {
     expect((await run(299)).priceCents).toBe(299);
     expect((await run(0)).priceCents).toBeNull();
     expect((await run(100001)).priceCents).toBeNull();
+  });
+  it('identify rejects "unknown" and low-confidence crops so the chip is dropped', async () => {
+    const img = (await jpeg(200, 200)).toString('base64');
+    const run = (name: string, c: number) =>
+      new GeminiVision({ apiKey: 'k', fetchImpl: fakeFetch(textReply(JSON.stringify({ name, priceCents: null, confidence: c, barcode: null }))) }).identify(img);
+    await expect(run('unknown', 0)).rejects.toThrow();
+    await expect(run('Unknown', 0.9)).rejects.toThrow();
+    await expect(run('Coke', 0.2)).rejects.toThrow();
+    expect((await run('Coke', 0.5)).name).toBe('Coke');
+  });
+  it('identify sends the cart names so the same product keeps one name', async () => {
+    let body: { contents: { parts: { text?: string }[] }[] } | undefined;
+    const fetchImpl = (async (_u: string, init: { body: string }) => {
+      body = JSON.parse(init.body);
+      return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: '{"name":"Coca-Cola Zero Sugar","priceCents":null,"confidence":0.9,"barcode":null}' }] } }] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const img = (await jpeg(200, 200)).toString('base64');
+    await new GeminiVision({ apiKey: 'k', fetchImpl }).identify(img, undefined, undefined, { runId: 'r', cartNames: ['Coca-Cola Zero Sugar', 'Apple', 'Apple'] });
+    const text = body!.contents[0].parts.map((p) => p.text ?? '').join(' ');
+    expect(text).toContain('["Coca-Cola Zero Sugar","Apple"]');
+    expect(identifyPrompt(undefined, [])).toBe('What is this item?');
   });
   it('readReceipt maps lines and drops junk', async () => {
     const lines = [
