@@ -79,6 +79,9 @@ to start the Blueprint flow directly. The generic service-type picker is not nee
    This is what the frontend needs. Render supplies HTTPS; no domain purchase is required.
 
 Everything else is preset in `render.yaml`:
+
+- Docker root directory `backend`, Dockerfile `./Dockerfile`, and build context `.` (Docker paths are
+  relative to the root directory, so do not prefix them with `backend/` again)
 - demo mode, with a generated dev-token secret
 - Google sign-in, using the iOS client ID from `Config/Agora.xcconfig`
 - database-backed photo storage
@@ -302,6 +305,7 @@ Each `--tunnel` run gets a new URL. Rebuild the iOS app after starting it (the s
 | Symptom | Fix |
 |---|---|
 | Deploy fails at boot | Check Render's **Logs**. A config error names the exact variable. A missing or wrong `AGORA_DATABASE_URL` is the usual cause |
+| Build fails with `lstat .../backend/backend: no such file or directory` | Sync the latest Blueprint. With Root Directory `backend`, Dockerfile Path must be `./Dockerfile` and Docker Build Context must be `.`. Keep the existing credentials, then deploy the latest commit |
 | `/readyz` shows `"timescale": false` | The database isn't Tiger (or the extension is off). Everything still works, with plain-SQL fallbacks |
 | Google says the app is blocked or access denied | Saharsh adds that Google account under **Audience > Test users** |
 | Home says inventory isn't available | `AGORA_API_BASE_URL` isn't set in `Config/Local.xcconfig`, or isn't `https://` with no path |
