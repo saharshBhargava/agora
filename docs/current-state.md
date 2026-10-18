@@ -1,6 +1,6 @@
 # Current state — mandatory read before resuming work
 
-## Automatic background replenishment — source verified October 18, 2026
+## Automatic background replenishment — deployed October 18, 2026
 
 The worker now creates and maintains store-grouped lists after inventory/forecast updates, at startup,
 and through the existing six-hour sweep. It includes fresh recorded zeroes, restock-threshold items and
@@ -24,8 +24,16 @@ Lists/detail screenshots were inspected. Demo reset ran only against the disposa
 Logs: `/tmp/agora-auto-lists-backend-final.log`, `/tmp/agora-auto-lists-ci.log`,
 `/tmp/agora-auto-lists-final.log`; matching simulator `.xcresult` bundles are in `/tmp/`.
 No live Gemini inference is claimed: background list creation is server-driven, and the model context is
-verified through the native tools. Source verification is separate from deployment; deployment evidence
-will be recorded after main's release. Native copy/context changes require rebuilding the app.
+verified through the native tools. Native copy/context changes require rebuilding the app.
+
+Committed directly to main as `b6683c9fec9c8460e7ba4fd6551a7b57810774e2`. Both GitHub database suites
+passed **693 tests**, plus Ruff and Docker in [backend CI](https://github.com/saharshBhargava/agora/actions/runs/39138160267).
+The [deployment](https://github.com/saharshBhargava/agora/actions/runs/39138278967) succeeded; public
+`/readyz` verified that exact commit, TimescaleDB enabled, migration 0020 and no pending migrations.
+A local upgrade check seeded the previous backend, applied the new migration, then verified readiness,
+auth, inventory, forecasts and list reads/writes with both new and previous code on the upgraded database.
+Log: `/tmp/agora-auto-lists-upgrade.log`. Disposable validation databases were removed; no manual
+production test writes were performed. Background list maintenance is now live.
 
 
 ## Consumption predictions in Home and chat — source integration, October 18, 2026
