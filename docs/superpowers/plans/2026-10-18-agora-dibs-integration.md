@@ -2,7 +2,7 @@
 
 Goal: one iOS app. The team app (Agora) gains a Dibs tab, the whole app adopts the Dibs visual design, and Dibs uses the Agora sign-in for identity and the household's lists and suggestions. Main is not touched; this branch builds on `dibs-into-main` (origin/main + dibs-mock-demo side by side).
 
-Decisions (user, 2026-10-18): one app with Dibs as a tab; merge the UI style to the Dibs style app-wide; don't merge to main yet.
+Decisions (user, 2026-10-18): one app with Dibs as a tab; merge the UI style to the Dibs style app-wide; the merged app is named **Dibs**; don't merge to main yet.
 
 ## Tasks
 1. Port: move `ios/Dibs/**` into `Agora/Dibs/**` and its tests into `AgoraTests/` (flat, `Dibs` prefix), resolve name collisions, add the Dibs tab, Info.plist/xcconfig keys, a bundle-id/team override for personal signing, regenerate the project, both apps' tests green.
