@@ -304,6 +304,11 @@ second or two (it's computed by the worker); refetch on the `forecast.updated` e
 named after the store (`"Safeway"`, or `"Safeway (Ballard)"` with a locality). With neither, it's
 `"Shopping list"`. A household can have 50 open lists.
 
+An optional `Idempotency-Key` makes creation retry-safe; chat always supplies it. Identical keyed retries
+return the original 201 response, changed bodies return 422 `idempotency_key_reused`, and another keyed
+create with the same normalized open name and store returns 409 `already_exists`. Closed lists do not
+block creation. Unkeyed forms retain existing behavior. See [chat additions](chat-additions.md).
+
 ### `POST /v1/lists/{id}/items`
 
 Free text:

@@ -54,6 +54,7 @@ async def ensure_demo_account(db: Database, settings: Settings) -> UUID:
         await _forecasts_and_lists(db, existing)
         await _manual_lists(db, existing)
         await _chat_additions(db, existing)
+        await _chat_list_creation(db, existing)
         await _commerce(db, existing)
         await _calendar(db, existing)
         await _trips(db, existing)
@@ -135,6 +136,7 @@ async def _seed(db: Database, user_id: UUID) -> None:
     await _forecasts_and_lists(db, user_id)
     await _manual_lists(db, user_id)
     await _chat_additions(db, user_id)
+    await _chat_list_creation(db, user_id)
     await _commerce(db, user_id)
     await _calendar(db, user_id)
     await _trips(db, user_id)
@@ -252,6 +254,26 @@ async def _chat_additions(db: Database, user_id: UUID) -> None:
                    (list_id, household_id, title, quantity, unit, reason, added_by, created_by)
                VALUES ($1, $2, 'Rolled oats', 1, 'bag', 'manual', 'user', $3)""", list_id, household_id, user_id)
         await audit(conn, "demo.chat_additions", actor_type="system", household_id=household_id)
+
+
+async def _chat_list_creation(db: Database, user_id: UUID) -> None:
+    """A named list like one requested in chat; preserve later user edits on every backfill."""
+    async with db.scoped(user_id) as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo.features'), hashtext($1))", str(user_id))
+        household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
+        if await conn.fetchval("SELECT 1 FROM audit_log WHERE household_id = $1 AND action = 'demo.chat_list_creation'",
+                               household_id):
+            return
+        list_id = await conn.fetchval(
+            """INSERT INTO shopping_lists (household_id, name, source, created_by)
+               VALUES ($1, 'Sunday farmers market', 'user', $2) RETURNING id""", household_id, user_id)
+        for title, quantity, unit in [("Seasonal apples", 1, "bag"), ("Sourdough loaf", 1, "loaf")]:
+            await conn.execute(
+                """INSERT INTO shopping_list_items
+                       (list_id, household_id, title, quantity, unit, reason, added_by, created_by)
+                   VALUES ($1, $2, $3, $4, $5, 'manual', 'user', $6)""",
+                list_id, household_id, title, quantity, unit, user_id)
+        await audit(conn, "demo.chat_list_creation", actor_type="system", household_id=household_id)
 
 
 async def _detections_and_purchases(conn: asyncpg.Connection, household_id: UUID, user_id: UUID,

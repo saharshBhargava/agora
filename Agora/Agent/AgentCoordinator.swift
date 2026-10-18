@@ -125,7 +125,7 @@ final class AgentCoordinator: ObservableObject {
         }
         browser.revoke(); running = false; self.paused = paused && !uncertainCalendar && !uncertainShopping
         let calendarName = calendar?.isDemoAccount == true ? "Agora Calendar" : "Google Calendar"
-        status = uncertainShopping ? "An item may have been saved. Check Lists before retrying." : uncertainCalendar ? "A Calendar event may have been saved. Check \(calendarName) before retrying." : reason
+        status = uncertainShopping ? "A shopping change may have been saved. Check Lists before retrying." : uncertainCalendar ? "A Calendar event may have been saved. Check \(calendarName) before retrying." : reason
         browser.state.status = status
         if uncertainCalendar || uncertainShopping { messages.append(ChatMessage(role: "notice", text: status)) }
         if wasRunning { try? repository.record(task: old, operation: "task", phase: browser.state.busy || uncertainCalendar || uncertainShopping ? "outcome_unknown" : "stopped") }
@@ -235,9 +235,9 @@ final class AgentCoordinator: ObservableObject {
                         if let name = raw["name"] as? String, ShoppingCall.names.contains(name) {
                             guard let shopping else { throw BrowserError("shopping_unavailable") }
                             let call = try ShoppingCall(raw)
-                            status = name == "shopping_context" ? "Reading your shopping context…" : call.isAddition ? "Adding item…" : "Saving suggestion…"
+                            status = name == "shopping_context" ? "Reading your shopping context…" : name == "shopping_list_create" ? "Creating shopping list…" : call.isAddition ? "Adding item…" : "Saving suggestion…"
                             try repository.record(task: id, operation: name, phase: "dispatched")
-                            if call.isAddition { shoppingMutationInFlight = id }
+                            if call.isMutation { shoppingMutationInFlight = id }
                             result = try await shopping.execute(call, taskID: id, trips: trips)
                             if shoppingMutationInFlight == id { shoppingMutationInFlight = nil }
                             try repository.record(task: id, operation: name, phase: "observed")

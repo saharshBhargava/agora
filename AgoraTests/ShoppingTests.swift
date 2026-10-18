@@ -307,6 +307,107 @@ final class ShoppingTests: XCTestCase {
         XCTAssertThrowsError(try ShoppingCall(["name": "shopping_list_add", "args": ["title": "Eggs"]]))
     }
 
+    func testCreateListArgumentsAndFreshContext() async throws {
+        for args: [String: Any] in [[:], ["name": " "], ["name": String(repeating: "x", count: 81)],
+                                    ["name": true], ["name": "Weekend", "household_id": UUID().uuidString],
+                                    ["name": "Weekend", "items": ["Eggs"]]] {
+            XCTAssertThrowsError(try ShoppingCall(["name": "shopping_list_create", "args": args]))
+        }
+        let call = try ShoppingCall(["name": "shopping_list_create", "args": ["name": " Weekend "]])
+        XCTAssertEqual(call.arguments["name"] as? String, "Weekend")
+        XCTAssertTrue(call.isMutation)
+        do { _ = try await shopping.execute(call, taskID: UUID()); XCTFail("Context required") }
+        catch { XCTAssertEqual((error as? BrowserError)?.code, "context_required") }
+    }
+
+    func testAgentCreatesListThenAddsRequestedItemsAndReusesExistingList() async throws {
+        let api = AgoraClient(calendar: calendar, baseURL: URL(string: "https://shopping.example.com"), http: session)
+        let trips = TripStore(api: api, inventory: inventory, calendar: calendar)
+        let listID = UUID()
+        var list: [String: Any] = ["id": listID.uuidString, "household_id": household.uuidString, "name": "Weekend",
+            "status": "open", "source": "user", "open_count": 0, "items": [], "updated_at": "2026-10-18T09:00:00Z"]
+        var created = false, writes: [String] = []
+        let original = ShoppingHTTP.handler!
+        ShoppingHTTP.handler = { request in
+            let path = request.url!.path
+            if request.httpMethod == "POST" {
+                XCTAssertNotNil(request.value(forHTTPHeaderField: "Idempotency-Key"))
+                writes.append(path)
+                let body = shoppingBody(request)
+                if path == "/v1/lists" {
+                    XCTAssertEqual(body["name"] as? String, "Weekend")
+                    XCTAssertEqual(body["household_id"] as? String, self.household.uuidString)
+                    created = true; return (201, list)
+                }
+                XCTAssertEqual(path, "/v1/lists/\(listID)/items")
+                let item: [String: Any] = ["id": UUID().uuidString, "title": body["title"]!, "quantity": 1, "checked": false]
+                list["items"] = (list["items"] as? [[String: Any]] ?? []) + [item]
+                list["open_count"] = (list["items"] as! [[String: Any]]).count
+                return (201, item)
+            }
+            if path == "/v1/lists" { return (200, created ? [list] : []) }
+            if path == "/v1/lists/\(listID)" { return (200, list) }
+            return original(request)
+        }
+        let browser = BrowserSession(policy: settings.policy)
+        let agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar, shopping: shopping, trips: trips)
+        defer { agent.stop(); browser.close() }
+        agent.modelClientOverride = ChatAdditionModel { request in
+            XCTAssertTrue(request.tools.contains { $0.name == "shopping_list_create" })
+            let last = request.messages.last?.toolResults.last
+            let name: String, arguments: [String: ModelJSON]
+            switch last?.name {
+            case "shopping_context": name = "shopping_list_create"; arguments = ["name": .string("Weekend")]
+            case "shopping_list_create":
+                XCTAssertEqual(last?.value.object?["status"], .string("saved"))
+                name = "shopping_list_add"; arguments = ["listId": last!.value.object!["id"]!, "title": .string("Eggs")]
+            case "shopping_list_add":
+                if last?.value.object?["title"] == .string("Milk") {
+                    return ModelResponse(message: .init(role: .assistant, content: [.text("Created Weekend with eggs and milk.")]))
+                }
+                name = "shopping_list_add"; arguments = ["listId": .string(listID.uuidString), "title": .string("Milk")]
+            default: name = "shopping_context"; arguments = [:]
+            }
+            return ModelResponse(message: .init(role: .assistant, toolCalls: [.init(id: UUID().uuidString, name: name, arguments: arguments)]))
+        }
+        XCTAssertTrue(agent.send("Create a Weekend shopping list with eggs and milk"))
+        for _ in 0..<200 { if !agent.running { break }; try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertFalse(agent.running); XCTAssertNil(agent.approval)
+        XCTAssertEqual(agent.messages.last?.text, "Created Weekend with eggs and milk.")
+        XCTAssertEqual(trips.lists.count, 1)
+        XCTAssertEqual(trips.lists.first?.items.map(\.title), ["Eggs", "Milk"])
+        XCTAssertEqual(writes.count, 3)
+        let taskID = UUID()
+        _ = try await shopping.execute(ShoppingCall(["name": "shopping_context", "args": [:]]), taskID: taskID, trips: trips)
+        let existing = try await shopping.execute(ShoppingCall(["name": "shopping_list_create", "args": ["name": " WEEKEND "]]), taskID: taskID, trips: trips)
+        XCTAssertEqual(existing["status"] as? String, "already_exists")
+        XCTAssertEqual(existing["id"] as? String, listID.uuidString)
+        XCTAssertEqual(writes.count, 3)
+    }
+
+    func testCreateListTimeoutAndSignoutCannotReportSuccess() async throws {
+        let api = AgoraClient(calendar: calendar, baseURL: URL(string: "https://shopping.example.com"), http: session)
+        let trips = TripStore(api: api, inventory: inventory, calendar: calendar)
+        let taskID = UUID()
+        _ = try await shopping.execute(ShoppingCall(["name": "shopping_context", "args": [:]]), taskID: taskID, trips: trips)
+        let call = try ShoppingCall(["name": "shopping_list_create", "args": ["name": "Weekend"]])
+        ShoppingHTTP.handler = { _ in (503, ["title": "unavailable"]) }
+        do { _ = try await shopping.execute(call, taskID: taskID, trips: trips); XCTFail("Unconfirmed write") }
+        catch { XCTAssertEqual((error as? BrowserError)?.code, "outcome_unknown") }
+        let requested = expectation(description: "list write dispatched")
+        ShoppingHTTP.delay = 0.15
+        ShoppingHTTP.handler = { _ in
+            requested.fulfill()
+            return (201, ["id": UUID().uuidString, "household_id": self.household.uuidString, "name": "Weekend",
+                "status": "open", "source": "user", "open_count": 0, "items": [], "updated_at": "2026-10-18T09:00:00Z"])
+        }
+        let pending = Task { try await self.shopping.execute(call, taskID: taskID, trips: trips) }
+        await fulfillment(of: [requested], timeout: 2)
+        await calendar.signOut()
+        do { _ = try await pending.value; XCTFail("Late response after sign-out") } catch {}
+        XCTAssertTrue(trips.lists.isEmpty)
+    }
+
     func testChatInventorySaveUpdatesSharedStoreAndRequiresFreshContext() async throws {
         let taskID = UUID()
         let call = try ShoppingCall(["name": "inventory_add", "args": ["title": "Rice", "quantity": 2, "unit": "bags"]])

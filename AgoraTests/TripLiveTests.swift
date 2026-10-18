@@ -192,7 +192,6 @@ final class TripLiveTests: XCTestCase {
         let trips = TripStore(api: api, inventory: inventory, calendar: calendar)
         let suffix = String(UUID().uuidString.prefix(8)).lowercased()
         let listName = "Chat groceries " + suffix
-        let listID = try await trips.createList(name: listName, merchantID: nil)
         let settings = SettingsStore(keychainService: "chat-live-" + suffix, defaults: UserDefaults(suiteName: "chat-live-" + suffix)!)
         let agent = AgentCoordinator(settings: settings, browser: BrowserSession(policy: settings.policy), calendar: calendar, shopping: shopping, trips: trips)
         agent.modelClientOverride = DemoModelClient(calendar: calendar, feature: .chat)
@@ -205,6 +204,12 @@ final class TripLiveTests: XCTestCase {
             XCTAssertFalse(agent.running); XCTAssertNil(agent.approval)
             XCTAssertEqual(agent.status, "Ready", agent.messages.map(\.text).joined(separator: "\n"))
         }
+        try await send("Create a shopping list called \(listName)")
+        let listID = try XCTUnwrap(trips.lists.first { $0.name == listName }?.id)
+        XCTAssertTrue(agent.messages.last?.text.contains("Created \(listName)") == true)
+        try await send("Create a shopping list called \(listName)")
+        XCTAssertTrue(agent.messages.last?.text.contains("already exists") == true)
+        XCTAssertEqual(trips.lists.filter { $0.name == listName }.count, 1)
         try await send("Add 2 cartons of chat milk \(suffix) to inventory")
         let stock = try XCTUnwrap(inventory.activeItems.first { $0.displayName == "chat milk " + suffix })
         XCTAssertEqual(stock.quantity, 2); XCTAssertEqual(stock.unit, "cartons")
