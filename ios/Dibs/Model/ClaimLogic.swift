@@ -5,8 +5,12 @@ import CoreGraphics
 /// Tray.tsx, web/lib/highlight.ts, web/lib/frame.ts). Every number here is a display preview built from the
 /// server's own numbers (authorized cents, tax rate, prices, claimers); the server decides every claim.
 enum ClaimLogic {
-    /// Each raise grows the hold by $20 (web RAISE_STEP_CENTS).
+    /// Each raise grows the hold by at least $20 (web RAISE_STEP_CENTS).
     static let raiseStepCents = 2000
+    /// A raise big enough for one chip is rounded up to the next $5.
+    static let raiseRoundCents = 500
+    /// The most a hold can be: the server's payments refuse anything above $1000 (server/src/payments/sim.ts MAX_AUTH_CENTS).
+    static let maxHoldCents = 100000
     /// Undo window after a claim or leave.
     static let undoSeconds = 3
     /// How long a server error toast stays up.
@@ -45,10 +49,16 @@ enum ClaimLogic {
         return authorizedCents - withTax
     }
 
-    /// Room left on my hold for the run as the server sent it; nil when I have no hold.
+    /// The chips the server counts against my hold, exactly as `trayPrices` in server/src/run.ts: claimed by me,
+    /// not removed and not put back. A dropped duplicate still counts there, so it counts here; unpriced count 0.
+    static func roomChips(_ run: Run, me: String) -> [Chip] {
+        run.chips.filter { $0.state != .removed && !$0.putBack && $0.claimers.contains(me) }
+    }
+
+    /// Room left on my hold, the same number the server's cap check uses; nil when I have no hold.
     static func roomLeft(run: Run, me: String) -> Int? {
         guard let held = run.person(me)?.authorizedCents else { return nil }
-        return roomFor(trayChips(run, me: me).map { $0.priceCents ?? 0 }, authorizedCents: held, taxRate: run.taxRate)
+        return roomFor(roomChips(run, me: me).map { $0.priceCents ?? 0 }, authorizedCents: held, taxRate: run.taxRate)
     }
 
     static func trayTotal(_ tray: [Chip], me: String) -> Int {
@@ -154,30 +164,49 @@ enum ClaimLogic {
         case notClaimable
     }
 
-    /// Same check as the web tray before it sends a claim; `authorizedCents` nil skips the cap check.
-    static func decide(_ chip: Chip, tray: [Chip], me: String, authorizedCents: Int?, taxRate: Double) -> ClaimDecision {
+    /// The server's cap check before a claim (`fits` in server/src/run.ts). `roomChips` is `roomChips(run, me:)`;
+    /// `authorizedCents` nil skips the cap check.
+    static func decide(_ chip: Chip, roomChips: [Chip], me: String, authorizedCents: Int?, taxRate: Double) -> ClaimDecision {
         if chip.state == .wish || chip.state == .identifying { return .notClaimable }
-        if chip.claimers.contains(me) || tray.contains(where: { $0.id == chip.id }) { return .alreadyMine }
-        if let held = authorizedCents {
-            let after = roomFor((tray + [chip]).map { $0.priceCents ?? 0 }, authorizedCents: held, taxRate: taxRate)
-            if after < 0 { return .overCap }
+        if chip.claimers.contains(me) { return .alreadyMine }
+        if let held = authorizedCents, roomFor(prices(with: chip, roomChips), authorizedCents: held, taxRate: taxRate) < 0 {
+            return .overCap
         }
         return .claim
     }
 
-    static func raiseTarget(authorizedCents: Int) -> Int { authorizedCents + raiseStepCents }
+    /// Full prices of my counted chips plus this one (the server leaves the chip itself out of the tray first).
+    private static func prices(with chip: Chip, _ roomChips: [Chip]) -> [Int] {
+        roomChips.filter { $0.id != chip.id }.map { $0.priceCents ?? 0 } + [chip.priceCents ?? 0]
+    }
+
+    /// The smallest hold that fits my counted chips plus this one, with tax.
+    static func neededHold(for chip: Chip, roomChips: [Chip], taxRate: Double) -> Int {
+        -roomFor(prices(with: chip, roomChips), authorizedCents: 0, taxRate: taxRate)
+    }
+
+    /// What "Raise" asks for: at least $20 more, or enough for this chip rounded up to the next $5,
+    /// whichever is larger, never above the most the server allows.
+    static func raiseTarget(for chip: Chip, roomChips: [Chip], authorizedCents: Int, taxRate: Double) -> Int {
+        let needed = neededHold(for: chip, roomChips: roomChips, taxRate: taxRate)
+        let rounded = (needed + raiseRoundCents - 1) / raiseRoundCents * raiseRoundCents
+        return min(max(authorizedCents + raiseStepCents, rounded), maxHoldCents)
+    }
 
     /// "Over your cap. Raise it to $60?"
-    static func overCapTitle(authorizedCents: Int) -> String {
-        "Over your cap. Raise it to \(Money.whole(raiseTarget(authorizedCents: authorizedCents)))?"
+    static func overCapTitle(targetCents: Int) -> String {
+        "Over your cap. Raise it to \(Money.whole(targetCents))?"
     }
 
     /// "Raise to $60 and claim".
-    static func raiseButton(authorizedCents: Int) -> String {
-        "Raise to \(Money.whole(raiseTarget(authorizedCents: authorizedCents))) and claim"
+    static func raiseButton(targetCents: Int) -> String {
+        "Raise to \(Money.whole(targetCents)) and claim"
     }
 
-    static let raiseCopy = "Your hold grows by \(Money.whole(raiseStepCents)). Only what you claim is captured."
+    /// "Your hold grows by $20. You still only pay for what you claim." (canvas OverCap.dc.html)
+    static func raiseCopy(growCents: Int) -> String {
+        "Your hold grows by \(Money.whole(growCents)). You still only pay for what you claim."
+    }
     static let raiseOffTitle = "Raising your cap is off for this run"
 
     /// "$14.99 · more than your $7.29 room".

@@ -6,6 +6,8 @@ struct OverCapSheet: View {
     let chip: Chip
     let roomCents: Int
     let authorizedCents: Int
+    /// The hold "Raise" asks for (`ClaimLogic.raiseTarget`).
+    let targetCents: Int
     /// The server answered 403: raising is turned off for this run.
     var raiseOff = false
     var busy = false
@@ -26,18 +28,18 @@ struct OverCapSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if raiseOff {
+            if !canRaise {
                 Text(ClaimLogic.raiseOffTitle)
                     .font(.display(26))
                     .foregroundStyle(Color.ink)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text(ClaimLogic.overCapTitle(authorizedCents: authorizedCents))
+                Text(ClaimLogic.overCapTitle(targetCents: targetCents))
                     .font(.display(26))
                     .foregroundStyle(Color.ink)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
-                Text(ClaimLogic.raiseCopy)
+                Text(ClaimLogic.raiseCopy(growCents: targetCents - authorizedCents))
                     .font(.system(size: 14))
                     .lineSpacing(3)
                     .foregroundStyle(Color.bodyInk)
@@ -46,7 +48,7 @@ struct OverCapSheet: View {
                     if busy {
                         ProgressView().tint(.white)
                     } else {
-                        Text(ClaimLogic.raiseButton(authorizedCents: authorizedCents))
+                        Text(ClaimLogic.raiseButton(targetCents: targetCents))
                     }
                 }
                 .buttonStyle(.dibs)
@@ -68,7 +70,10 @@ struct OverCapSheet: View {
     }
 
     /// Sheet height for the presentation detent.
-    var height: CGFloat { raiseOff ? 260 : 400 }
+    var height: CGFloat { canRaise ? 400 : 260 }
+
+    /// Off when the server refused raises, or the hold is already at the most it can be.
+    private var canRaise: Bool { !raiseOff && targetCents > authorizedCents }
 }
 
 #if DEBUG
@@ -76,7 +81,7 @@ struct OverCapSheet: View {
     Color.paper.ignoresSafeArea()
         .sheet(isPresented: .constant(true)) {
             let sheet = OverCapSheet(chip: Chip(id: "coffee", name: "Kirkland Coffee 3 lb", priceCents: 1499),
-                                     roomCents: 729, authorizedCents: 4000)
+                                     roomCents: 729, authorizedCents: 4000, targetCents: 6000)
             sheet
                 .presentationDetents([.height(sheet.height)])
                 .presentationBackground(Color.card)
@@ -87,7 +92,7 @@ struct OverCapSheet: View {
     Color.paper.ignoresSafeArea()
         .sheet(isPresented: .constant(true)) {
             let sheet = OverCapSheet(chip: Chip(id: "coffee", name: "Kirkland Coffee 3 lb", priceCents: 1499),
-                                     roomCents: 729, authorizedCents: 4000, raiseOff: true)
+                                     roomCents: 729, authorizedCents: 4000, targetCents: 6000, raiseOff: true)
             sheet.presentationDetents([.height(sheet.height)])
         }
 }

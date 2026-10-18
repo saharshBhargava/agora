@@ -43,6 +43,40 @@ final class ClaimLogicTests: XCTestCase {
         XCTAssertEqual(ClaimLogic.roomLeft(run: r, me: "priya"), 4000 - 429)
     }
 
+    func testRoomCountsTheSameChipsAsTheServer() {
+        // server/src/run.ts trayPrices: claimed by me, not removed, not put back. Dropped duplicates still count.
+        let r = run([
+            chip("eggs", 872, ["priya"]),
+            chip("dup", 500, ["priya"], dropped: true),
+            Chip(id: "back", name: "Back", priceCents: 1000, claimers: ["priya"], state: .claimed, putBack: true),
+            chip("gone", 300, ["priya"], state: .removed),
+            chip("theirs", 700, ["marcus"]),
+        ])
+        XCTAssertEqual(ClaimLogic.roomChips(r, me: "priya").map(\.id), ["eggs", "dup"])
+        XCTAssertEqual(ClaimLogic.roomLeft(run: r, me: "priya"), 4000 - 872 - 500)
+        let counted = ClaimLogic.roomChips(r, me: "priya")
+        XCTAssertEqual(ClaimLogic.decide(chip("fits", 2628), roomChips: counted, me: "priya", authorizedCents: 4000, taxRate: 0), .claim)
+        XCTAssertEqual(ClaimLogic.decide(chip("over", 2629), roomChips: counted, me: "priya", authorizedCents: 4000, taxRate: 0), .overCap)
+    }
+
+    func testRoomMatchesTheServerOnTheFixtureRunWithDroppedAndPutBackChips() throws {
+        // The captured server run: Priya holds $40 and claims eggs ($8.72, split with Marcus) and towels ($23.99).
+        var r = try Run.decode(fixtureData("run"))
+        let priya = try XCTUnwrap(r.people.first { $0.name == "Priya" })
+        XCTAssertEqual(ClaimLogic.roomLeft(run: r, me: priya.id), 4000 - 872 - 2399)
+        // The shopper puts the towels back, and a dropped duplicate of the eggs that Priya also claimed stays in the run.
+        let towels = try XCTUnwrap(r.chips.firstIndex { $0.name == "Paper Towels 12 pk" })
+        r.chips[towels].putBack = true
+        var dup = try XCTUnwrap(r.chips.first { $0.name == "Kirkland Eggs 24 ct" })
+        dup.id = "dup"
+        dup.dropped = true
+        dup.claimers = [priya.id]
+        r.chips.append(dup)
+        // Server trayPrices: put back no longer counts, the dropped duplicate still does.
+        XCTAssertEqual(ClaimLogic.roomLeft(run: r, me: priya.id), 4000 - 872 - 872)
+        XCTAssertEqual(ClaimLogic.roomChips(r, me: priya.id).map(\.name), ["Kirkland Eggs 24 ct", "Kirkland Eggs 24 ct"])
+    }
+
     func testShareSplitsWithLeftoverCentsToEarliestClaimers() {
         let eggs = chip("eggs", 873, ["priya", "marcus"])
         XCTAssertEqual(ClaimLogic.myShare(eggs, me: "priya"), 437)
@@ -135,25 +169,47 @@ final class ClaimLogicTests: XCTestCase {
     func testClaimDecision() {
         let eggs = chip("eggs", 872, ["priya", "marcus"])
         let tray = [eggs]
-        XCTAssertEqual(ClaimLogic.decide(chip("milk", 429), tray: tray, me: "priya", authorizedCents: 4000, taxRate: 0), .claim)
-        XCTAssertEqual(ClaimLogic.decide(eggs, tray: tray, me: "priya", authorizedCents: 4000, taxRate: 0), .alreadyMine)
+        XCTAssertEqual(ClaimLogic.decide(chip("milk", 429), roomChips: tray, me: "priya", authorizedCents: 4000, taxRate: 0), .claim)
+        XCTAssertEqual(ClaimLogic.decide(eggs, roomChips: tray, me: "priya", authorizedCents: 4000, taxRate: 0), .alreadyMine)
         // 872 + 3500 = 4372 > 4000
-        XCTAssertEqual(ClaimLogic.decide(chip("tv", 3500), tray: tray, me: "priya", authorizedCents: 4000, taxRate: 0), .overCap)
+        XCTAssertEqual(ClaimLogic.decide(chip("tv", 3500), roomChips: tray, me: "priya", authorizedCents: 4000, taxRate: 0), .overCap)
         // Exactly the cap fits.
-        XCTAssertEqual(ClaimLogic.decide(chip("tv", 3128), tray: tray, me: "priya", authorizedCents: 4000, taxRate: 0), .claim)
+        XCTAssertEqual(ClaimLogic.decide(chip("tv", 3128), roomChips: tray, me: "priya", authorizedCents: 4000, taxRate: 0), .claim)
         // Tax pushes it over.
-        XCTAssertEqual(ClaimLogic.decide(chip("tv", 3128), tray: tray, me: "priya", authorizedCents: 4000, taxRate: 0.1), .overCap)
-        XCTAssertEqual(ClaimLogic.decide(chip("w", nil, state: .wish), tray: tray, me: "priya", authorizedCents: 4000, taxRate: 0), .notClaimable)
-        XCTAssertEqual(ClaimLogic.decide(chip("i", nil, state: .identifying), tray: tray, me: "priya", authorizedCents: 4000, taxRate: 0), .notClaimable)
+        XCTAssertEqual(ClaimLogic.decide(chip("tv", 3128), roomChips: tray, me: "priya", authorizedCents: 4000, taxRate: 0.1), .overCap)
+        XCTAssertEqual(ClaimLogic.decide(chip("w", nil, state: .wish), roomChips: tray, me: "priya", authorizedCents: 4000, taxRate: 0), .notClaimable)
+        XCTAssertEqual(ClaimLogic.decide(chip("i", nil, state: .identifying), roomChips: tray, me: "priya", authorizedCents: 4000, taxRate: 0), .notClaimable)
         // No hold (shopper): no cap check.
-        XCTAssertEqual(ClaimLogic.decide(chip("tv", 99999), tray: [], me: "jake", authorizedCents: nil, taxRate: 0), .claim)
+        XCTAssertEqual(ClaimLogic.decide(chip("tv", 99999), roomChips: [], me: "jake", authorizedCents: nil, taxRate: 0), .claim)
+    }
+
+    func testRaiseTarget() {
+        let tray = [chip("eggs", 872, ["priya", "marcus"])]
+        func target(_ price: Int, held: Int = 4000, tax: Double = 0, tray: [Chip]? = nil) -> Int {
+            ClaimLogic.raiseTarget(for: chip("x", price), roomChips: tray ?? [chip("eggs", 872, ["priya", "marcus"])],
+                                   authorizedCents: held, taxRate: tax)
+        }
+        // Needs $43.72: the $20 step is bigger.
+        XCTAssertEqual(target(3500), 6000)
+        // Needs $68.72: rounded up to the next $5.
+        XCTAssertEqual(target(6000), 7000)
+        // Needs exactly $70.00: no extra $5.
+        XCTAssertEqual(target(6128), 7000)
+        // Tax counts: 5872 * 1.1025 = 6473.88 -> 6474 -> $65.
+        XCTAssertEqual(target(5000, tax: 0.1025), 6500)
+        // Never above the most the server allows.
+        XCTAssertEqual(target(5000, held: 99000, tray: []), ClaimLogic.maxHoldCents)
+        XCTAssertEqual(target(200000, held: 4000, tray: []), 100000)
+        XCTAssertEqual(target(5000, held: 100000, tray: []), 100000)
+        XCTAssertEqual(ClaimLogic.neededHold(for: chip("x", 3500), roomChips: tray, taxRate: 0), 4372)
+        // The chip itself is not counted twice when it is somehow already in the list.
+        XCTAssertEqual(ClaimLogic.neededHold(for: tray[0], roomChips: tray, taxRate: 0), 872)
     }
 
     func testRaiseCopy() {
-        XCTAssertEqual(ClaimLogic.raiseTarget(authorizedCents: 4000), 6000)
-        XCTAssertEqual(ClaimLogic.overCapTitle(authorizedCents: 4000), "Over your cap. Raise it to $60?")
-        XCTAssertEqual(ClaimLogic.raiseButton(authorizedCents: 4000), "Raise to $60 and claim")
-        XCTAssertEqual(ClaimLogic.raiseCopy, "Your hold grows by $20. Only what you claim is captured.")
+        XCTAssertEqual(ClaimLogic.overCapTitle(targetCents: 6000), "Over your cap. Raise it to $60?")
+        XCTAssertEqual(ClaimLogic.raiseButton(targetCents: 6500), "Raise to $65 and claim")
+        XCTAssertEqual(ClaimLogic.raiseCopy(growCents: 2000), "Your hold grows by $20. You still only pay for what you claim.")
         XCTAssertEqual(ClaimLogic.overCapLine(chip("coffee", 1499), roomCents: 729), "$14.99 · more than your $7.29 room")
         XCTAssertEqual(ClaimLogic.overCapLine(chip("coffee", nil), roomCents: -50), "Price not known yet · more than your $0.00 room")
     }

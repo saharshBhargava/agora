@@ -48,17 +48,17 @@ struct Tray: View {
                 Spacer()
                 Text(ClaimLogic.traySummary(chips, me: me))
                     .font(.system(size: 13))
-                    .foregroundStyle(Color.lineStrong)
+                    .foregroundStyle(Color.white.opacity(0.85))
             }
             if let previewLine {
                 Text(previewLine)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.lineStrong)
+                    .foregroundStyle(Color.white.opacity(0.85))
             }
             if chips.isEmpty {
                 Text("Hold a chip and drop it here to claim it.")
                     .font(.system(size: 14))
-                    .foregroundStyle(Color.lineStrong)
+                    .foregroundStyle(Color.white.opacity(0.85))
                     .frame(maxWidth: .infinity, minHeight: Self.rowHeight)
                     .overlay(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -136,7 +136,7 @@ struct TrayRow: View {
                     .lineLimit(1)
                 Text(ClaimLogic.splitLabel(chip, people: people, me: me))
                     .font(.system(size: 12))
-                    .foregroundStyle(Color.lineStrong)
+                    .foregroundStyle(Color.white.opacity(0.85))
                     .lineLimit(1)
                 if chip.overCap.contains(me) {
                     Text("Raise your cap or leave")

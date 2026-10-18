@@ -129,6 +129,11 @@ struct ClaimScreen: View {
     private var tray: [Chip] { ClaimLogic.trayChips(run, me: me.id) }
     private var trayTotal: Int { ClaimLogic.trayTotal(tray, me: me.id) }
     private var room: Int? { ClaimLogic.roomLeft(run: run, me: me.id) }
+    private var roomChips: [Chip] { ClaimLogic.roomChips(run, me: me.id) }
+
+    private func raiseTarget(for chip: Chip) -> Int {
+        ClaimLogic.raiseTarget(for: chip, roomChips: roomChips, authorizedCents: me.authorizedCents ?? 0, taxRate: run.taxRate)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -177,6 +182,7 @@ struct ClaimScreen: View {
                 chip: chip,
                 roomCents: room ?? 0,
                 authorizedCents: me.authorizedCents ?? 0,
+                targetCents: raiseTarget(for: chip),
                 raiseOff: raiseOff,
                 busy: busy,
                 onRaise: { Task { await raise(for: chip) } },
@@ -397,9 +403,9 @@ struct ClaimScreen: View {
     // MARK: actions
 
     private func tryClaim(_ chip: Chip) {
-        switch ClaimLogic.decide(chip, tray: tray, me: me.id, authorizedCents: me.authorizedCents, taxRate: run.taxRate) {
+        switch ClaimLogic.decide(chip, roomChips: roomChips, me: me.id, authorizedCents: me.authorizedCents, taxRate: run.taxRate) {
         case .claim:
-            send(actions.claim(chip.id), label: "Claimed \(chip.name)") { _ = actions.leave(chip.id) }
+            send(actions.claim(chip.id), label: "Claimed \(chip.name)") { undoSend(actions.leave(chip.id)) }
         case .overCap:
             raiseOff = false
             overCap = chip
@@ -410,7 +416,7 @@ struct ClaimScreen: View {
 
     private func leave(_ chip: Chip) {
         guard ClaimLogic.isMine(chip, me: me.id) else { return }
-        send(actions.leave(chip.id), label: "Left \(chip.name)") { _ = actions.claim(chip.id) }
+        send(actions.leave(chip.id), label: "Left \(chip.name)") { undoSend(actions.claim(chip.id)) }
     }
 
     private func deleteWish(_ chip: Chip) {
@@ -426,19 +432,24 @@ struct ClaimScreen: View {
         }
     }
 
+    /// An undo is a send too: when it does not go out, say so.
+    private func undoSend(_ sent: Bool) {
+        if !sent { showSendError() }
+    }
+
     private func showSendError() {
         toast = .notice(actions.sendError() ?? RunStore.reconnectingMessage)
     }
 
     private func raise(for chip: Chip) async {
-        guard let held = me.authorizedCents, !busy else { return }
+        guard me.authorizedCents != nil, !busy else { return }
         busy = true
         defer { busy = false }
         do {
-            try await actions.raise(ClaimLogic.raiseTarget(authorizedCents: held))
+            try await actions.raise(raiseTarget(for: chip))
             overCap = nil
             // The raise was for this chip: claim it now that it fits.
-            send(actions.claim(chip.id), label: "Claimed \(chip.name)") { _ = actions.leave(chip.id) }
+            send(actions.claim(chip.id), label: "Claimed \(chip.name)") { undoSend(actions.leave(chip.id)) }
         } catch DibsError.server(_, let status) where status == 403 {
             raiseOff = true
         } catch {
