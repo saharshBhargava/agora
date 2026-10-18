@@ -105,3 +105,7 @@ jobs:
       - name: Server logs
         if: failure()
         run: tail -n 80 "$RUNNER_TEMP/new.log" "$RUNNER_TEMP/old.log" 2>/dev/null || true
+      - name: Stop servers
+        # They hold uv's cache open; setup-uv's post-job cache cleanup fails while they run.
+        if: always()
+        run: pkill -f "uvicorn app.main:create_app" || true
