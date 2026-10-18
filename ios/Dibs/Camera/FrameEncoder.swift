@@ -81,10 +81,21 @@ final class FrameEncoder: @unchecked Sendable {
             .transformed(by: CGAffineTransform(translationX: -out.extent.minX, y: -out.extent.minY))
             .clampedToExtent()
             .cropped(to: CGRect(x: 0, y: 0, width: w, height: h))
-        var bytes = [UInt8](repeating: 0, count: w * h)
-        bytes.withUnsafeMutableBytes { raw in
-            context.render(small, toBitmap: raw.baseAddress!, rowBytes: w, bounds: small.extent,
-                           format: .L8, colorSpace: grayColorSpace)
+        let bounds = CGRect(x: 0, y: 0, width: w, height: h)
+        // createCGImage + DeviceGray draw yields top-left rows. Direct L8 render(toBitmap:) writes
+        // all zeros on the CI simulator (genericGrayGamma2_2), which broke CartWatcher thumbnails.
+        var bytes = [UInt8](repeating: 128, count: w * h)
+        if let cg = context.createCGImage(small, from: bounds, format: .L8, colorSpace: grayColorSpace)
+            ?? context.createCGImage(small, from: bounds) {
+            bytes.withUnsafeMutableBytes { raw in
+                guard let ctx = CGContext(
+                    data: raw.baseAddress, width: w, height: h,
+                    bitsPerComponent: 8, bytesPerRow: w,
+                    space: CGColorSpaceCreateDeviceGray(),
+                    bitmapInfo: CGImageAlphaInfo.none.rawValue
+                ) else { return }
+                ctx.draw(cg, in: bounds)
+            }
         }
         return SceneThumb(width: w, height: h, pixels: bytes)
     }
