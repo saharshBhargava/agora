@@ -28,7 +28,12 @@ class Settings(BaseSettings):
     dev_jwt_secret: SecretStr = SecretStr(DEFAULT_DEV_SECRET)
     # In demo mode, dev login only works for these seeded handles. It stays available in demo even when
     # AGORA_AUTH_MODE=google, so curl and clients without Google sign-in (e.g. desktop) can still sign in.
-    demo_handles: list[str] = Field(default_factory=lambda: ["kedar", "saharsh"])
+    demo_handles: list[str] = Field(default_factory=lambda: ["kedar", "saharsh", "demo"])
+    # The demo account (app/demo_account.py): Google addresses that sign in to it (comma-separated), the password
+    # that dev login requires on demo deploys, and its visible name.
+    demo_google_emails: str = ""
+    demo_password: SecretStr | None = None
+    demo_display_name: str = "Alex Rivera"
     dev_token_ttl_s: int = 12 * 3600
     oidc_issuer: str | None = None
     oidc_audience: str | None = None
@@ -92,7 +97,13 @@ class Settings(BaseSettings):
 
     @property
     def dev_login_enabled(self) -> bool:
-        return self.auth_mode == "dev" or self.env == "demo"
+        if self.env == "demo":  # hosted: only with a password, so the URL alone isn't enough to sign in
+            return bool(self.demo_password and self.demo_password.get_secret_value())
+        return self.auth_mode == "dev"
+
+    @property
+    def demo_email_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.demo_google_emails.split(",") if e.strip()}
 
     @model_validator(mode="after")
     def _guard_prod(self) -> "Settings":
@@ -122,8 +133,10 @@ class Settings(BaseSettings):
                 raise ValueError("Google redirect URI must use HTTPS (localhost allowed in dev/test)")
             if uri.username or uri.password or uri.query or uri.fragment:
                 raise ValueError("Google redirect URI must not contain credentials, query or fragment")
-        if self.seed_new_users and self.env not in ("dev", "test", "demo"):
-            raise ValueError("AGORA_SEED_NEW_USERS is only for dev/demo deploys")
+        if self.seed_new_users and self.env not in ("dev", "test"):
+            raise ValueError("AGORA_SEED_NEW_USERS is only for local dev; hosted demos use the demo account")
+        if self.demo_password is not None and 0 < len(self.demo_password.get_secret_value()) < 12:
+            raise ValueError("AGORA_DEMO_PASSWORD must be at least 12 characters")
         if self.dev_login_enabled:
             secret = self.dev_jwt_secret.get_secret_value()
             if len(secret) < 32:

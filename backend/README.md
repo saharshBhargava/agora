@@ -9,6 +9,16 @@ audit trail, seed data, and offline replay for demos.
 
 ## Run locally
 
+The fastest way, configured exactly like the hosted demo (Docker optional; falls back to an embedded
+Postgres):
+
+```bash
+cd backend && uv run python -m app.tools.local_demo --tunnel
+```
+
+See [SETUP.md](../SETUP.md) section 9 (Plan B) for running against the hosted database or a snapshot of it.
+The manual steps:
+
 ```bash
 cd backend
 docker compose up -d          # TimescaleDB on 127.0.0.1:5433 (same image family as Tiger Cloud)
@@ -63,7 +73,7 @@ suggestions and agent intents need an `Idempotency-Key` header. Errors are RFC 7
 | `GET /scans/{id}/frames/{n}` | Sanitized frame for the review UI (410 once retention deletes it) |
 | `POST /scans/{id}/review` | Accept / correct / reject detections; only those reach inventory |
 | `GET /inventory`, `POST /inventory` | Items with latest quantity; manual add |
-| `GET /inventory/{id}?days=30` | Daily gap-filled series + raw observations with provenance |
+| `GET /inventory/{id}?days=30` | Daily gap-filled series, raw observations with provenance, run-out forecast |
 | `PATCH /inventory/{id}`, `POST /inventory/{id}/observations` | Edit item; record a manual count |
 | `GET /wishlist`, `POST /wishlist` | Household wishlist as a priority queue (score + reasons); manual add |
 | `POST /wishlist/suggestions` | Agent suggestion (rationale + confidence, `Idempotency-Key`); refuses recent rejections |
@@ -74,13 +84,18 @@ suggestions and agent intents need an `Idempotency-Key` header. Errors are RFC 7
 | `GET/POST/DELETE /agent/mandates`, `GET /agent/state` | Spending authority (scope, caps, expiry); autonomy and pause state |
 | `POST /agent/pause`, `POST /agent/resume` | Kill switch: revoke all mandates and cancel pending intents in one transaction |
 | `GET/POST/PATCH /budgets`, `GET /spend?period=month&group=category` | Budgets with headroom; spend by category or store |
-| `GET /events` | Server-Sent Events: `scan.updated`, `inventory.updated`, `wishlist.updated`, `agent.updated`, `budget.updated`, `spend.updated` (IDs only; refetch) |
+| `GET /forecasts/runouts?within=7d` | What runs out soon, with interval, explanation and suggested store |
+| `GET /lists`, `POST /lists`, `GET\|PATCH /lists/{id}` | Shopping lists (archived, never deleted) |
+| `POST /lists/{id}/items`, `PATCH\|DELETE /lists/{id}/items/{id}` | List lines; agent lines must carry an explanation |
+| `POST /lists/generate` | Per-store lists from upcoming run-outs (`Idempotency-Key`) |
+| `GET /events` | Server-Sent Events: `scan.updated`, `inventory.updated`, `wishlist.updated`, `forecast.updated`, `list.updated`, `agent.updated`, `budget.updated`, `spend.updated` (IDs only; refetch) |
 | `GET /audit`, `GET /audit/verify` | Your audit trail; hash-chain integrity check |
 | `GET /merchants?q=`, `POST /merchants`, `GET /merchants/{id}` | Store search and find-or-create (see [docs/api/purchased-from.md](../docs/api/purchased-from.md)) |
 | `PATCH /scans/{id}`, `PATCH /scans/{id}/detections/{id}` | Change or clear an upload's or one product's store |
 
-Wishlist contract, lifecycle and scoring: [docs/api/wishlist.md](../docs/api/wishlist.md). Agent intents, mandates,
-the policy engine, payments and budgets: [docs/api/agent-commerce.md](../docs/api/agent-commerce.md). UI work waiting on the
+Agent intents, mandates, payments and budgets: [docs/api/agent-commerce.md](../docs/api/agent-commerce.md).
+Wishlist contract, lifecycle and scoring: [docs/api/wishlist.md](../docs/api/wishlist.md). Forecasting method and
+lists: [docs/api/forecasts-and-lists.md](../docs/api/forecasts-and-lists.md). UI work waiting on the
 frontend team: [docs/frontend-requests.md](../docs/frontend-requests.md).
 
 ## Where things live
@@ -90,9 +105,10 @@ app/main.py           app factory, middleware (request IDs, security headers, bo
 app/auth.py           dev HMAC tokens / OIDC JWKS verification, first-login bootstrap
 app/db.py             pool; scoped() = per-request role + row-level security; audit + notify helpers
 app/pipeline.py       scan job: frames → vision → merge → match → review/auto-commit → media purge
-app/core/             pure logic (merging, quantities, auto-accept rules, wishlist scoring, agent policy), unit-tested
 app/commerce.py       policy inputs, budget usage, order + spend recording for agent purchases
 app/payments.py       PaymentProvider interface; simulated provider (tokens + brand/last4 only)
+app/core/             pure logic (merging, quantities, auto-accept rules, wishlist scoring, forecasting, agent policy), unit-tested
+app/forecasting.py    forecast jobs: refresh after each confirmed scan, nightly fan-out, stored history
 app/vision/           provider contract, output validation, Perceptron / Gemini / replay, cache
 app/timeseries.py     Timescale and plain-Postgres implementations of the same queries
 app/jobs.py           Postgres job queue (SKIP LOCKED, LISTEN/NOTIFY wake-ups, backoff)
@@ -210,8 +226,9 @@ server scheduling are not implemented. Settings provides reconnect, local sign-o
 
 ### Optional inventory backend
 
-The Home screen's inventory feature uses `AgoraAPIClient`, separately from `CalendarConnection`.
-Leaving the backend unconfigured displays an inventory availability message and does not block Calendar.
+The Home screen's inventory feature uses shared `AgoraClient` (Google ID token auth), separate from
+Calendar's Google access-token calls. Leaving the backend unconfigured displays an availability message
+and does not block Calendar.
 To enable inventory, deploy the existing FastAPI/Postgres service and configure:
 
 ```dotenv

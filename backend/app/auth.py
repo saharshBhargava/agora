@@ -42,13 +42,17 @@ class TokenVerifier:
 
     def verify(self, token: str) -> str:
         """Return the token's subject, or raise Problem(401). Algorithms are pinned; ``none`` is never accepted."""
+        return self.identify(token)[0]
+
+    def identify(self, token: str) -> tuple[str, str | None]:
+        """(subject, verified email or None)."""
         try:
             if self.settings.dev_login_enabled and jwt.get_unverified_header(token).get("alg") == "HS256":
                 # Demo dev tokens next to Google ones. Only the server can mint these (pinned HS256 + secret).
                 claims = jwt.decode(token, self.settings.dev_jwt_secret.get_secret_value(), algorithms=["HS256"],
                                     audience=DEV_AUDIENCE, issuer=DEV_ISSUER,
                                     options={"require": ["exp", "sub", "iss", "aud"]})
-                return self._subject(claims, namespace="")
+                return self._subject(claims, namespace=""), None
             if self._native_google:
                 key = self._jwks.get_signing_key_from_jwt(token).key
                 claims = jwt.decode(
@@ -68,7 +72,9 @@ class TokenVerifier:
                                     options={"require": ["exp", "sub", "iss", "aud"]})
         except jwt.PyJWTError as error:
             raise Problem(401, "invalid_token", "Sign in again.") from error
-        return self._subject(claims, namespace="google:" if self._native_google else "")
+        email = claims.get("email") if claims.get("email_verified") in (True, "true") else None
+        return self._subject(claims, namespace="google:" if self._native_google else ""), (
+            email.strip().lower() if isinstance(email, str) else None)
 
     @staticmethod
     def _subject(claims: dict, namespace: str) -> str:
@@ -126,12 +132,18 @@ async def current_principal(request: Request) -> Principal:
         return Principal(user_id=row["id"], subject=row["auth_subject"], handle=row["handle"])
     if state.settings.auth_mode == "google" and not state.settings.google_ios_client_id:
         raise Problem(401, "invalid_token", "Sign in with Google.")
-    subject = await run_in_threadpool(state.verifier.verify, token)
+    subject, email = await run_in_threadpool(state.verifier.identify, token)
+    if email and email in state.settings.demo_email_set:
+        # The designated demo Google address signs in to the demo account (see app/demo_account.py).
+        from app.demo_account import DEMO_SUBJECT, ensure_demo_account  # local import: it imports this module
+
+        await ensure_demo_account(state.db, state.settings)
+        subject = DEMO_SUBJECT
     async with state.db.system() as conn:
         row = await conn.fetchrow("SELECT id, handle FROM users WHERE auth_subject = $1 AND deleted_at IS NULL",
                                   subject)
     if row is None:
-        if state.settings.auth_mode not in ("oidc", "google") or subject.startswith("dev:"):
+        if state.settings.auth_mode not in ("oidc", "google") or subject.startswith(("dev:", "demo:")):
             raise Problem(401, "unknown_user", "Sign in again.")
         # Preserve the Google subject/handle used by the earlier server-side OAuth flow.
         handle = ("g_" + hashlib.sha256(subject.removeprefix("google:").encode()).hexdigest()[:28]

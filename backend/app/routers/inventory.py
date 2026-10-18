@@ -4,6 +4,7 @@ from uuid import UUID
 import asyncpg
 from fastapi import APIRouter, Query, Request
 
+from app import forecasting
 from app.auth import CurrentUser, Principal
 from app.db import audit, notify
 from app.errors import Problem, not_found
@@ -15,7 +16,7 @@ from app.timeseries import daily_quantity
 
 router = APIRouter(prefix="/v1/inventory", tags=["inventory"])
 
-_ITEM_SELECT = """
+ITEM_SELECT = """
 SELECT i.id, i.household_id, i.display_name, i.category, i.location_id, i.unit, i.par_level::float8 AS par_level,
        i.status, i.product_id, i.preferred_merchant_id, o.quantity::float8 AS quantity, o.time AS observed_at,
        o.source, pd.purchased_on AS last_purchased_on, {MERCHANT_REF}
@@ -31,11 +32,11 @@ LEFT JOIN LATERAL (SELECT purchased_on FROM inventory_purchase_origins
 LEFT JOIN merchants m ON m.id = po.merchant_id
 """.replace("{MERCHANT_REF}", MERCHANT_REF)
 
-_ITEM_FIELDS = [f for f in ItemOut.model_fields if f != "last_purchased_from"]
+ITEM_FIELDS = [f for f in ItemOut.model_fields if f != "last_purchased_from"]
 
 
-def _item(row: asyncpg.Record) -> dict:
-    return {**{k: row[k] for k in _ITEM_FIELDS}, "last_purchased_from": ref(row, "m_")}
+def item_fields(row: asyncpg.Record) -> dict:
+    return {**{k: row[k] for k in ITEM_FIELDS}, "last_purchased_from": ref(row, "m_")}
 
 
 async def _location_ok(conn: asyncpg.Connection, household_id: UUID, location_id: UUID | None) -> None:
@@ -50,10 +51,10 @@ async def list_items(request: Request, household_id: UUID | None = None, locatio
     async with request.app.state.db.scoped(user.user_id) as conn:
         household_id = await require_household(conn, household_id, user.user_id)
         rows = await conn.fetch(
-            _ITEM_SELECT + """WHERE i.household_id = $1 AND ($2::uuid IS NULL OR i.location_id = $2)
+            ITEM_SELECT + """WHERE i.household_id = $1 AND ($2::uuid IS NULL OR i.location_id = $2)
                               AND ($3 OR i.status = 'active') ORDER BY i.category NULLS LAST, i.display_name""",
             household_id, location_id, include_archived)
-    return [ItemOut(**_item(r)) for r in rows]
+    return [ItemOut(**item_fields(r)) for r in rows]
 
 
 @router.post("", response_model=ItemOut, status_code=201)
@@ -72,11 +73,12 @@ async def add_item(body: ItemIn, request: Request, user: Principal = CurrentUser
         if body.quantity is not None:
             await record_observation(conn, household_id, item_id, datetime.now(UTC), body.quantity, "manual",
                                      user_id=user.user_id)
+            await forecasting.request_refresh(conn, household_id, user.user_id, [item_id])
         await audit(conn, "inventory.item_created", actor_id=user.user_id, household_id=household_id,
                     target_type="inventory_item", target_id=item_id, meta={"source": "manual"})
         await notify(conn, household_id, "inventory.updated", item_id)
-        row = await conn.fetchrow(_ITEM_SELECT + "WHERE i.id = $1", item_id)
-    return ItemOut(**_item(row))
+        row = await conn.fetchrow(ITEM_SELECT + "WHERE i.id = $1", item_id)
+    return ItemOut(**item_fields(row))
 
 
 @router.get("/{item_id}", response_model=ItemDetail)
@@ -85,13 +87,15 @@ async def item_detail(item_id: UUID, request: Request, days: int = Query(default
     db = request.app.state.db
     end = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
     async with db.scoped(user.user_id) as conn:
-        row = await conn.fetchrow(_ITEM_SELECT + "WHERE i.id = $1", item_id)
+        row = await conn.fetchrow(ITEM_SELECT + "WHERE i.id = $1", item_id)
         if row is None:
             raise not_found("inventory item")
         daily = await daily_quantity(conn, item_id, end - timedelta(days=days), end, timescale=db.timescale)
         observations = await conn.fetch(
             """SELECT time, quantity::float8 AS quantity, source, scan_id, confidence FROM inventory_observations
                WHERE inventory_item_id = $1 ORDER BY time DESC LIMIT 50""", item_id)
+        stored = (await forecasting.latest(conn, [item_id])).get(item_id)
+        tz = await forecasting.user_timezone(conn, user.user_id) if stored else None
         origins = await conn.fetch(
             f"""SELECT po.observed_at, po.purchased_on, po.quantity::float8 AS quantity, po.scan_id,
                        po.scan_detection_id, {MERCHANT_REF}
@@ -99,13 +103,15 @@ async def item_detail(item_id: UUID, request: Request, days: int = Query(default
                 WHERE po.inventory_item_id = $1
                 ORDER BY coalesce(po.purchased_on, po.observed_at::date) DESC, po.observed_at DESC
                 LIMIT 50""", item_id)
-    return ItemDetail(**_item(row), daily=[DailyPoint(day=d, quantity=q) for d, q in daily],
+    return ItemDetail(**item_fields(row), daily=[DailyPoint(day=d, quantity=q) for d, q in daily],
                       observations=[Observation(**dict(o)) for o in observations],
                       purchase_history=[PurchaseOrigin(merchant=ref(o, "m_"), purchased_on=o["purchased_on"],
                                                        observed_at=o["observed_at"],
                                                        quantity=o["quantity"], scan_id=o["scan_id"],
                                                        detection_id=o["scan_detection_id"]) for o in origins],
-                      series_engine="timescale" if db.timescale else "postgres")
+                      series_engine="timescale" if db.timescale else "postgres",
+                      forecast=forecasting.to_out(stored, row["display_name"], row["unit"], datetime.now(UTC), tz)
+                      if stored else None)
 
 
 @router.patch("/{item_id}", response_model=ItemOut)
@@ -127,8 +133,8 @@ async def update_item(item_id: UUID, body: ItemPatch, request: Request, user: Pr
             await audit(conn, "inventory.item_updated", actor_id=user.user_id, household_id=household_id,
                         target_type="inventory_item", target_id=item_id, meta={"fields": sorted(changes)})
             await notify(conn, household_id, "inventory.updated", item_id)
-        row = await conn.fetchrow(_ITEM_SELECT + "WHERE i.id = $1", item_id)
-    return ItemOut(**_item(row))
+        row = await conn.fetchrow(ITEM_SELECT + "WHERE i.id = $1", item_id)
+    return ItemOut(**item_fields(row))
 
 
 @router.post("/{item_id}/observations", response_model=Observation, status_code=201)
@@ -143,6 +149,7 @@ async def add_observation(item_id: UUID, body: ObservationIn, request: Request,
         if household_id is None:
             raise not_found("inventory item")
         await record_observation(conn, household_id, item_id, when, body.quantity, "manual", user_id=user.user_id)
+        await forecasting.request_refresh(conn, household_id, user.user_id, [item_id])
         await audit(conn, "inventory.observation_manual", actor_id=user.user_id, household_id=household_id,
                     target_type="inventory_item", target_id=item_id)
         await notify(conn, household_id, "inventory.updated", item_id)

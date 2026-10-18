@@ -293,16 +293,17 @@ final class CalendarAgentTests: XCTestCase {
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer google-identity-alice")
             return (200, [["id": UUID().uuidString, "display_name": "Milk", "quantity": 1.0, "unit": "liters", "par_level": 2.0]])
         }
-        let backend = AgoraAPIClient(calendar: connection, baseURL: URL(string: "https://api.example.com"), http: http)
-        let items = try await backend.fetch("v1/inventory", as: [HomeInventoryItem].self)
+        let api = AgoraClient(calendar: connection, baseURL: URL(string: "https://api.example.com"), http: http)
+        let items = try await api.fetch("v1/inventory", as: [HomeInventoryItem].self)
         XCTAssertEqual(items.first?.displayName, "Milk")
         XCTAssertEqual(items.first?.isRunningLow, true)
         XCTAssertEqual(auth.accessTokenCalls, 0)
+        XCTAssertEqual(auth.idTokenCalls, 1)
     }
     func testInventoryAuthenticationFailureDoesNotSignOutCalendar() async throws {
         CalendarURLProtocol.handler = { _ in (401, [:]) }
-        let backend = AgoraAPIClient(calendar: connection, baseURL: URL(string: "https://api.example.com"), http: http)
-        do { _ = try await backend.fetch("v1/inventory", as: [HomeInventoryItem].self); XCTFail("Expected error") }
+        let api = AgoraClient(calendar: connection, baseURL: URL(string: "https://api.example.com"), http: http)
+        do { _ = try await api.fetch("v1/inventory", as: [HomeInventoryItem].self); XCTFail("Expected error") }
         catch { XCTAssertTrue(connection.connected); XCTAssertEqual(connection.email, "alice@example.com") }
     }
 }

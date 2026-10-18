@@ -17,7 +17,9 @@ from app.google_calendar import GoogleCalendar
 from app.jobs import Worker
 from app.payments import make_payment_provider
 from app.pipeline import Pipeline
-from app.routers import account, agent, audit, budgets, calendar, events, inventory, merchants, scans, wishlist
+from app.routers import (
+    account, agent, audit, budgets, calendar, events, forecasts, inventory, lists, merchants, scans, wishlist,
+)
 from app.routers.events import Broadcaster
 from app.storage import make_storage
 from app.vision.providers import make_provider
@@ -60,7 +62,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.payments = make_payment_provider(settings)
         app.state.verifier = TokenVerifier(settings)
         app.state.worker = Worker(db, pipeline.handlers, settings.worker_concurrency)
-        worker_task = asyncio.create_task(app.state.worker.run()) if settings.run_worker_in_process else None
+        worker_task = None
+        if settings.run_worker_in_process:
+            await pipeline.forecaster.start()
+            worker_task = asyncio.create_task(app.state.worker.run())
         log.info("startup env=%s timescale=%s vision=%s/%s auth=%s", settings.env, db.timescale,
                  settings.vision_provider, settings.vision_fallback, settings.auth_mode)
         try:
@@ -120,7 +125,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"ok": True, "timescale": request.app.state.db.timescale, "version": app.version}
 
     for router in (account.router, inventory.router, merchants.router, scans.router, events.router,
-                   audit.router, calendar.router, wishlist.router, agent.router, budgets.router):
+                   audit.router, calendar.router, wishlist.router, forecasts.router, lists.router,
+                   agent.router, budgets.router):
         app.include_router(router)
     return app
 

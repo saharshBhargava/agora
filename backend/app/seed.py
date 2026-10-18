@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from app.auth import ensure_user
 from app.config import get_settings
 from app.db import Database
+from app.forecasting import refresh
 from app.migrate import migrate
 
 PRODUCTS = [
@@ -107,7 +108,8 @@ async def seed_new_user(db: Database, user_id) -> bool:
     return await seed_household(db, user_id, str(user_id))
 
 
-async def seed_household(db: Database, user_id, rng_key: str, days: int = 21) -> bool:
+async def seed_household(db: Database, user_id, rng_key: str, days: int = 21, *, provider: str = "seed",
+                         model: str = "synthetic") -> bool:
     rng = random.Random(rng_key)  # noqa: S311 - demo data, not security
     async with db.scoped(user_id) as conn:
         household_id = await conn.fetchval(
@@ -132,8 +134,8 @@ async def seed_household(db: Database, user_id, rng_key: str, days: int = 21) ->
                 scan_id = await conn.fetchval(
                     """INSERT INTO scans (household_id, user_id, location_id, captured_at, media_kind, status,
                                           provider, model, media_deleted_at, processed_at, confirmed_at)
-                       VALUES ($1, $2, $3, $4, 'photos', 'confirmed', 'seed', 'synthetic', $4, $4, $4)
-                       RETURNING id""", household_id, user_id, location_id, when)
+                       VALUES ($1, $2, $3, $4, 'photos', 'confirmed', $5, $6, $4, $4, $4)
+                       RETURNING id""", household_id, user_id, location_id, when, provider, model)
                 for name, location, rate, top, low in TRACKED:
                     if location != location_name:
                         continue
@@ -146,6 +148,8 @@ async def seed_household(db: Database, user_id, rng_key: str, days: int = 21) ->
                                                                source, scan_id, confidence, recorded_by)
                            VALUES ($1, $2, $3, $4, 'scan', $5, $6, $7)""",
                         when, household_id, items[name], seen, scan_id, round(rng.uniform(0.82, 0.97), 2), user_id)
+        # Forecast straight away so run-outs show on the first click, without waiting for the worker.
+        await refresh(conn, household_id, user_id, timescale=db.timescale)
     return True
 
 
@@ -160,6 +164,10 @@ async def main() -> None:
         for handle, name in DEMO_USERS:
             created = await seed_history(db, handle, name)
             print(f"{handle}: {'seeded' if created else 'already had data'}")
+        from app.demo_account import ensure_demo_account  # imports this module
+
+        await ensure_demo_account(db, settings)
+        print("demo account: ready")
     finally:
         await db.close()
 

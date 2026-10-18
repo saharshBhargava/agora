@@ -15,7 +15,6 @@
 		2A3088999406A8AA8526BAAF /* CaptionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE74BEEED1DE81A6C9EB8F0 /* CaptionController.swift */; };
 		325A454F8AC8D05744D4BD7B /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A910D2A694D670DFE0DCB5D7 /* HomeView.swift */; };
 		32E2DC2B067CA0C31D50EEA1 /* BrowserChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8238981FD4E643FA656A081F /* BrowserChatApp.swift */; };
-		35E58089858198F54B9D07CE /* AgoraAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F99CD812BC76B36C3C7D2E5D /* AgoraAPIClient.swift */; };
 		388C884619261DE7F69D6AFD /* TaskRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 089874F2A5F5DC56A4972E7B /* TaskRepository.swift */; };
 		38B185A9696E32AEBE5683B8 /* CaptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69584785EE382B97897F6C47 /* CaptionTests.swift */; };
 		390B08C874005C7DB2A3E8C2 /* GoogleCalendarAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0031D0335819D87FE16AEF8C /* GoogleCalendarAuthorization.swift */; };
@@ -95,7 +94,6 @@
 		F7F7975FBBF93E36BFD498E9 /* BrowserToolExecutor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserToolExecutor.swift; path = Agora/Browser/BrowserToolExecutor.swift; sourceTree = "<group>"; };
 		8F3A6B21C9E047D5A2B1F880 /* AgoraClientTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgoraClientTests.swift; path = AgoraTests/AgoraClientTests.swift; sourceTree = "<group>"; };
 		F8FA2E53318070AFAFE43447 /* CalendarTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarTests.swift; path = AgoraTests/CalendarTests.swift; sourceTree = "<group>"; };
-		F99CD812BC76B36C3C7D2E5D /* AgoraAPIClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgoraAPIClient.swift; path = Agora/Storage/AgoraAPIClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -159,7 +157,6 @@
 				8F3A6B21C9E047D5A2B1F880 /* AgoraClientTests.swift */,
 				AFB5E3DC159E6C5ABA2617F4 /* Agora.xcconfig */,
 				0031D0335819D87FE16AEF8C /* GoogleCalendarAuthorization.swift */,
-				F99CD812BC76B36C3C7D2E5D /* AgoraAPIClient.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -329,7 +326,6 @@
 				48F1879E8EA701FF86DCF925 /* CalendarConnection.swift in Sources */,
 				4FC355EA8D6BE5C8BB446EBF /* CalendarTools.swift in Sources */,
 				390B08C874005C7DB2A3E8C2 /* GoogleCalendarAuthorization.swift in Sources */,
-				35E58089858198F54B9D07CE /* AgoraAPIClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
