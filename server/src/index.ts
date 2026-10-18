@@ -12,6 +12,7 @@ import { getPayments, type PaymentsProvider, type TestCard } from './payments/pr
 import { identifyChip, identifyPipeline, type PipelineDeps } from './pipeline.js';
 import type { AgentPrice } from './price/agent.js';
 import { getPriceSetup, type PriceProvider } from './price/provider.js';
+import { agentFunctionDeclarations, AGENT_SYSTEM } from './price/agent-tools.js';
 import { generate, type GeminiResponse } from './gemini/client.js';
 import { firstJSONObject, responseText } from './gemini/json.js';
 import { createFrameRelay, shouldSendFrame } from './relay.js';
@@ -274,6 +275,46 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
           productName: typeof out.productName === 'string' ? out.productName : '',
           unit: typeof out.unit === 'string' ? out.unit : '',
         };
+      },
+    );
+    app.post<{ Params: { id: string }; Body: { contents?: unknown } }>(
+      '/api/price-requests/:id/agent-step',
+      async (req, reply) => {
+        const pr = agent.get(req.params.id);
+        if (!pr) return reply.code(404).send({ error: 'unknown request' });
+        const contents = req.body?.contents;
+        if (!Array.isArray(contents) || contents.length > 24 || JSON.stringify(contents).length > 60_000) {
+          return reply.code(400).send({ error: 'invalid contents' });
+        }
+        const url = searchUrl(pr.name, pr.store);
+        const turns = contents.length
+          ? contents
+          : [{ role: 'user', parts: [{ text: `Item: "${pr.name}". Store: ${pr.store}. Start at ${url}.` }] }];
+        let parts: Record<string, unknown>[];
+        try {
+          const r: GeminiResponse = await generate(
+            {
+              systemInstruction: { parts: [{ text: AGENT_SYSTEM }] },
+              contents: turns,
+              tools: [{ functionDeclarations: agentFunctionDeclarations }],
+            },
+            { timeoutMs: 30_000, fetchImpl: deps.fetchImpl },
+          );
+          parts = (r.candidates?.[0]?.content?.parts ?? []) as Record<string, unknown>[];
+        } catch (e) {
+          console.error('price agent-step failed', e);
+          return reply.code(502).send({ error: 'agent step failed' });
+        }
+        let resolved = false;
+        for (const p of parts) {
+          const fc = p.functionCall as { name?: string; args?: Record<string, unknown> } | undefined;
+          if (fc?.name !== 'report_price') continue;
+          const a = fc.args ?? {};
+          if (a.found === true && validCents(a.priceCents)) {
+            resolved = agent.resolve(pr.id, { cents: a.priceCents, url }) || resolved;
+          }
+        }
+        return resolved ? { parts, resolved: true } : { parts };
       },
     );
   }
