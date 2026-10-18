@@ -11,78 +11,26 @@ struct ModelSettingsView: View {
     private var configuration: ModelConfiguration { settings.modelConfiguration }
 
     var body: some View {
-        Form {
-            if let issue = settings.modelConfigurationIssue { Section { Text(issue).foregroundStyle(.secondary) } }
-            Section("Default model") {
-                Picker("Default", selection: Binding(
-                    get: { settings.modelConfiguration.defaultProfileID },
-                    set: { value in
-                        var config = settings.modelConfiguration
-                        config.defaultProfileID = value
-                        settings.modelConfiguration = config
-                    })) {
-                    ForEach(configuration.profiles) { profile in
-                        Text(profile.label(in: configuration)).tag(profile.id)
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: Metrics.space3) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Your models").font(.display(32)).tracking(-0.5).foregroundStyle(Color.ink).accessibilityAddTraits(.isHeader)
+                    Text("Pick the model each feature uses, add your own connections and check what they can do.")
+                        .font(.system(size: 15)).lineSpacing(3).foregroundStyle(Color.bodyInk).fixedSize(horizontal: false, vertical: true)
                 }
-                ForEach(ModelFeature.allCases) { feature in
-                    Picker(feature.title, selection: assignmentBinding(for: feature)) {
-                        Text("Use default").tag(Optional<UUID>.none)
-                        ForEach(configuration.profiles) { profile in
-                            Text(profile.label(in: configuration)).tag(Optional(profile.id))
-                        }
-                    }
+                if let issue = settings.modelConfigurationIssue {
+                    Text(issue).font(.system(size: 15)).lineSpacing(3).foregroundStyle(Color.bodyInk)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                        .background(Color.dangerSoft, in: RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous))
                 }
-                Text("Each feature uses its assignment, or the default model when set to Use default.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                defaultCard
+                connectionsSection
+                profilesSection
             }
-
-            Section {
-                ForEach(configuration.connections) { connection in
-                    Button {
-                        editingConnection = connection
-                    } label: {
-                        connectionRow(connection)
-                    }
-                    .buttonStyle(.plain)
-                    .swipeActions {
-                        if connectionAssignmentLabels(connection).isEmpty {
-                            Button("Delete", role: .destructive) { delete(connection) }
-                        }
-                    }
-                }
-                Button { addingConnection = true } label: {
-                    Label("Add connection", systemImage: "plus")
-                }
-            } header: {
-                Text("Connections")
-            } footer: {
-                Text("Gemini uses Google’s API. OpenAI-compatible connections use the endpoint you enter; HTTP is limited to local network addresses. Reassign the default and any listed features before deleting an assigned connection.")
-            }
-
-            Section {
-                ForEach(configuration.profiles) { profile in
-                    Button { editingProfile = profile } label: {
-                        profileRow(profile)
-                    }
-                    .buttonStyle(.plain)
-                    .swipeActions {
-                        if assignmentLabels(for: profile).isEmpty && configuration.profiles.count > 1 {
-                            Button("Delete", role: .destructive) { delete(profile) }
-                        }
-                    }
-                }
-                Button { addingProfile = true } label: {
-                    Label("Add model profile", systemImage: "plus")
-                }
-            } header: {
-                Text("Model profiles")
-            } footer: {
-                Text("A profile combines a connection, model identifier, and declared capabilities. Reassign the default and any listed features before deleting an assigned profile. Capability probes send harmless requests; they do not guarantee behavior on every prompt.")
-            }
+            .padding(.horizontal, 20).padding(.top, Metrics.space1).padding(.bottom, Metrics.space4)
         }
-        .navigationTitle("Models")
-        .navigationBarTitleDisplayMode(.inline)
+        .scrollBounceBehavior(.basedOnSize)
+        .dibsPage("Models")
         .sheet(isPresented: $addingConnection) {
             ModelConnectionEditor(settings: settings, existing: nil, onSave: upsert)
         }
@@ -97,6 +45,71 @@ struct ModelSettingsView: View {
         }
     }
 
+    // MARK: default model
+
+    private var defaultCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Default model").font(.system(size: 17, weight: .bold)).foregroundStyle(Color.ink)
+                .accessibilityAddTraits(.isHeader).padding(.bottom, 4)
+            assignmentRow(title: "Default", symbol: "star",
+                          value: configuration.profiles.first { $0.id == configuration.defaultProfileID }.map { $0.label(in: configuration) } ?? "None") {
+                Picker("Default", selection: Binding(
+                    get: { settings.modelConfiguration.defaultProfileID },
+                    set: { value in
+                        var config = settings.modelConfiguration
+                        config.defaultProfileID = value
+                        settings.modelConfiguration = config
+                    })) {
+                    ForEach(configuration.profiles) { profile in
+                        Text(profile.label(in: configuration)).tag(profile.id)
+                    }
+                }
+            }
+            ForEach(ModelFeature.allCases) { feature in
+                Color.line.frame(height: 1)
+                assignmentRow(title: feature.title, symbol: nil,
+                              value: configuration.assignments[feature.rawValue].flatMap { id in configuration.profiles.first { $0.id == id } }.map { $0.label(in: configuration) } ?? "Use default") {
+                    Picker(feature.title, selection: assignmentBinding(for: feature)) {
+                        Text("Use default").tag(Optional<UUID>.none)
+                        ForEach(configuration.profiles) { profile in
+                            Text(profile.label(in: configuration)).tag(Optional(profile.id))
+                        }
+                    }
+                }
+            }
+            Text("Each feature uses its assignment, or the default model when set to Use default.")
+                .font(.system(size: 13)).foregroundStyle(Color.muted).fixedSize(horizontal: false, vertical: true).padding(.top, 10)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dibsCard()
+    }
+
+    private func assignmentRow<P: View>(title: String, symbol: String?, value: String, @ViewBuilder picker: () -> P) -> some View {
+        HStack(spacing: 12) {
+            Group {
+                if let symbol { Image(systemName: symbol).font(.system(size: 15, weight: .bold)) }
+                else { Text(String(title.prefix(1)).uppercased()).font(.display(16)) }
+            }
+            .foregroundStyle(Color.ink).frame(width: 36, height: 36)
+            .background(tileColor(id: title), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink)
+            Spacer(minLength: 8)
+            Menu {
+                picker().pickerStyle(.inline).labelsHidden()
+            } label: {
+                HStack(spacing: 6) {
+                    Text(value).font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.ink).lineLimit(1).truncationMode(.tail)
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(Color.muted)
+                }
+                .padding(.horizontal, 12).frame(minHeight: 36)
+                .overlay(Capsule().strokeBorder(Color.lineStrong))
+                .frame(maxWidth: 190, alignment: .trailing)
+            }
+            .accessibilityLabel(title).accessibilityValue(value)
+        }
+        .frame(minHeight: 56)
+    }
+
     private func assignmentBinding(for feature: ModelFeature) -> Binding<UUID?> {
         Binding(get: { settings.modelConfiguration.assignments[feature.rawValue] }, set: { value in
             var config = settings.modelConfiguration
@@ -106,44 +119,130 @@ struct ModelSettingsView: View {
         })
     }
 
-    private func connectionRow(_ connection: ModelConnection) -> some View {
+    // MARK: connections
+
+    private var connectionsSection: some View {
+        VStack(alignment: .leading, spacing: Metrics.space1) {
+            Text("Connections").font(.system(size: 17, weight: .bold)).foregroundStyle(Color.ink).accessibilityAddTraits(.isHeader)
+            ForEach(configuration.connections) { connection in connectionCard(connection) }
+            addRow("Add connection") { addingConnection = true }
+            Text("Gemini uses Google’s API. OpenAI-compatible connections use the endpoint you enter; HTTP is limited to local network addresses. Reassign the default and any listed features before deleting an assigned connection.")
+                .font(.system(size: 13)).foregroundStyle(Color.muted).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func connectionCard(_ connection: ModelConnection) -> some View {
+        let labels = connectionAssignmentLabels(connection)
+        return HStack(spacing: 4) {
+            Button { editingConnection = connection } label: { connectionRow(connection, labels: labels) }
+                .buttonStyle(.plain)
+            if labels.isEmpty {
+                Menu {
+                    Button("Delete", systemImage: "trash", role: .destructive) { delete(connection) }
+                } label: { Image(systemName: "ellipsis").font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.muted).frame(width: 40, height: 44) }
+                    .accessibilityLabel("Options for \(connection.name)")
+            }
+        }
+        .padding(.leading, 12).padding(.trailing, labels.isEmpty ? 4 : 12).padding(.vertical, 10)
+        .background(Color.card, in: RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous).strokeBorder(Color.line))
+    }
+
+    private func connectionRow(_ connection: ModelConnection, labels: [String]) -> some View {
         HStack(spacing: 12) {
             Image(systemName: connection.provider == .gemini ? "sparkles" : "server.rack")
-                .foregroundStyle(.teal).frame(width: 24)
+                .font(.system(size: 18, weight: .semibold)).foregroundStyle(Color.ink)
+                .frame(width: 48, height: 48)
+                .background(tileColor(id: connection.id.uuidString), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
-                Text(connection.name).foregroundStyle(.primary)
+                Text(connection.name).font(.system(size: 16, weight: .bold)).foregroundStyle(Color.ink).lineLimit(1)
                 Text(connection.provider.title + (connection.endpoint.isEmpty ? "" : " · \(connection.endpoint)"))
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                let labels = connectionAssignmentLabels(connection)
+                    .font(.system(size: 13)).foregroundStyle(Color.muted).lineLimit(1)
                 if !labels.isEmpty {
-                    Text("In use: \(labels.joined(separator: ", ")) · Reassign before deleting")
-                        .font(.caption2).foregroundStyle(.orange)
+                    pill("In use: \(labels.joined(separator: ", ")) · Reassign before deleting")
                 }
             }
-            Spacer()
-            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.lineStrong)
         }
         .contentShape(Rectangle())
     }
 
+    // MARK: profiles
+
+    private var profilesSection: some View {
+        VStack(alignment: .leading, spacing: Metrics.space1) {
+            Text("Model profiles").font(.system(size: 17, weight: .bold)).foregroundStyle(Color.ink).accessibilityAddTraits(.isHeader)
+            ForEach(configuration.profiles) { profile in profileCard(profile) }
+            addRow("Add model profile") { addingProfile = true }
+            Text("A profile combines a connection, model identifier, and declared capabilities. Reassign the default and any listed features before deleting an assigned profile. Capability probes send harmless requests; they do not guarantee behavior on every prompt.")
+                .font(.system(size: 13)).foregroundStyle(Color.muted).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func profileCard(_ profile: ModelProfile) -> some View {
+        let deletable = assignmentLabels(for: profile).isEmpty && configuration.profiles.count > 1
+        return HStack(spacing: 4) {
+            Button { editingProfile = profile } label: { profileRow(profile) }
+                .buttonStyle(.plain)
+            if deletable {
+                Menu {
+                    Button("Delete", systemImage: "trash", role: .destructive) { delete(profile) }
+                } label: { Image(systemName: "ellipsis").font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.muted).frame(width: 40, height: 44) }
+                    .accessibilityLabel("Options for \(profile.name)")
+            }
+        }
+        .padding(.leading, 12).padding(.trailing, deletable ? 4 : 12).padding(.vertical, 10)
+        .background(Color.card, in: RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous).strokeBorder(Color.line))
+    }
+
     private func profileRow(_ profile: ModelProfile) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(profile.name).foregroundStyle(.primary)
-                if profile.id == configuration.defaultProfileID {
-                    Text("DEFAULT").font(.caption2.bold()).foregroundStyle(.teal)
+        let labels = assignmentLabels(for: profile)
+        let capabilities = profile.capabilities.summaryItems
+        return HStack(alignment: .top, spacing: 12) {
+            Text(String(profile.name.prefix(1)).uppercased()).font(.display(22)).foregroundStyle(Color.ink)
+                .frame(width: 48, height: 48)
+                .background(tileColor(id: profile.id.uuidString), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    Text(profile.name).font(.system(size: 16, weight: .bold)).foregroundStyle(Color.ink).lineLimit(1)
+                    if profile.id == configuration.defaultProfileID {
+                        Text("DEFAULT").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 8).padding(.vertical, 3).background(Color.ink, in: Capsule())
+                    }
+                }
+                Text(profile.label(in: configuration)).font(.system(size: 13)).foregroundStyle(Color.muted).lineLimit(1)
+                if capabilities.isEmpty {
+                    Text("No capabilities declared").font(.system(size: 13)).foregroundStyle(Color.muted)
+                } else {
+                    ModelFlowLayout(spacing: 6) { ForEach(capabilities, id: \.self) { pill($0) } }
+                }
+                if !labels.isEmpty {
+                    pill("In use: \(labels.joined(separator: ", ")) · Reassign before deleting")
                 }
             }
-            Text(profile.label(in: configuration)).font(.caption).foregroundStyle(.secondary)
-            Text(profile.capabilities.summary).font(.caption2).foregroundStyle(.tertiary)
-            let labels = assignmentLabels(for: profile)
-            if !labels.isEmpty {
-                Text("In use: \(labels.joined(separator: ", ")) · Reassign before deleting")
-                    .font(.caption2).foregroundStyle(.orange)
-            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.lineStrong).padding(.top, 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+    }
+
+    private func addRow(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: "plus").font(.system(size: 15, weight: .bold)).foregroundStyle(Color.ink)
+                .frame(maxWidth: .infinity, minHeight: 56)
+                .overlay(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous).strokeBorder(Color.lineStrong, style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
+                .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+
+    private func pill(_ text: String) -> some View {
+        Text(text).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.muted)
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .overlay(Capsule().strokeBorder(Color.line))
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func upsert(_ connection: ModelConnection) {
@@ -219,68 +318,36 @@ private struct ModelConnectionEditor: View {
 
     private var persisted: Bool { settings.modelConfiguration.connections.contains(where: { $0 == connection }) }
 
+    private var nameEmpty: Bool { connection.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Connection") {
-                    TextField("Name", text: $connection.name).textInputAutocapitalization(.words)
-                    Picker("Provider", selection: $connection.provider) {
-                        ForEach(ModelProviderKind.allCases.filter { $0 != .builtin }) { provider in Text(provider.title).tag(provider) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: Metrics.space2) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(existing == nil ? "Add connection" : "Edit connection").font(.display(30)).tracking(-0.5).foregroundStyle(Color.ink).accessibilityAddTraits(.isHeader)
+                        Text("Name it, choose the provider, then add a key if it needs one and test it.")
+                            .font(.system(size: 15)).lineSpacing(3).foregroundStyle(Color.bodyInk)
                     }
-                    .disabled(connection.id == ModelConfiguration.geminiConnectionID)
-                    if connection.provider == .openAICompatible {
-                        TextField("Base URL, for example http://localhost:1234/v1", text: $connection.endpoint)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                        Text("Use HTTPS for hosted servers. Plain HTTP is accepted only for local network addresses.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    } else {
-                        Text("Gemini requests use Google’s Generative Language API.").font(.footnote).foregroundStyle(.secondary)
-                    }
-                    if let message, !persisted { status(message) }
-                    Button("Save connection") { save() }
-                        .disabled(connection.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
-                }
-
-                if persisted {
-                    Section(connection.provider == .gemini ? "Gemini API key" : "Optional server credential") {
-                        SecureField(hasSavedKey ? "Replace saved key" : "API key (optional)", text: $key)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled().focused($keyFocused)
-                        HStack {
-                            Button("Save key") { saveKey() }.disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
-                            if hasSavedKey {
-                                Button("Remove key", role: .destructive) { removeKey() }
-                            }
-                        }
-                        if let message, persisted { status(message) }
-                        if connection.provider == .gemini && connection.id == ModelConfiguration.geminiConnectionID {
-                            Text("The built-in Gemini connection uses the same Keychain key as the Connected accounts screen.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        } else if connection.provider == .gemini {
-                            Text("This Gemini connection has its own Keychain key, separate from the built-in Gemini connection.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        } else {
-                            Text("Credentials are saved in Keychain for this exact provider and endpoint. Changing the endpoint requires saving the connection before entering a key.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Section("Connection test") {
-                        Button(busy ? "Testing…" : "Test connection and load models") { loadModels() }.disabled(busy)
-                        if !availableModels.isEmpty {
-                            Text("Found \(availableModels.count) model identifiers.").font(.footnote).foregroundStyle(.secondary)
-                        }
-                        if let message, persisted { status(message) }
+                    connectionCard
+                    if persisted {
+                        keyCard
+                        testCard
                     }
                 }
+                .padding(.horizontal, 20).padding(.top, Metrics.space1).padding(.bottom, Metrics.space3)
             }
-            .navigationTitle(existing == nil ? "Add connection" : "Edit connection")
-            .navigationBarTitleDisplayMode(.inline)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.interactively)
+            .safeAreaInset(edge: .bottom) {
+                Button("Save connection") { save() }
+                    .buttonStyle(.dibs)
+                    .disabled(nameEmpty || busy)
+                    .padding(.horizontal, 20).padding(.vertical, Metrics.space1).background(Color.paper)
+            }
+            .dibsScreen()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
-                        .disabled(!persisted && connection.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
             }
             .onAppear { refreshKeyStatus() }
             .onChange(of: connection.provider) { _, provider in
@@ -289,6 +356,74 @@ private struct ModelConnectionEditor: View {
                 key = ""; hasSavedKey = false; message = nil; availableModels = []
             }
         }
+        .tint(Color.ink)
+    }
+
+    private var connectionCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Connection")
+            TextField("Name", text: $connection.name).textInputAutocapitalization(.words)
+                .font(.system(size: 16)).foregroundStyle(Color.ink).dibsInput()
+            MenuFieldRow(title: "Provider", value: connection.provider.title) {
+                Picker("Provider", selection: $connection.provider) {
+                    ForEach(ModelProviderKind.allCases.filter { $0 != .builtin }) { provider in Text(provider.title).tag(provider) }
+                }
+            }
+            .disabled(connection.id == ModelConfiguration.geminiConnectionID)
+            if connection.provider == .openAICompatible {
+                TextField("Base URL, for example http://localhost:1234/v1", text: $connection.endpoint)
+                    .font(.system(size: 16)).foregroundStyle(Color.ink)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL).dibsInput()
+                note("Use HTTPS for hosted servers. Plain HTTP is accepted only for local network addresses.")
+            } else {
+                note("Gemini requests use Google’s Generative Language API.")
+            }
+            if let message, !persisted { status(message) }
+        }.frame(maxWidth: .infinity, alignment: .leading).dibsCard()
+    }
+
+    private var keyCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle(connection.provider == .gemini ? "Gemini API key" : "Optional server credential")
+            SecureField(hasSavedKey ? "Replace saved key" : "API key (optional)", text: $key)
+                .font(.system(size: 16)).foregroundStyle(Color.ink)
+                .textInputAutocapitalization(.never).autocorrectionDisabled().focused($keyFocused).dibsInput()
+            HStack(spacing: Metrics.space1) {
+                Button("Save key") { saveKey() }.buttonStyle(.dibs(.secondary, fontSize: 15))
+                    .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
+                if hasSavedKey {
+                    Button(role: .destructive) { removeKey() } label: { Text("Remove key").foregroundStyle(Color.danger) }
+                        .buttonStyle(.dibs(.secondary, fontSize: 15))
+                }
+            }
+            if let message, persisted { status(message) }
+            if connection.provider == .gemini && connection.id == ModelConfiguration.geminiConnectionID {
+                note("The built-in Gemini connection uses the same Keychain key as the Connected accounts screen.")
+            } else if connection.provider == .gemini {
+                note("This Gemini connection has its own Keychain key, separate from the built-in Gemini connection.")
+            } else {
+                note("Credentials are saved in Keychain for this exact provider and endpoint. Changing the endpoint requires saving the connection before entering a key.")
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading).dibsCard()
+    }
+
+    private var testCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Connection test")
+            Button(busy ? "Testing…" : "Test connection and load models") { loadModels() }
+                .buttonStyle(.dibs(.secondary, fontSize: 15)).disabled(busy)
+            if !availableModels.isEmpty {
+                Text("Found \(availableModels.count) model identifiers.").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.ink)
+            }
+            if let message, persisted { status(message) }
+        }.frame(maxWidth: .infinity, alignment: .leading).dibsCard()
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title).font(.system(size: 17, weight: .bold)).foregroundStyle(Color.ink).accessibilityAddTraits(.isHeader)
+    }
+    private func note(_ text: String) -> some View {
+        Text(text).font(.system(size: 13)).foregroundStyle(Color.muted).fixedSize(horizontal: false, vertical: true)
     }
 
     private func save() {
@@ -343,7 +478,7 @@ private struct ModelConnectionEditor: View {
 
     private func show(_ value: Error) { message = value.localizedDescription; error = true }
     @ViewBuilder private func status(_ value: String) -> some View {
-        Text(value).font(.footnote).foregroundStyle(error ? Color.red : Color.secondary)
+        Text(value).font(.system(size: 13, weight: .medium)).foregroundStyle(error ? Color.danger : Color.muted).fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -372,68 +507,36 @@ private struct ModelProfileEditor: View {
 
     private var connection: ModelConnection? { settings.modelConfiguration.connections.first { $0.id == profile.connectionID } }
 
+    private var saveDisabled: Bool {
+        profile.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || profile.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || connection == nil
+    }
+
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Profile") {
-                    TextField("Profile name", text: $profile.name)
-                    Picker("Connection", selection: $profile.connectionID) {
-                        ForEach(settings.modelConfiguration.connections) { connection in Text(connection.name).tag(connection.id) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: Metrics.space2) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(existing == nil ? "Add model profile" : "Edit model profile").font(.display(30)).tracking(-0.5).foregroundStyle(Color.ink).accessibilityAddTraits(.isHeader)
+                        Text("A profile pairs a connection with a model and what it can do.")
+                            .font(.system(size: 15)).lineSpacing(3).foregroundStyle(Color.bodyInk)
                     }
-                    TextField("Model identifier", text: $profile.model).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    if let connection {
-                        Button(busy ? "Loading models…" : "Load available models") { loadModels(connection) }.disabled(busy)
-                    }
-                    if !models.isEmpty {
-                        Picker("Available models", selection: $profile.model) {
-                            if !models.contains(profile.model) { Text(profile.model).tag(profile.model) }
-                            ForEach(models, id: \.self) { Text($0).tag($0) }
-                        }
-                    }
-                    Text("Model listing checks endpoint access. It does not establish tool, image, structured output, or streaming support.")
-                        .font(.footnote).foregroundStyle(.secondary)
+                    profileCard
+                    capabilitiesCard
+                    probesCard
                 }
-
-                Section("Declared capabilities") {
-                    Toggle("Tool calling", isOn: $profile.capabilities.tools)
-                    Toggle("Images", isOn: $profile.capabilities.images)
-                    Toggle("Structured output", isOn: $profile.capabilities.structuredOutput)
-                    Toggle("Streaming", isOn: $profile.capabilities.streaming)
-                    if connection?.provider == .gemini {
-                        Toggle("Native video", isOn: $profile.capabilities.nativeVideo)
-                    } else {
-                        Text("Videos are sent as sampled image frames. Audio is not analyzed by this connection.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                    Text("These switches describe what the selected model is expected to support. Use the probes below to check actual requests; probe results do not change these declarations.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-
-                Section("Capability probes") {
-                    probeButton("Test tool calling", key: "tools", capability: profile.capabilities.tools) { client in try await Self.probeTools(client) }
-                    probeButton("Test image input", key: "images", capability: profile.capabilities.images) { client in try await Self.probeImages(client) }
-                    probeButton("Test structured output", key: "structured", capability: profile.capabilities.structuredOutput) { client in try await Self.probeStructuredOutput(client) }
-                    probeButton("Test streaming", key: "streaming", capability: profile.capabilities.streaming) { client in try await Self.probeStreaming(client) }
-                    if profile.capabilities.nativeVideo {
-                        Label("Native video is declared. A probe requires a real video clip and is not sent from this settings screen.", systemImage: "info.circle")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                    if !capabilityResults.isEmpty {
-                        ForEach(["tools", "images", "structured", "streaming"], id: \.self) { key in
-                            if let result = capabilityResults[key] { Text("\(key.capitalized): \(result)").font(.footnote).foregroundStyle(.secondary) }
-                        }
-                    }
-                    if let message { Text(message).font(.footnote).foregroundStyle(error ? Color.red : Color.secondary) }
-                }
+                .padding(.horizontal, 20).padding(.top, Metrics.space1).padding(.bottom, Metrics.space3)
             }
-            .navigationTitle(existing == nil ? "Add model profile" : "Edit model profile")
-            .navigationBarTitleDisplayMode(.inline)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.interactively)
+            .safeAreaInset(edge: .bottom) {
+                Button("Save profile") { save() }
+                    .buttonStyle(.dibs)
+                    .disabled(saveDisabled)
+                    .padding(.horizontal, 20).padding(.vertical, Metrics.space1).background(Color.paper)
+            }
+            .dibsScreen()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
-                        .disabled(profile.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || profile.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || connection == nil)
-                }
             }
             .onChange(of: profile.connectionID) { _, _ in loadID = UUID(); models = []; resetCapabilityProbes() }
             .onChange(of: profile.model) { _, _ in resetCapabilityProbes() }
@@ -447,6 +550,88 @@ private struct ModelProfileEditor: View {
                 resetCapabilityProbes()
             }
         }
+        .tint(Color.ink)
+    }
+
+    private var profileCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Profile")
+            TextField("Profile name", text: $profile.name).font(.system(size: 16)).foregroundStyle(Color.ink).dibsInput()
+            MenuFieldRow(title: "Connection", value: connection?.name ?? "None") {
+                Picker("Connection", selection: $profile.connectionID) {
+                    ForEach(settings.modelConfiguration.connections) { connection in Text(connection.name).tag(connection.id) }
+                }
+            }
+            TextField("Model identifier", text: $profile.model).textInputAutocapitalization(.never).autocorrectionDisabled()
+                .font(.system(size: 16)).foregroundStyle(Color.ink).dibsInput()
+            if let connection {
+                Button(busy ? "Loading models…" : "Load available models") { loadModels(connection) }
+                    .buttonStyle(.dibs(.secondary, fontSize: 15)).disabled(busy)
+            }
+            if !models.isEmpty {
+                MenuFieldRow(title: "Available models", value: profile.model) {
+                    Picker("Available models", selection: $profile.model) {
+                        if !models.contains(profile.model) { Text(profile.model).tag(profile.model) }
+                        ForEach(models, id: \.self) { Text($0).tag($0) }
+                    }
+                }
+            }
+            note("Model listing checks endpoint access. It does not establish tool, image, structured output, or streaming support.")
+        }.frame(maxWidth: .infinity, alignment: .leading).dibsCard()
+    }
+
+    private var capabilitiesCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionTitle("Declared capabilities").padding(.bottom, 4)
+            capabilityToggle("Tool calling", isOn: $profile.capabilities.tools)
+            Color.line.frame(height: 1)
+            capabilityToggle("Images", isOn: $profile.capabilities.images)
+            Color.line.frame(height: 1)
+            capabilityToggle("Structured output", isOn: $profile.capabilities.structuredOutput)
+            Color.line.frame(height: 1)
+            capabilityToggle("Streaming", isOn: $profile.capabilities.streaming)
+            if connection?.provider == .gemini {
+                Color.line.frame(height: 1)
+                capabilityToggle("Native video", isOn: $profile.capabilities.nativeVideo)
+            } else {
+                note("Videos are sent as sampled image frames. Audio is not analyzed by this connection.").padding(.top, 10)
+            }
+            note("These switches describe what the selected model is expected to support. Use the probes below to check actual requests; probe results do not change these declarations.").padding(.top, 10)
+        }.frame(maxWidth: .infinity, alignment: .leading).dibsCard()
+    }
+
+    private func capabilityToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(title, isOn: isOn).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink).tint(Color.ink).frame(minHeight: 52)
+    }
+
+    private var probesCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("Capability probes")
+            probeButton("Test tool calling", key: "tools", capability: profile.capabilities.tools) { client in try await Self.probeTools(client) }
+            probeButton("Test image input", key: "images", capability: profile.capabilities.images) { client in try await Self.probeImages(client) }
+            probeButton("Test structured output", key: "structured", capability: profile.capabilities.structuredOutput) { client in try await Self.probeStructuredOutput(client) }
+            probeButton("Test streaming", key: "streaming", capability: profile.capabilities.streaming) { client in try await Self.probeStreaming(client) }
+            if profile.capabilities.nativeVideo {
+                Label("Native video is declared. A probe requires a real video clip and is not sent from this settings screen.", systemImage: "info.circle")
+                    .font(.system(size: 13)).foregroundStyle(Color.muted).fixedSize(horizontal: false, vertical: true)
+            }
+            if !capabilityResults.isEmpty {
+                ForEach(["tools", "images", "structured", "streaming"], id: \.self) { key in
+                    if let result = capabilityResults[key] {
+                        Text("\(key.capitalized): \(result)").font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(result.hasPrefix("Failed") ? Color.danger : Color.muted).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            if let message { Text(message).font(.system(size: 13)).foregroundStyle(error ? Color.danger : Color.muted).fixedSize(horizontal: false, vertical: true) }
+        }.frame(maxWidth: .infinity, alignment: .leading).dibsCard()
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title).font(.system(size: 17, weight: .bold)).foregroundStyle(Color.ink).accessibilityAddTraits(.isHeader)
+    }
+    private func note(_ text: String) -> some View {
+        Text(text).font(.system(size: 13)).foregroundStyle(Color.muted).fixedSize(horizontal: false, vertical: true)
     }
 
     @ViewBuilder private func probeButton(_ title: String, key: String, capability: Bool,
@@ -466,6 +651,7 @@ private struct ModelProfileEditor: View {
                 }
             }
         }
+        .buttonStyle(.dibs(.secondary, fontSize: 15))
         .disabled(busy || !capability || connection == nil || profile.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
@@ -561,9 +747,54 @@ private extension ModelProfile {
     }
 }
 
+/// A menu picker in a Dibs input box: the title at the left, the current choice and chevrons at the right,
+/// on one line (a plain menu `Picker` wraps long choices over several lines).
+struct MenuFieldRow<Choices: View>: View {
+    let title: String
+    let value: String
+    @ViewBuilder var choices: () -> Choices
+    var body: some View {
+        Menu {
+            choices().pickerStyle(.inline).labelsHidden()
+        } label: {
+            HStack(spacing: 8) {
+                Text(title).font(.system(size: 16)).foregroundStyle(Color.ink)
+                Spacer(minLength: 8)
+                Text(value).font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.ink).lineLimit(1).truncationMode(.middle)
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(Color.muted)
+            }
+            .dibsInput()
+        }
+        .accessibilityLabel(title).accessibilityValue(value)
+    }
+}
+
 private extension ModelCapabilities {
-    var summary: String {
-        let enabled = [(tools, "tools"), (images, "images"), (structuredOutput, "structured output"), (streaming, "streaming"), (nativeVideo, "native video")].compactMap { $0.0 ? $0.1 : nil }
-        return enabled.isEmpty ? "No capabilities declared" : enabled.joined(separator: " · ")
+    var summaryItems: [String] {
+        [(tools, "tools"), (images, "images"), (structuredOutput, "structured output"), (streaming, "streaming"), (nativeVideo, "native video")].compactMap { $0.0 ? $0.1 : nil }
+    }
+}
+
+/// Wraps its children onto as many rows as the width needs (capability pills).
+private struct ModelFlowLayout: Layout {
+    var spacing: CGFloat = 6
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, width: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > maxWidth { x = 0; y += rowHeight + spacing; rowHeight = 0 }
+            x += size.width + spacing; rowHeight = max(rowHeight, size.height); width = max(width, x - spacing)
+        }
+        return CGSize(width: width, height: y + rowHeight)
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX && x + size.width > bounds.maxX { x = bounds.minX; y += rowHeight + spacing; rowHeight = 0 }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing; rowHeight = max(rowHeight, size.height)
+        }
     }
 }
