@@ -238,6 +238,11 @@ final class LocalModelTests: XCTestCase {
         for url in ["", "file:///tmp/model", "ftp://localhost", "http://8.8.8.8/v1", "http://169.254.169.254/v1", "http://[fe80::1]:8080/v1", "http://172.32.1.2/v1", "http://010.0.0.1/v1", "https://user:pass@host/v1", "http://localhost/v1?key=secret", "http://localhost/v1#fragment", "http://localhost:0/v1"] {
             XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint(url), url)
         }
+        // Numeric hosts that aren't four plain decimal numbers: resolvers and URL loaders read them differently
+        // (octal, hex, one 32-bit number), so they are refused before any lookup, whatever DNS would say.
+        for url in ["http://010.0.0.1/v1", "http://0x0a.0.0.1/v1", "http://167772161/v1", "http://10.1/v1", "http://0xa000001/v1"] {
+            XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint(url, addressesForHost: { _ in ["10.0.0.1"] }), url)
+        }
         // Reject ambiguous numeric IP spellings before the hostname/DNS path can normalize them.
         for host in ["010.0.0.1", "127.1", "2130706433", "0x7f000001", "0x7f.0.0.1", "127.000.0.1", "%30%31%30.0.0.1"] {
             XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint("http://\(host)/v1", addressesForHost: { _ in

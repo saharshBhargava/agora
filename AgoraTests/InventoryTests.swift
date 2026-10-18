@@ -478,8 +478,9 @@ final class InventoryLiveTests: XCTestCase {
         let settings = SettingsStore(keychainService: "forecast-render-" + UUID().uuidString)
         let shopping = ShoppingStore(api: api, inventory: store)
         let trips = TripStore(api: api, inventory: store, calendar: calendar)
-        try await screenshot(HomeView(selectedTab: .constant(.home), store: store, shopping: shopping,
-                                      settings: settings, trips: trips), name: "Consumption prediction Home")
+        // The old Agora Home is gone (the Dibs home is the root); the pantry shows the prediction on each item.
+        _ = (settings, shopping, trips)
+        try await screenshot(NavigationStack { InventoryListView(store: store) }, name: "Consumption prediction pantry")
         try await screenshot(NavigationStack { InventoryDetailView(store: store, itemID: item.id) }, name: "Consumption prediction")
         try await screenshot(NavigationStack { InventoryDetailView(store: store, itemID: item.id) }
             .environment(\.dynamicTypeSize, .accessibility2), name: "Consumption prediction accessible")
@@ -525,7 +526,7 @@ final class InventoryLiveTests: XCTestCase {
         draft.restockLevel = "2"; draft.locationID = location.id; draft.merchantID = merchant.id
         let created = try await store.save(draft, original: nil)
         XCTAssertTrue(created.isRunningLow); XCTAssertEqual(created.preferredMerchantId, merchant.id)
-        try await screenshot(InventoryView(store: store), name: "Inventory list")
+        try await screenshot(NavigationStack { InventoryListView(store: store) }, name: "Inventory list")
         try await screenshot(NavigationStack { InventoryDetailView(store: store, itemID: created.id) }, name: "Inventory detail")
         try await screenshot(InventoryEditor(store: store, original: created), name: "Inventory edit")
         await store.refresh()
@@ -767,7 +768,7 @@ extension InventoryLiveTests {
         let replayDetail = try await store.detail(milk.id, days: 7)
         XCTAssertEqual(replayDetail.observations.count, 2)
         await store.refresh(); XCTAssertEqual(store.items.count, 2)
-        try await screenshot(InventoryView(store: store), name: "Inventory after capture")
+        try await screenshot(NavigationStack { InventoryListView(store: store) }, name: "Inventory after capture")
         try await screenshot(NavigationStack { InventoryDetailView(store: store, itemID: milk.id) }, name: "Capture purchase history")
         let restored = MediaLibrary(directory: directory); await restored.load()
         XCTAssertEqual(restored.items.first?.recognition?.recognitionID, replay.recognitionId)
@@ -952,8 +953,8 @@ extension InventoryLiveTests {
         XCTAssertEqual((context["runout_forecasts"] as? [[String: Any]])?.count, 2)
         await inventory.refreshWithForecasts()
         let settings = SettingsStore(keychainService: "automatic-lists-render-" + UUID().uuidString)
-        try await screenshot(ListsView(inventory: inventory, shopping: shopping, settings: settings, trips: trips),
-                             name: "Automatic replenishment Lists")
+        _ = settings
+        try await screenshot(NavigationStack { TripsView(store: trips) }, name: "Automatic replenishment Lists")
         try await screenshot(TripListView(store: trips, listID: list.id), name: "Automatic replenishment detail")
         let soapLine = try XCTUnwrap(list.items.first { $0.title == "Dish soap" })
         await trips.setChecked(listID: list.id, itemID: soapLine.id, checked: true)

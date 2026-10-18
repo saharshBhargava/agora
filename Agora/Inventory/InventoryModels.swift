@@ -14,6 +14,8 @@ struct InventoryHousehold: Decodable, Identifiable {
 
 struct InventoryProfile: Decodable {
     let households: [InventoryHousehold]
+    /// The account's name (`display_name` on `/v1/me`); Dibs offers its first word as the join name.
+    let displayName: String?
 }
 
 struct InventoryMerchant: Decodable, Identifiable, Equatable {

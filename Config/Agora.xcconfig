@@ -5,4 +5,13 @@ AGORA_GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.875535919816-pt11h5
 AGORA_API_BASE_URL = https:/$()/agora-api-yq3m.onrender.com
 // Optional remote push capability; leave empty for Personal Team signing and in-app alerts.
 AGORA_CODE_SIGN_ENTITLEMENTS =
+// Signing defaults. For a personal team, override both in Config/Local.xcconfig, for example
+// AGORA_BUNDLE_ID = dev.yourname.agora and DEVELOPMENT_TEAM = <your team id>.
+AGORA_BUNDLE_ID = dev.agora.browserchat
+DEVELOPMENT_TEAM = 8N46NST49L
+// Dibs tab server (the Node server in server/, usually a laptop tunnel). Empty means the Dibs tab
+// falls back to http://localhost:3000; set it per machine in Config/Local.xcconfig.
+DIBS_DEFAULT_GEMINI_KEY =
+DIBS_DEFAULT_GEMINI_MODEL =
+DIBS_SERVER_URL =
 #include? "Local.xcconfig"

@@ -187,6 +187,13 @@ fixtures), merchants and the wishlist.
 **Backend status:** done. **API contract:** [docs/api/agent-commerce.md](api/agent-commerce.md). **For:** iOS
 (desktop can follow the same layout).
 
+**iOS status (2026-10-18):** built in the Dibs app: the Spending page (home → Your household → Spending, and
+Settings → Spending limits) with the approval inbox, budget and spend, spending authority (grant/revoke), recent
+requests and the pause/resume switch; the approval sheet; "Buy with the assistant" on wanted wishlist items; and the
+chat tool `purchase_request` (Agora checkout, approval in the chat's card). Not built yet: the merchant picker for
+mandates, the "Show revoked and expired" toggle, week/store spend toggles, budget editing, and live refresh from
+`GET /v1/events`.
+
 The agent now asks the backend before it spends money or acts for the user. The backend answers allow, needs
 approval or deny, and always says why in plain language. The user needs four things: a sheet to approve or
 reject requests, a way to grant and revoke spending authority (mandates), a view of spend against budgets,

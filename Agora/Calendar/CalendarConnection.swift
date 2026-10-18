@@ -384,7 +384,7 @@ final class CalendarConnection: ObservableObject {
         guard (200..<300).contains(response.statusCode) else {
             if response.statusCode == 401 { throw BrowserError("invalid_credentials", "Wrong username or password, or your session has expired.") }
             if response.statusCode == 403 { throw BrowserError("integration_unavailable", "Use the designated demo account for this sign-in option.") }
-            throw BrowserError("connection_failed", "Agora could not complete this request. Please try again.")
+            throw BrowserError("connection_failed", "Dibs could not complete this request. Please try again.")
         }
         guard (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else {
             throw BrowserError("invalid_server_response")

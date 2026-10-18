@@ -6,10 +6,19 @@ Household shopping assistant: inventory, lists, wishlist, trips, chat, and captu
 
 | Path | What |
 | --- | --- |
-| `Agora/` | SwiftUI iOS app |
+| `Agora/` | SwiftUI iOS app (opens on the Dibs home) |
+| `server/`, `web/` | Dibs Node server and web app |
 | `backend/` | FastAPI + Postgres / TimescaleDB |
 | `Config/` | Shared API URL and OAuth client IDs |
 | `docs/` | Deployment, API contracts, handoff |
+
+## Dibs
+
+The iOS app opens on the Dibs home: a shared grocery run where the shopper's iPhone livestreams the cart,
+housemates claim items from their phones or the web, and the bill splits itself. The household features
+(lists, pantry, wishlist, trips, spending, assistant) push from that home (`Agora/Dibs/`). Dibs has its own
+Node server (`server/`) and web app (`web/`), runs from a laptop for the demo, and is not deployed to Render.
+See [docs/dibs/README.md](docs/dibs/README.md).
 
 ## Live API
 

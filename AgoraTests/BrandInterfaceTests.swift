@@ -108,9 +108,8 @@ final class BrandInterfaceTests: XCTestCase {
 
         let workspace = ChatWorkspace()
         let views: [(String, AnyView)] = [
-            ("home", AnyView(HomeView(selectedTab: .constant(.home), store: inventory, shopping: shopping, settings: settings, trips: trips))),
-            ("lists", AnyView(ListsView(inventory: inventory, shopping: shopping, settings: settings, trips: trips))),
-            ("inventory", AnyView(InventoryView(store: inventory))),
+            // The merged app opens on the Dibs home (covered by the Dibs suites); these are the household pages it pushes.
+            ("inventory", AnyView(NavigationStack { InventoryListView(store: inventory) })),
             ("item", AnyView(NavigationStack { InventoryDetailView(store: inventory, itemID: milk) })),
             ("inventory-add", AnyView(InventoryEditor(store: inventory, original: nil))),
             ("wishlist", AnyView(NavigationStack { ShoppingView(store: shopping, settings: settings) })),
@@ -120,7 +119,7 @@ final class BrandInterfaceTests: XCTestCase {
             ("trips", AnyView(NavigationStack { TripsView(store: trips) })),
             ("checklist", AnyView(NavigationStack { TripListView(store: trips, listID: list) })),
             ("new-list", AnyView(TripCreateListSheet(store: trips) { _ in })),
-            ("settings", AnyView(SettingsView(settings: settings, workspace: workspace))),
+            ("settings", AnyView(NavigationStack { ScrollView { HouseholdSettingsLinks(settings: settings, workspace: workspace) } })),
             ("models", AnyView(NavigationStack { ModelSettingsView(settings: settings) })),
             ("welcome", AnyView(CalendarOnboardingView(calendar: calendar)))
         ]

@@ -5,9 +5,33 @@ struct BrowserCall {
     let arguments: [String: Any]
     let id: String?
     init(_ raw: [String: Any]) throws {
-        guard let name = raw["name"] as? String, let arguments = raw["args"] as? [String: Any] else { throw BrowserError("invalid_arguments") }
+        guard let name = raw["name"] as? String, var arguments = raw["args"] as? [String: Any] else { throw BrowserError("invalid_arguments") }
+        // Models sometimes send reference ids as whole numbers ("elementId": 12); they mean the same id text.
+        for key in ["documentId", "observationId", "elementId"] {
+            if let number = arguments[key] as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
+               number.doubleValue.isFinite, number.doubleValue == number.doubleValue.rounded(), abs(number.doubleValue) < 1e15 {
+                arguments[key] = String(number.int64Value)
+            }
+        }
+        // Models often leave out the page reference on a click or typing action; use the latest observation's,
+        // which the page script still checks (a stale or unknown element is refused there).
+        if name == "browser_act", let action = arguments["action"] as? String,
+           !["back", "forward", "reload"].contains(action), let last = Self.lastReference {
+            if arguments["documentId"] == nil { arguments["documentId"] = last.documentId }
+            if arguments["observationId"] == nil { arguments["observationId"] = last.observationId }
+        }
         self.name = name; self.arguments = arguments; id = raw["id"] as? String
-        try Self.validate(name: name, arguments: arguments)
+        do { try Self.validate(name: name, arguments: arguments) }
+        catch {
+            // Field names and value types only (no values), to see why a model's call was refused.
+            let shape = arguments.keys.sorted().map { key -> String in
+                let v = arguments[key]
+                let type = v is String ? "string" : (v as? NSNumber).map { CFGetTypeID($0) == CFBooleanGetTypeID() ? "bool" : "number" } ?? String(describing: type(of: v as Any))
+                return "\(key):\(type)"
+            }.joined(separator: ",")
+            NSLog("[browser] refused tool=%@ fields=%@ error=%@", name, shape, String(describing: error))
+            throw error
+        }
     }
     static let fields: [String: Set<String>] = [
         "browser_open": ["url"], "browser_observe": [], "browser_find": ["text"],
@@ -15,6 +39,8 @@ struct BrowserCall {
         "browser_act": ["action", "documentId", "observationId", "elementId", "text", "direction"],
         "browser_screenshot": [], "browser_close": []
     ]
+    /// The page reference from the most recent observation the browser returned (set by the executor).
+    nonisolated(unsafe) static var lastReference: (documentId: String, observationId: String)?
     static let actions: Set<String> = ["click", "type", "clear", "select", "check", "uncheck", "focus", "scroll", "back", "forward", "reload"]
     static func validate(name: String, arguments: [String: Any]) throws {
         guard let allowed = fields[name], Set(arguments.keys).isSubset(of: allowed) else { throw BrowserError("invalid_arguments", "Unknown tool or field.") }
@@ -35,7 +61,10 @@ struct BrowserCall {
             if let direction = arguments["direction"] as? String, !["up", "down"].contains(direction) { throw BrowserError("invalid_arguments") }
         default: required = []
         }
-        guard required.allSatisfy({ arguments[$0] is String }) else { throw BrowserError("invalid_arguments", "Required field missing.") }
+        let missing = required.filter { !(arguments[$0] is String) }
+        guard missing.isEmpty else {
+            throw BrowserError("invalid_arguments", "Required field missing: \(missing.joined(separator: ", ")). Use documentId and observationId from the latest browser_observe or browser_find result.")
+        }
     }
     static var schemas: [[String: Any]] {
         let descriptions = ["browser_open": "Open an allowed HTTPS URL and observe.", "browser_observe": "Read fresh bounded page text and element references.", "browser_find": "Observe and find elements or text matching text.", "browser_wait_for": "Wait up to 20 seconds for text to be present (or absent).", "browser_act": "Act on current references. Actions: click, type, clear, select, check, uncheck, focus, scroll, back, forward, reload. Click, type, and scroll execute without an approval prompt. Other actions require user approval.", "browser_screenshot": "Capture only the browser, except on private pages.", "browser_close": "Close the browser only when explicitly requested by the user; requires confirmation."]
@@ -110,6 +139,10 @@ final class BrowserToolExecutor {
         default: throw BrowserError("unsupported_action")
         }
         try session.check(epoch: epoch, lease: lease)
+        if let document = result["documentId"] as? String, let observation = result["observationId"] as? String,
+           !document.isEmpty, !observation.isEmpty {
+            BrowserCall.lastReference = (document, observation)
+        }
         return result
     }
 }

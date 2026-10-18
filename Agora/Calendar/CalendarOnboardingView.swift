@@ -1,106 +1,115 @@
 import SwiftUI
 import GoogleSignInSwift
 
+/// Signing in to the household account, as a sheet from Home or Settings. Dibs itself never needs it:
+/// it brings the household's lists, pantry and wishlist in. Closes itself once the sign-in succeeds.
 struct CalendarOnboardingView: View {
     @ObservedObject var calendar: CalendarConnection
+    @Environment(\.dismiss) private var dismiss
     @State private var handle = "demo"
     @State private var password = ""
+
     var body: some View {
         NavigationStack {
-            ScrollView { VStack(alignment: .leading, spacing: 20) {
-                Spacer()
-                Image("AgoraWordmark").resizable().scaledToFit().frame(width: 160, height: 64).accessibilityLabel("Agora")
-                Text("Make time for\nwhat you need.").font(.largeTitle.bold())
-                Text("Demo uses sample responses and a private Calendar. No provider keys required.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                if let message = calendar.message { Text(message).font(.callout).foregroundStyle(.secondary).accessibilityIdentifier("calendarConnectionMessage") }
-                if let email = calendar.email { Text(email).font(.callout) }
-                if calendar.connecting {
-                    ProgressView("Signing in…")
+            ScrollView {
+                VStack(alignment: .leading, spacing: Metrics.space2) {
+                    Wordmark(size: 40)
+                    Text("Bring your household")
+                        .font(.display(32))
+                        .foregroundStyle(Color.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    Text("Your household's lists, pantry and wishlist come along on every run. Starting or joining a run never needs an account.")
+                        .font(.system(size: 15))
+                        .lineSpacing(2)
+                        .foregroundStyle(Color.bodyInk)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Demo account")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Color.ink)
+                        Text("Demo sign-in uses built-in Calendar, chat and recognition responses. No Google account or provider API keys are required.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        TextField("Username", text: $handle)
+                            .font(.system(size: 16))
+                            .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .dibsInput()
+                            .accessibilityIdentifier("demoUsername")
+                        SecureField("Password", text: $password)
+                            .font(.system(size: 16))
+                            .textContentType(.password)
+                            .dibsInput()
+                            .accessibilityIdentifier("demoPassword")
+                        if let message = calendar.message, message != calendar.configurationIssue {
+                            ErrorText(message: message)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("calendarConnectionMessage")
+                        }
+                        Button(calendar.connecting ? "Signing in…" : "Sign in to demo") {
+                            let submittedPassword = password
+                            password = ""
+                            Task { await calendar.connectDemo(handle: handle.trimmingCharacters(in: .whitespacesAndNewlines), password: submittedPassword) }
+                        }
+                        .buttonStyle(.dibs)
+                        .disabled(calendar.connecting || password.isEmpty || handle.isEmpty)
+                        .accessibilityIdentifier("signInDemo")
+                    }
+                    .dibsCard()
+
+                    Rectangle().fill(Color.line).frame(height: 1)
+                        .padding(.vertical, Metrics.space1)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Or use Google (optional)")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Color.ink)
+                        Text("Your own account uses your real Calendar and configured model providers.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let email = calendar.email {
+                        Text(email).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink)
+                    }
+                    GoogleSignInButton {
+                        Task { await calendar.connect() }
+                    }
+                    .disabled(calendar.connecting || calendar.configurationIssue != nil)
+                    .accessibilityIdentifier("connectGoogleCalendar")
+                    if let issue = calendar.configurationIssue {
+                        Text(issue)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if calendar.email != nil {
+                        HStack(spacing: Metrics.space1) {
+                            Button("Try again") { Task { await calendar.refresh() } }
+                                .buttonStyle(.dibs(.secondary, fontSize: 15))
+                            Button("Sign out") { Task { await calendar.signOut() } }
+                                .buttonStyle(.dibs(.secondary, fontSize: 15))
+                        }
+                        .disabled(calendar.connecting)
+                    }
                 }
-                TextField("Username", text: $handle)
-                    .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .accessibilityIdentifier("demoUsername")
-                SecureField("Password", text: $password).textContentType(.password)
-                    .accessibilityIdentifier("demoPassword")
-                Button("Sign in to demo") {
-                    let submittedPassword = password
-                    password = ""
-                    Task { await calendar.connectDemo(handle: handle.trimmingCharacters(in: .whitespacesAndNewlines), password: submittedPassword) }
-                }
-                .buttonStyle(AgoraPrimaryButtonStyle())
-                .disabled(calendar.connecting || password.isEmpty || handle.isEmpty)
-                .accessibilityIdentifier("signInDemo")
-                Divider()
-                Text("Your own account").font(.headline)
-                Text("Connect your Google Calendar and model providers.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                GoogleSignInButton {
-                    Task { await calendar.connect() }
-                }
-                .disabled(calendar.connecting || calendar.configurationIssue != nil)
-                .accessibilityIdentifier("connectGoogleCalendar")
-                if calendar.email != nil {
-                    HStack {
-                        Button("Try connection again") { Task { await calendar.refresh() } }
-                        Spacer()
-                        Button("Sign out") { Task { await calendar.signOut() } }
-                    }.disabled(calendar.connecting)
-                }
-                Spacer()
+                .padding(.horizontal, 20)
+                .padding(.top, Metrics.space1)
+                .padding(.bottom, Metrics.space3)
             }
-            .padding(28).frame(maxWidth: 560).frame(maxWidth: .infinity) }
-            .agoraSurface()
-            .navigationTitle("Welcome to Agora")
-            .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .dibsScreen()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
         }
-    }
-}
-
-struct CalendarSettingsSection: View {
-    @ObservedObject var calendar: CalendarConnection
-    let stopAgent: () -> Void
-    @State private var confirmDisconnect = false
-    var body: some View {
-        Section(calendar.isDemoAccount ? "Agora Calendar" : "Google Calendar") {
-            if calendar.isDemoAccount {
-                Label("Built-in integrations active", systemImage: "checkmark.circle.fill")
-                Text("No Google or model credentials are needed. Events stay in this account; no invitations or real purchases are sent.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                Button("Use Google account instead") { stopAgent(); Task { await calendar.connect() } }.disabled(calendar.connecting)
-                Button("Sign out") { stopAgent(); Task { await calendar.signOut() } }.disabled(calendar.connecting)
-            } else {
-            Label(calendar.connected ? "Connected" : "Connection required", systemImage: calendar.connected ? "checkmark.circle.fill" : "calendar.badge.exclamationmark")
-            if let email = calendar.email { Text(email) }
-            Text("Agora checks availability and adds approved events to your primary calendar.").font(.footnote).foregroundStyle(.secondary)
-            if let message = calendar.message { Text(message).font(.footnote).foregroundStyle(.secondary) }
-            Button("Reconnect Google Calendar") { stopAgent(); Task { await calendar.connect() } }.disabled(calendar.connecting)
-            Button("Sign out") { stopAgent(); Task { await calendar.signOut() } }.disabled(calendar.connecting)
-            Button("Disconnect Google Calendar", role: .destructive) { confirmDisconnect = true }.disabled(calendar.connecting)
-        }
-        }
-        .confirmationDialog("Disconnect Google Calendar?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
-            Button("Disconnect and sign out", role: .destructive) { stopAgent(); Task { await calendar.disconnect() } }
-        } message: { Text("Agora will lose Calendar access. Your existing Google Calendar events will remain.") }
-    }
-}
-
-struct CalendarGate<Content: View>: View {
-    @ObservedObject var calendar: CalendarConnection
-    let onDisconnect: () -> Void
-    @ViewBuilder let content: () -> Content
-    var body: some View {
-        Group {
-            if calendar.checking { ProgressView("Checking your connection…") }
-            else if calendar.connected { content() }
-            else { CalendarOnboardingView(calendar: calendar) }
-        }
-        .task { await calendar.refresh() }
-        .onChange(of: calendar.accountID) { old, new in
-            if old != nil && old != new { onDisconnect() }
-        }
+        .tint(Color.ink)
         .onChange(of: calendar.connected) { _, connected in
-            if !connected { onDisconnect() }
+            if connected { dismiss() }
         }
     }
 }

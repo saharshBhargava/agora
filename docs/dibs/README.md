@@ -2,7 +2,7 @@
 
 Dibs watches a shopper's basket with a phone camera, turns each item into a chip, and lets friends lift chips into their own tray so the bill splits itself. Every claimer's cap is a real card authorization; at settle, each share is captured and the rest is released.
 
-Dibs lives beside Agora in this repository: the native iPhone app in `ios/`, the Node server in `server/` (Fastify + WebSocket, JSON snapshot storage) and the web claimer/shopper in `web/` (Next.js static export served by the server). It has its own server and its own people, and does not use Agora's backend, accounts or Render service. Run every command below from the repository root.
+Dibs lives beside Agora in this repository: the native iPhone app is the **merged Dibs app** (the `Agora` Xcode target, named Dibs: it opens on the Dibs home and the household features are entries on it) (sources in `Agora/Dibs/`, tests in `AgoraTests/Dibs*.swift`), the Node server is in `server/` (Fastify + WebSocket, JSON snapshot storage) and the web claimer/shopper is in `web/` (Next.js static export served by the server; web join links keep working). It has its own server and its own people, and does not use Agora's backend, accounts or Render service. Run every command below from the repository root.
 
 In the live setup (`scripts/demo-server.sh`), the shopper's iPhone finds items on device with Apple Vision, the server names each crop with Gemini, the phone's hidden browser reads the price from qfc.com, claimers join on the web or in the app, and payments are simulated Visa authorizations and captures. Stub modes (three fixed props, a fixed price table) remain for offline testing.
 
@@ -31,17 +31,16 @@ scripts/demo-server.sh https://<tunnel>   # or PUBLIC_URL=https://<tunnel> scrip
 
 It rebuilds web and server when they are stale, reads `GEMINI_API_KEY` from `server/.env` (never printed), refuses to start if port 3000 is taken, and prints the URL. Add `SIM_FAIL_CAPTURE=Marcus` in front to show a partly settled run.
 
-The "+ Wish" page (`GET /api/runs/:id/wish-picks`) suggests items from this server's past runs at the same store. To also show the household's shopping list, wishlist suggestions and run-out forecasts from the team API (`backend/` on main), put `TEAM_API_BASE_URL` and `AGORA_DEMO_PASSWORD` in `server/.env` (see Env flags). The server signs in as the API's demo account, caches answers for 60 s, and falls back to run history when the API is slow (4 s) or down.
+The "+ Wish" page (`GET /api/runs/:id/wish-picks`) suggests items from this server's past runs at the same store. To also show the household's shopping list, wishlist suggestions and run-out forecasts from the team API (`backend/` on main), set `TEAM_API_BASE_URL` in `server/.env` (see Env flags). The app sends the signed-in person's own team-API bearer token in an optional `X-Household-Token` header (1 to 4096 printable ASCII characters, no whitespace; anything else counts as absent), and the server reads that person's household with it: it never signs in for them, never logs or stores the token, and keeps each token's answer apart (cached 60 s under a SHA-256 of the token, at most 100 tokens). A token the API refuses (401/403) gets run history only. With no header, and only when `AGORA_DEMO_PASSWORD` is also set, the server signs in as the API's demo account instead; without the password a request with no token gets run history only. Answers are cached 60 s, and the page falls back to run history when the API is slow (4 s) or down.
 
-### Native iOS app
+### Native iOS app (the merged Dibs app)
 
 ```sh
-brew install xcodegen
-cp ios/Local.xcconfig.example ios/Local.xcconfig   # signing team, bundle id, DIBS_SERVER_URL (gitignored)
-cd ios && xcodegen generate && open Dibs.xcodeproj
+cp Config/Local.xcconfig.example Config/Local.xcconfig   # AGORA_BUNDLE_ID, DEVELOPMENT_TEAM, DIBS_SERVER_URL (gitignored)
+ruby scripts/generate-project.rb && open Agora.xcodeproj  # scheme Agora; Dibs is the cart tab
 ```
 
-`ios/Config/Dibs.xcconfig` defaults to `http://localhost:3000`; set `DIBS_SERVER_URL` in `Local.xcconfig` to the tunnel URL for a real phone. Launch arguments: `-DibsAutoShop YES` starts a run and opens the shopper camera, `-DibsDebugCrops YES` shows detection crops, `-DibsAutoRemove YES` removes items that leave the frame (off by default), `-DibsStoreSetup YES` picks the QFC store in the price browser (off by default). Tests: `xcodebuild test -project ios/Dibs.xcodeproj -scheme Dibs -destination 'platform=iOS Simulator,name=<iPhone>'`.
+`DIBS_SERVER_URL` is empty in `Config/Agora.xcconfig`, so the app falls back to `http://localhost:3000`; set it in `Config/Local.xcconfig` to the tunnel URL for a real phone (it reaches the app as Info.plist `DibsServerURL`). `dibs://join?run=…` links open the Dibs tab on its join screen. Launch arguments: `-DibsAutoShop YES` starts a run and opens the shopper camera, `-DibsDebugCrops YES` shows detection crops, `-DibsAutoRemove YES` removes items that leave the frame (off by default), `-DibsStoreSetup YES` picks the QFC store in the price browser (off by default). Tests run with Agora's: `xcodebuild test -project Agora.xcodeproj -scheme Agora -destination 'platform=iOS Simulator,name=<iPhone>'` (Dibs classes are `AgoraTests/Dibs*`; fixtures are `Fixtures/dibs-*.json`).
 
 ### Camera demo: drop order matters
 
@@ -83,8 +82,8 @@ Person ids are public: every run snapshot lists them, because the UI needs them.
 | `RAISE_CAP` | on | Set `off` to disable raising a cap. |
 | `MERGE_DUPLICATES` | `1` (demo script) | `1`: when the camera identifies a product already in the cart, that chip's quantity goes up by one (×2, ×3, up to 20) instead of adding a second chip; no "Added twice?" card. A wish waiting for the product takes the new item instead. Unset: a same-name item within `DUPLICATE_MS` (default 5000) becomes its own chip with the "Added twice? Keep both / Remove one" card. |
 | `MERGE_WINDOW_MS` | `3000` | With `MERGE_DUPLICATES=1`: a detection that starts within this long of the chip's last count is the same item seen twice (a merged box, a double tap) and does not count again. |
-| `TEAM_API_BASE_URL` | none | Origin of the team household API, e.g. the Render `agora-api` service (`https://…onrender.com`; a trailing `/v1` is fine). HTTPS only, except `http://localhost`. Unset: the wish page uses run history only. |
-| `AGORA_DEMO_PASSWORD` | none | With `TEAM_API_BASE_URL`: the password for `POST /v1/dev/login` as `demo`. It is the same value as the API service's own `AGORA_DEMO_PASSWORD` (Render → agora-api → Environment, or ask whoever deployed it). Never logged or returned. |
+| `TEAM_API_BASE_URL` | none | Origin of the team household API, e.g. the Render `agora-api` service (`https://…onrender.com`; a trailing `/v1` is fine). HTTPS only, except `http://localhost`. On its own it enables the signed-in person's household (the `X-Household-Token` header of `wish-picks`). Unset: the wish page uses run history only. |
+| `AGORA_DEMO_PASSWORD` | none | Optional, with `TEAM_API_BASE_URL`: the password for `POST /v1/dev/login` as `demo`. It enables only the no-token path (a `wish-picks` request without `X-Household-Token` reads the demo account's household); a person's own token never uses it. It is the same value as the API service's own `AGORA_DEMO_PASSWORD` (Render → agora-api → Environment, or ask whoever deployed it). Never logged or returned. |
 | `SIM_FAIL_CAPTURE` | none | With `PAYMENTS=sim`, a comma list of claimer names (case-insensitive, e.g. `Marcus,Priya`) whose capture and incremental fail at settle, so the run ends partly settled with "Retry Marcus". Checked on each Confirm, so clear it and restart to let Retry succeed. |
 
 ## Hosting
@@ -111,7 +110,7 @@ State is in memory with a JSON snapshot; a redeploy loses runs, so create the ru
 
 ## Install on phones
 
-HTTPS is required for the camera, which the tunnel (or Railway) provides. The native app in `ios/` is the main shopper path; the steps below are the web (Add to Home Screen) path.
+HTTPS is required for the camera, which the tunnel (or Railway) provides. The native app is the main shopper path; the steps below are the web (Add to Home Screen) path.
 
 1. Create a run: `curl -X POST https://<domain>/api/runs` returns `runId`, `shopperId` and the shopper's `key`.
 2. Shopper phone: open `https://<domain>/shopper?run=<runId>&person=<shopperId>#key=<key>` in Safari (the page saves the key and drops it from the address bar; the fragment never reaches the server), Share, Add to Home Screen, then open it from the home screen and allow the camera. Starting the run on the phone itself ("Start a run") needs no key in the link. On this phone set Settings → Display & Brightness → Auto-Lock → Never (the page also holds a screen wake lock where Safari allows it). Clip it above the basket.

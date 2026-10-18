@@ -145,6 +145,10 @@ enum AgentInstructions {
             Never invent consumption rates or run-out dates; an unavailable forecast or absent item means no prediction is available in that window.
             Keep recorded inventory quantity separate from estimated remaining quantity. Ask for more scans when history is insufficient.
             Saving a suggestion is not adding an active wishlist item or purchasing it. Do not invent live prices or sales.
+            Use purchase_request only when the user clearly asks you to buy, order or purchase a specific item now, with a price they gave or a confirmed price.
+            Never invent a price, never buy on your own initiative, and never treat a wishlist or list request as a purchase.
+            Dibs decides whether a purchase is allowed and asks the user to approve when needed. Report its result and reasons as returned.
+            Never retry a refused, rejected or outcome_unknown purchase, and never fall back to the browser to buy something Dibs refused.
             Use Calendar tools for scheduling; resolve relative dates in the user's timezone with correct DST offsets.
             Ask for missing event details, including duration if unclear. Only create events requested by the user.
             Calendar creation requires native approval. Report success only after the tool confirms creation; include its URL.

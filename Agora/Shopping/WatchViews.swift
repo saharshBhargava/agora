@@ -3,30 +3,56 @@ import SwiftUI
 struct WatchListView: View {
     @ObservedObject var store: WatchStore
     var body: some View {
-        AgoraList {
-            if let error = store.error { Section { Text(error).foregroundStyle(.red) } }
-            if let notice = store.notice { Section { Text(notice).foregroundStyle(.secondary) } }
+        ShelfPage {
+            ShelfHero(title: "Watching prices",
+                      subtitle: "A watch looks for verified offers on the exact product you chose. It never buys anything.")
+            if let error = store.error { ShelfBanner(message: error, kind: .error) }
+            if let notice = store.notice { ShelfBanner(message: notice) }
             if store.discoveryUnavailable {
-                Section { Label("Add a product link for direct checks", systemImage: "link")
-                    Text(store.discoveryExplanation).font(.caption).foregroundStyle(.secondary) }
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Add a product link for direct checks", systemImage: "link")
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(Color.ink)
+                    Text(store.discoveryExplanation).shelfNote().fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .dibsCard(radius: 14, padding: 12)
             }
             if store.watches.isEmpty && !store.loading && store.hasLoadedCapabilities {
-                AgoraEmptyState(title: "No price watches yet", detail: "Add an item to your wishlist.")
+                ShelfEmpty(symbol: "binoculars", title: "Watch for the right offer",
+                           message: "Add an item to your wishlist to start searching for current prices automatically.")
             }
             ForEach(store.watches) { watch in
                 NavigationLink { WatchDetailView(store: store, watchID: watch.id) } label: {
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack { ItemThumbnail(kind: "wishlist", id: watch.wishlistItemId, name: watch.title); Text(watch.title).font(.headline); Spacer(); Text(watch.status.capitalized).font(.caption) }
-                        Text("\(watch.criteria.targetPriceCents.map { "Target \(WishlistItem.money($0)) each" } ?? "No target price") · \(watch.criteria.quantity) item(s)").font(.subheadline)
-                        Text(store.browserFallbackStatus[watch.id] ?? watch.resultLabel).font(.caption).foregroundStyle(.secondary)
-                    }.padding(.vertical, 4)
+                    HStack(alignment: .top, spacing: 12) {
+                        ShelfItemTile(kind: "wishlist", id: watch.wishlistItemId, name: watch.title, size: 48)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(watch.title).shelfName().lineLimit(2)
+                            HStack(spacing: 6) {
+                                WatchStatusPill(status: watch.status)
+                                ShelfPill(text: "\(watch.criteria.quantity) item(s)", style: .muted)
+                            }
+                            Text(store.browserFallbackStatus[watch.id] ?? watch.resultLabel).shelfNote().fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .trailing, spacing: 0) {
+                            Text(watch.criteria.targetPriceCents.map { WishlistItem.money($0) } ?? "–")
+                                .font(.display(22)).foregroundStyle(Color.ink).monospacedDigit()
+                            Text(watch.criteria.targetPriceCents == nil ? "no target" : "target each").shelfNote()
+                        }
+                    }
+                    .dibsCard(radius: 14, padding: 12)
+                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(watch.title), \(watch.status.capitalized). \(watch.criteria.targetPriceCents.map { "Target \(WishlistItem.money($0)) each" } ?? "No target price"), \(watch.criteria.quantity) item(s). \(store.browserFallbackStatus[watch.id] ?? watch.resultLabel)")
+                .accessibilityAddTraits(.isButton)
             }
-        }.agoraSurface()
-        .navigationTitle("Watch list")
-            .overlay { if store.loading && store.watches.isEmpty { ProgressView() } }
-            .task(id: store.context) { await store.refresh() }.refreshable { await store.refresh() }
-            .navigationDestination(item: $store.openWatchID) { id in WatchDetailView(store: store, watchID: id) }
+        }
+        .navigationTitle("")
+        .overlay { if store.loading && store.watches.isEmpty { ProgressView() } }
+        .task(id: store.context) { await store.refresh() }.refreshable { await store.refresh() }
+        .navigationDestination(item: $store.openWatchID) { id in WatchDetailView(store: store, watchID: id) }
     }
 }
 
@@ -38,125 +64,260 @@ struct WatchDetailView: View {
     var body: some View {
         Group {
             if let watch = store.watches.first(where: { $0.id == watchID }) {
-                AgoraList {
-                    Section {
-                        VStack(spacing: 12) {
-                            ItemThumbnail(kind: "wishlist", id: watch.wishlistItemId, name: watch.title, size: 180)
-                            Text(watch.title).font(.title2.weight(.semibold)).multilineTextAlignment(.center)
-                            if let target = watch.criteria.targetPriceCents {
-                                Text("Target \(WishlistItem.money(target))").foregroundStyle(.secondary)
-                            }
-                        }.frame(maxWidth: .infinity).padding(.vertical, 16)
-                        if let disclosure = watch.simulationDisclosure { Text(disclosure).font(.caption).foregroundStyle(.secondary) }
-                        Text(store.browserFallbackStatus[watch.id] ?? watch.resultLabel)
-                            .font(.subheadline).foregroundStyle(watch.lastResult == "failed" ? .orange : .secondary)
-                        if let error = store.error { Text(error).foregroundStyle(.red) }
-                        if let notice = store.notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
+                ShelfPage {
+                    ShelfHero(title: watch.title, size: 30)
+                    HStack(spacing: Metrics.space1) {
+                        WatchStatusPill(status: watch.status)
+                        ShelfPill(text: "\(watch.criteria.quantity) item(s)", style: .muted)
                     }
-                    if !watch.browserReviewURLs.isEmpty {
-                        Section("Needs browser review") {
-                            Text("Review the sign-in, variant or cart in your browser. Offers are unverified; purchases require your decision.")
-                                .font(.caption).foregroundStyle(.secondary)
-                            ForEach(watch.browserReviewURLs, id: \.self) { url in
-                                Button("Review \(url.host ?? "retailer")") {
-                                    store.reviewInBrowser(watchID: watch.id, url: url)
-                                }.disabled(store.busy)
-                            }
-                        }
-                    }
-                    if !watch.currentPrices.isEmpty {
-                        Section("Current retailer prices") {
-                            ForEach(watch.currentPrices) { price in
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text(price.merchant).font(.headline)
-                                    Text(WishlistItem.money(price.unitPriceCents)).font(.title3.weight(.semibold))
-                                    if price.title != watch.title { Text(price.title).font(.caption).foregroundStyle(.secondary) }
-                                    Text(price.comparison(target: watch.criteria.targetPriceCents)).font(.subheadline)
-                                    if let note = price.verificationNote { Text(note).font(.caption).foregroundStyle(.orange) }
-                                    else if !["confirmed_criteria_met", "above_target", "target_not_set"].contains(price.reason) {
-                                        Text("Price found; availability, delivery or other requirements still need verification.").font(.caption).foregroundStyle(.orange)
-                                    }
-                                    Text("Before tax and shipping · \(price.observedAt.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-                                    if let url = price.safeURL { Link("View retailer", destination: url) }
-                                }
-                            }
-                        }
-                    }
-                    Section("Verified offers · \(watch.currentOffers.count)") {
-                        if watch.currentOffers.isEmpty { Text(watch.lastResult == "failed" && watch.currentPrices.isEmpty ? "Offers could not be checked. Try again later." : "No matching offers yet.").foregroundStyle(.secondary) }
-                        ForEach(watch.currentOffers) { offer in WatchOfferRow(offer: offer, wishlistItemID: watch.wishlistItemId) }
-                    }
-                    if !watch.historicalOffers.isEmpty {
-                        Section {
-                            DisclosureGroup("Previous offers") {
-                                ForEach(watch.historicalOffers) { offer in WatchOfferRow(offer: offer, wishlistItemID: watch.wishlistItemId, historical: true) }
-                            }
-                        }
-                    }
-                    Section {
-                        DisclosureGroup("Watch activity") {
-                            if !watch.rejectionLabels.isEmpty {
-                                DisclosureGroup("Why offers were excluded") {
-                                    ForEach(Array(watch.rejectionLabels.enumerated()), id: \.offset) { _, reason in Text(reason).font(.caption).foregroundStyle(.secondary) }
-                                }
-                            }
-                            LabeledContent("Status", value: watch.status.capitalized)
-                            if let last = watch.lastSuccessfulAt { LabeledContent("Last successful check", value: last.formatted(date: .abbreviated, time: .shortened)) }
-                            else if let price = watch.currentPrices.first {
-                                LabeledContent("Latest price found", value: price.observedAt.formatted(date: .abbreviated, time: .shortened))
-                            } else { Text("No successful check yet.").font(.caption).foregroundStyle(.secondary) }
-                            if let last = watch.lastCheckedAt { LabeledContent("Last attempt", value: last.formatted(date: .abbreviated, time: .shortened)) }
-                            if let next = watch.nextCheckAt, watch.status == "active" { LabeledContent("Next check", value: next.formatted(date: .abbreviated, time: .shortened)) }
-                        }
-                        Button("Check now") { Task { await store.checkNow(watch) } }
-                            .disabled(store.busy || !watch.searchAvailable || watch.status != "active")
+                    figures(watch)
+                    if let error = store.error { ShelfBanner(message: error, kind: .error) }
+                    if let notice = store.notice { ShelfBanner(message: notice) }
+                    if !watch.browserReviewURLs.isEmpty { browserReview(watch) }
+                    checks(watch)
+                    VStack(spacing: Metrics.space1) {
                         if ["active", "paused"].contains(watch.status) {
                             Button(watch.status == "paused" ? "Resume watch" : "Pause watch") {
                                 Task { await store.setPaused(watch, paused: watch.status == "active") }
-                            }.disabled(store.busy)
-                        }
-                    }
-                    Section { DisclosureGroup("Criteria") { WatchCriteriaSummary(criteria: watch.criteria) } }
-                    Section {
-                        DisclosureGroup("Alerts") {
-                            if let subscription = watch.subscription {
-                                LabeledContent("Push alerts requested", value: subscription.pushEnabled ? "Yes" : "No")
-                                Text(push.permissionStatus).font(.caption).foregroundStyle(.secondary)
-                                LabeledContent("Daily maximum", value: "\(subscription.dailyCap)")
-                                LabeledContent("Minimum interval", value: "\(subscription.cooldownHours) hours")
-                                if let start = subscription.quietStartHour, let end = subscription.quietEndHour {
-                                    LabeledContent("Quiet hours", value: "\(start):00–\(end):00")
-                                }
-                                Text(subscription.timezone).font(.caption).foregroundStyle(.secondary)
-                            } else {
-                                Text("You have not subscribed to this household watch. Edit criteria and alerts to subscribe.").font(.caption)
                             }
-                            Text("Offers stay in your inbox when push alerts are off.").font(.caption).foregroundStyle(.secondary)
+                            .buttonStyle(.dibs(.secondary, fontSize: 16))
+                            .disabled(store.busy)
                         }
+                        Button("Edit criteria and alerts") { editing = true }
+                            .buttonStyle(.dibs(.secondary, fontSize: 16))
+                            .disabled(store.busy)
                     }
-                    if !watch.runs.isEmpty {
-                        Section {
-                            DisclosureGroup("Recent checks") {
-                                ForEach(watch.runs) { run in
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(run.status.capitalized)
-                                        Text(run.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
-                                        if run.status == "succeeded" { Text("\(run.offerCount) offers checked · \(run.matchCount) met your criteria").font(.caption) }
-                                        if run.status == "failed" { Text("Check failed. No conclusion about available offers.").font(.caption).foregroundStyle(.orange) }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }.agoraSurface()
-                .navigationTitle(watch.title).navigationBarTitleDisplayMode(.inline)
-                    .toolbar { Button("Edit") { editing = true }.disabled(store.busy) }
-                    .sheet(isPresented: $editing) { WatchEditor(store: store, itemID: watch.wishlistItemId, watch: watch) }
+                    offers(watch)
+                    criteria(watch)
+                    alerts(watch)
+                    if !watch.runs.isEmpty { recentChecks(watch) }
+                } bottom: {
+                    Button("Check now") { Task { await store.checkNow(watch) } }
+                        .buttonStyle(.dibs)
+                        .disabled(store.busy || !watch.searchAvailable || watch.status != "active")
+                }
+                .navigationTitle("")
+                .sheet(isPresented: $editing) { WatchEditor(store: store, itemID: watch.wishlistItemId, watch: watch) }
             } else {
-                AgoraEmptyState(title: "Watch unavailable", detail: store.error ?? "Pull to refresh.").padding(20)
+                ShelfPage {
+                    ShelfHero(title: "Price watch")
+                    ShelfEmpty(symbol: "binoculars", title: "Watch unavailable",
+                               message: store.error ?? "Refresh to load this watch for your current household.")
+                }
+                .navigationTitle("")
             }
         }.task(id: "\(store.context)-\(watchID)") { await store.detail(watchID) }
             .refreshable { await store.detail(watchID) }
+    }
+
+    // MARK: pieces
+
+    /// The target and the best price so far (a verified offer, else the lowest current retailer price), in display numbers.
+    private func figures(_ watch: PriceWatch) -> some View {
+        let verified = watch.currentOffers.map(\.unitPriceCents).min()
+        let best = verified ?? watch.currentPrices.map(\.unitPriceCents).min()
+        return HStack(alignment: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(watch.criteria.targetPriceCents.map { WishlistItem.money($0) } ?? "Not set")
+                    .font(.display(watch.criteria.targetPriceCents == nil ? 22 : 32))
+                    .foregroundStyle(watch.criteria.targetPriceCents == nil ? Color.muted : Color.ink)
+                    .monospacedDigit()
+                    .frame(minHeight: 38, alignment: .leading)
+                Text("Target per item").shelfNote()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Rectangle().fill(Color.line).frame(width: 1).padding(.vertical, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(best.map(WishlistItem.money) ?? "None yet")
+                    .font(.display(best == nil ? 22 : 32))
+                    .foregroundStyle(best == nil ? Color.muted : Color.ink)
+                    .monospacedDigit()
+                    .frame(minHeight: 38, alignment: .leading)
+                Text(verified == nil && best != nil ? "Lowest current price" : "Best verified offer").shelfNote()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, Metrics.space2)
+        }
+        .accessibilityElement(children: .combine)
+        .dibsCard()
+    }
+
+    private func browserReview(_ watch: PriceWatch) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Needs browser review").font(.system(size: 17, weight: .bold)).foregroundStyle(Color.ink)
+                .accessibilityAddTraits(.isHeader)
+            Text("These pages need you to review a sign-in, product variant or cart. Continue yourself in the shared browser. An offer still needs verification, and purchases require your decision.")
+                .shelfNote().fixedSize(horizontal: false, vertical: true)
+            ForEach(watch.browserReviewURLs, id: \.self) { url in
+                Button("Review \(url.host ?? "retailer")") {
+                    store.reviewInBrowser(watchID: watch.id, url: url)
+                }
+                .buttonStyle(.dibs(.secondary, fontSize: 16))
+                .disabled(store.busy)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dibsCard()
+    }
+
+    private func checks(_ watch: PriceWatch) -> some View {
+        var rows: [(title: String, value: String)] = [("Status", watch.status.capitalized)]
+        if let last = watch.lastSuccessfulAt { rows.append(("Last successful check", last.formatted(date: .abbreviated, time: .shortened))) }
+        else if let price = watch.currentPrices.first { rows.append(("Latest price found", price.observedAt.formatted(date: .abbreviated, time: .shortened))) }
+        if let last = watch.lastCheckedAt { rows.append(("Last attempt", last.formatted(date: .abbreviated, time: .shortened))) }
+        if let next = watch.nextCheckAt, watch.status == "active" { rows.append(("Next check", next.formatted(date: .abbreviated, time: .shortened))) }
+        return VStack(alignment: .leading, spacing: 10) {
+            if let disclosure = watch.simulationDisclosure { Text(disclosure).shelfNote().fixedSize(horizontal: false, vertical: true) }
+            Text(store.browserFallbackStatus[watch.id] ?? watch.resultLabel)
+                .font(.system(size: 15, weight: watch.lastResult == "failed" ? .bold : .regular))
+                .foregroundStyle(watch.lastResult == "failed" ? Color.danger : Color.bodyInk)
+                .fixedSize(horizontal: false, vertical: true)
+            if !watch.rejectionLabels.isEmpty {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(watch.rejectionLabels.enumerated()), id: \.offset) { _, reason in
+                            Text(reason).shelfNote().fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } label: {
+                    Text("Why offers were excluded").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink)
+                }
+                .tint(Color.ink)
+            }
+            ShelfDivider()
+            ShelfFacts(rows: rows)
+            if watch.lastSuccessfulAt == nil && watch.currentPrices.isEmpty { Text("No successful check yet.").shelfNote() }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dibsCard()
+    }
+
+    private func offers(_ watch: PriceWatch) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !watch.currentPrices.isEmpty {
+                ShelfSectionTitle("Current retailer prices · \(watch.currentPrices.count)")
+                VStack(spacing: 0) {
+                    ForEach(Array(watch.currentPrices.enumerated()), id: \.element.id) { index, price in
+                        if index > 0 { ShelfDivider() }
+                        WatchPriceRow(price: price, watch: watch)
+                    }
+                }
+                .dibsCard()
+                .padding(.bottom, Metrics.space1)
+            }
+            ShelfSectionTitle("Offers meeting all requirements · \(watch.currentOffers.count)")
+            if watch.currentOffers.isEmpty {
+                ShelfEmpty(symbol: "tag", title: "No verified offer yet",
+                           message: watch.lastResult == "failed" && watch.currentPrices.isEmpty ? "Offers could not be checked. Try again later." : "No verified offer meets all your requirements yet.")
+            }
+            ForEach(watch.currentOffers) { offer in WatchOfferRow(offer: offer, wishlistItemID: watch.wishlistItemId) }
+            if !watch.historicalOffers.isEmpty {
+                ShelfSectionTitle("Previous offers · no longer current").padding(.top, Metrics.space1)
+                ForEach(watch.historicalOffers) { offer in WatchOfferRow(offer: offer, wishlistItemID: watch.wishlistItemId, historical: true) }
+            }
+        }
+    }
+
+    private func criteria(_ watch: PriceWatch) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ShelfSectionTitle("Confirmed criteria")
+            WatchCriteriaSummary(criteria: watch.criteria)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .dibsCard()
+        }
+    }
+
+    private func alerts(_ watch: PriceWatch) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ShelfSectionTitle("Alerts")
+            VStack(alignment: .leading, spacing: 8) {
+                if let subscription = watch.subscription {
+                    ShelfFacts(rows: alertRows(subscription))
+                    Text(push.permissionStatus).shelfNote()
+                    Text(subscription.timezone).shelfNote()
+                } else {
+                    Text("You have not subscribed to this household watch. Edit criteria and alerts to subscribe.").shelfBody()
+                }
+                Text("Matched offers are saved in your inbox even when push permission is off.").shelfNote()
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dibsCard()
+        }
+    }
+
+    private func alertRows(_ subscription: WatchSubscription) -> [(title: String, value: String)] {
+        var rows: [(title: String, value: String)] = [
+            ("Push alerts requested", subscription.pushEnabled ? "Yes" : "No"),
+            ("Daily maximum", "\(subscription.dailyCap)"),
+            ("Minimum interval", "\(subscription.cooldownHours) hours")]
+        if let start = subscription.quietStartHour, let end = subscription.quietEndHour {
+            rows.append(("Quiet hours", "\(start):00–\(end):00"))
+        }
+        return rows
+    }
+
+    private func recentChecks(_ watch: PriceWatch) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ShelfSectionTitle("Recent checks")
+            VStack(spacing: 0) {
+                ForEach(Array(watch.runs.enumerated()), id: \.element.id) { index, run in
+                    if index > 0 { ShelfDivider() }
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(run.status.capitalized).font(.system(size: 15, weight: .bold)).foregroundStyle(Color.ink)
+                            Spacer(minLength: 8)
+                            Text(run.createdAt.formatted(date: .abbreviated, time: .shortened)).shelfNote()
+                        }
+                        if run.status == "succeeded" { Text("\(run.offerCount) offers checked · \(run.matchCount) met your criteria").shelfBody() }
+                        if run.status == "failed" {
+                            Text("Check failed. No conclusion about available offers.")
+                                .font(.system(size: 13, weight: .bold)).foregroundStyle(Color.danger)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 10)
+                }
+            }
+            .dibsCard(padding: 12)
+        }
+    }
+}
+
+/// One retailer's current price for a watched wish: photo tile, title and store, the price in display type, how it
+/// compares to the target, and what still needs checking.
+private struct WatchPriceRow: View {
+    let price: WatchPrice
+    let watch: PriceWatch
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                ShelfItemTile(kind: "wishlist", id: watch.wishlistItemId, name: watch.title, size: 44)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(price.title).shelfName().fixedSize(horizontal: false, vertical: true)
+                    Text(price.merchant).shelfNote()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Text(WishlistItem.money(price.unitPriceCents))
+                    .font(.display(22)).foregroundStyle(Color.ink).monospacedDigit()
+            }
+            ShelfPill(text: price.comparison(target: watch.criteria.targetPriceCents), style: .line)
+            if let note = price.verificationNote {
+                ShelfPill(text: note, symbol: "exclamationmark.circle", style: .danger)
+            } else if !["confirmed_criteria_met", "above_target", "target_not_set"].contains(price.reason) {
+                ShelfPill(text: "Price found; availability, delivery or other requirements still need verification.", symbol: "exclamationmark.circle", style: .danger)
+            }
+            Text("Before tax and shipping · \(price.observedAt.formatted(date: .omitted, time: .shortened))").shelfNote()
+            if let url = price.safeURL {
+                Link(destination: url) {
+                    Label("View retailer", systemImage: "arrow.up.right")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink)
+                        .frame(minHeight: Metrics.tap, alignment: .leading)
+                }
+            }
+        }
+        .padding(.vertical, 10)
     }
 }
 
@@ -166,46 +327,99 @@ private struct WatchOfferRow: View {
     var historical = false
     private var isCurrent: Bool { offer.isCurrent && !historical }
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if !isCurrent { Label("Historical offer · verify again at the retailer", systemImage: "clock").font(.caption).foregroundStyle(.orange) }
-            HStack {
-                ItemThumbnail(kind: "wishlist", id: wishlistItemID, name: offer.title)
-                Text(offer.title).font(.headline)
+        VStack(alignment: .leading, spacing: 10) {
+            if !isCurrent {
+                ShelfPill(text: "Historical offer · verify again at the retailer", symbol: "clock", style: .muted)
             }
-            Text("\(offer.merchant) · \(WishlistItem.money(offer.unitPriceCents)) each")
-            if let total = offer.totalPriceCents { Text("Total \(WishlistItem.money(total)) for \(offer.quantity)") }
-            else { Text("Total unavailable · tax, shipping or fees may be additional").font(.caption).foregroundStyle(.orange) }
-            HStack {
-                Text(offer.shippingCents.map { "Shipping \(WishlistItem.money($0))" } ?? "Shipping unknown")
-                Text(offer.taxCents.map { "Tax \(WishlistItem.money($0))" } ?? "Tax unknown")
-            }.font(.caption).foregroundStyle(.secondary)
-            Text("\(offer.condition.capitalized) · \(offer.fulfillment.capitalized) · \(offer.location)").font(.caption)
-            Text("\(isCurrent ? "Verified" : "Previously observed") \(offer.observedAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-            Text(offer.reason).font(.caption)
-            if !offer.evidence.isEmpty { DisclosureGroup("Source evidence") { ForEach(Array(offer.evidence.enumerated()), id: \.offset) { _, value in Text(value).font(.caption) } } }
-            if let url = offer.safeURL { Link("View at \(offer.merchant)", destination: url) }
-            Text("Confirm the variant and final total at the retailer.").font(.caption).foregroundStyle(.secondary)
-        }.padding(.vertical, 5)
+            HStack(alignment: .top, spacing: 12) {
+                ShelfItemTile(kind: "wishlist", id: wishlistItemID, name: offer.title, size: 44)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(offer.title).shelfName().fixedSize(horizontal: false, vertical: true)
+                    Text(offer.merchant).shelfNote()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text(WishlistItem.money(offer.unitPriceCents))
+                        .font(.display(26)).foregroundStyle(Color.ink).monospacedDigit()
+                    Text("each").shelfNote()
+                }
+            }
+            if let total = offer.totalPriceCents {
+                Text("Total \(WishlistItem.money(total)) for \(offer.quantity)")
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink)
+            } else {
+                ShelfPill(text: "Total unavailable · tax, shipping or fees may be additional", symbol: "exclamationmark.circle", style: .danger)
+            }
+            ShelfFlow {
+                ShelfPill(text: offer.shippingCents.map { "Shipping \(WishlistItem.money($0))" } ?? "Shipping unknown")
+                ShelfPill(text: offer.taxCents.map { "Tax \(WishlistItem.money($0))" } ?? "Tax unknown")
+                ShelfPill(text: offer.condition.capitalized, style: .muted)
+                ShelfPill(text: offer.fulfillment.capitalized, style: .muted)
+                ShelfPill(text: offer.location, symbol: "mappin.and.ellipse", style: .muted)
+            }
+            Text(offer.reason).shelfBody().fixedSize(horizontal: false, vertical: true)
+            Text("\(isCurrent ? "Verified" : "Previously observed") \(offer.observedAt.formatted(date: .abbreviated, time: .shortened))").shelfNote()
+            if !offer.evidence.isEmpty {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(offer.evidence.enumerated()), id: \.offset) { _, value in
+                            Text(value).shelfNote().fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } label: {
+                    Text("Source evidence").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink)
+                }
+                .tint(Color.ink)
+            }
+            if let url = offer.safeURL {
+                Link(destination: url) {
+                    Label("View at \(offer.merchant)", systemImage: "arrow.up.right")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink)
+                        .frame(minHeight: Metrics.tap, alignment: .leading)
+                }
+            }
+            Text("Price and availability can change. Confirm the variant, full cost and conditions at the retailer.")
+                .shelfNote().fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dibsCard()
     }
 }
 
 private struct WatchCriteriaSummary: View {
     let criteria: WatchCriteria
+    private var rows: [(title: String, value: String)] {
+        var rows: [(title: String, value: String)] = [
+            ("Product", criteria.query),
+            ("Quantity", "\(criteria.quantity)"),
+            ("Target per item", criteria.targetPriceCents.map { WishlistItem.money($0) } ?? "Not set")]
+        if let total = criteria.maxTotalCents { rows.append(("Maximum total", WishlistItem.money(total))) }
+        rows += [
+            ("Must include", criteria.requiredTerms.isEmpty ? "No additional terms" : criteria.requiredTerms.joined(separator: ", ")),
+            ("Must exclude", criteria.excludedTerms.isEmpty ? "None" : criteria.excludedTerms.joined(separator: ", ")),
+            ("Fulfillment", criteria.fulfillment.capitalized),
+            ("Location", criteria.location),
+            ("Condition", criteria.condition.capitalized),
+            ("Membership offers", criteria.allowMembership ? "Allowed" : "Excluded"),
+            ("Retailers", criteria.allowedDomains.isEmpty ? "Any supported retailer" : criteria.allowedDomains.joined(separator: ", "))]
+        if let deadline = criteria.neededBy { rows.append(("Needed by", deadline)) }
+        return rows
+    }
     var body: some View {
-        LabeledContent("Product", value: criteria.query)
-        if let url = criteria.productUrl { Text(url).font(.caption).textSelection(.enabled) }
-        LabeledContent("Quantity", value: "\(criteria.quantity)")
-        LabeledContent("Target per item", value: criteria.targetPriceCents.map { WishlistItem.money($0) } ?? "Not set")
-        Text("Before tax and shipping · USD").font(.caption).foregroundStyle(.secondary)
-        if let total = criteria.maxTotalCents { LabeledContent("Maximum total", value: WishlistItem.money(total)) }
-        LabeledContent("Must include", value: criteria.requiredTerms.isEmpty ? "No additional terms" : criteria.requiredTerms.joined(separator: ", "))
-        LabeledContent("Must exclude", value: criteria.excludedTerms.isEmpty ? "None" : criteria.excludedTerms.joined(separator: ", "))
-        LabeledContent("Fulfillment", value: criteria.fulfillment.capitalized)
-        LabeledContent("Location", value: criteria.location)
-        LabeledContent("Condition", value: criteria.condition.capitalized)
-        LabeledContent("Membership offers", value: criteria.allowMembership ? "Allowed" : "Excluded")
-        LabeledContent("Retailers", value: criteria.allowedDomains.isEmpty ? "Any supported retailer" : criteria.allowedDomains.joined(separator: ", "))
-        if let deadline = criteria.neededBy { LabeledContent("Needed by", value: deadline) }
+        VStack(alignment: .leading, spacing: 8) {
+            ShelfFacts(rows: rows)
+            if let url = criteria.productUrl { Text(url).shelfNote().textSelection(.enabled) }
+            Text("Before tax and shipping · USD").shelfNote()
+        }
+    }
+}
+
+/// A watch's state as a small ink or outlined pill.
+private struct WatchStatusPill: View {
+    let status: String
+    var body: some View {
+        ShelfPill(text: status.capitalized, style: status == "active" ? .ink : .line)
     }
 }
 
@@ -223,105 +437,174 @@ struct WatchEditor: View {
     }
     var body: some View {
         NavigationStack {
-            Form {
+            ShelfPage {
                 if review { reviewSections } else { editSections }
-                if let error { Section { Text(error).foregroundStyle(.red) } }
-            }.agoraSurface()
-            .navigationTitle(review ? "Review watch settings" : "Watch settings")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button(review ? "Back" : "Cancel") { if review { review = false; requestKey = UUID().uuidString } else { dismiss() } }.disabled(saving) }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(review ? "Confirm watch" : "Review") {
-                            if review { save() }
-                            else {
-                                do { _ = try draft.body(confirmed: true); error = nil; review = true }
-                                catch { self.error = InventoryStore.message(error) }
-                            }
-                        }.disabled(saving || store.busy)
+                if let error { ShelfBanner(message: error, kind: .error) }
+            } bottom: {
+                Button(review ? "Confirm watch" : "Review") {
+                    if review { save() }
+                    else {
+                        do { _ = try draft.body(confirmed: true); error = nil; review = true }
+                        catch { self.error = InventoryStore.message(error) }
                     }
-                }.disabled(saving).interactiveDismissDisabled(saving)
-                .onChange(of: store.context) { _, _ in dismiss() }
+                }
+                .buttonStyle(.dibs)
+                .disabled(saving || store.busy)
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(review ? "Back" : "Cancel") { if review { review = false; requestKey = UUID().uuidString } else { dismiss() } }.disabled(saving)
+                }
+            }
+            .disabled(saving).interactiveDismissDisabled(saving)
+            .onChange(of: store.context) { _, _ in dismiss() }
         }
     }
+
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) { content() }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dibsCard()
+    }
+
     @ViewBuilder private var editSections: some View {
-        Section("Exact product") {
-            TextField("Brand, model, size and variant", text: $draft.query, axis: .vertical)
-            TextField("Product link (optional)", text: $draft.productURL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-            if store.discoveryUnavailable { Text(store.discoveryExplanation).font(.caption).foregroundStyle(.secondary) }
-            DisclosureGroup("Product matching") {
-                VStack(alignment: .leading) {
-                    Text("Must include").font(.caption).foregroundStyle(.secondary)
-                    TextField("Model, size, color…", text: $draft.requiredTerms, axis: .vertical)
-                }
-                VStack(alignment: .leading) {
-                    Text("Must exclude").font(.caption).foregroundStyle(.secondary)
-                    TextField("Mini, bundle, compatible…", text: $draft.excludedTerms, axis: .vertical)
-                }
-                Text("Separate terms with commas.").font(.caption).foregroundStyle(.secondary)
+        ShelfHero(title: "Watch settings", size: 30,
+                  subtitle: "Wishlist items are watched automatically. These settings refine your search and alerts. A watch finds prices; it does not buy anything.")
+        VStack(alignment: .leading, spacing: 12) {
+            ShelfSectionTitle("Exact product")
+            ShelfField(label: "Product") {
+                TextField("Brand, model, size and variant", text: $draft.query, axis: .vertical)
             }
-            Stepper("Quantity: \(draft.quantity)", value: $draft.quantity, in: 1...99)
+            ShelfField(label: "Product link (optional)") {
+                TextField("https://", text: $draft.productURL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+            }
+            if store.discoveryUnavailable { Text(store.discoveryExplanation).shelfNote().fixedSize(horizontal: false, vertical: true) }
+            ShelfField(label: "Must include") {
+                TextField("Model, size, color…", text: $draft.requiredTerms, axis: .vertical)
+            }
+            ShelfField(label: "Must exclude",
+                       note: "Be specific about brand, model, size, color and pack count to avoid a different variant. Separate required and excluded terms with commas.") {
+                TextField("Mini, bundle, compatible…", text: $draft.excludedTerms, axis: .vertical)
+            }
+            card {
+                Stepper("Quantity: \(draft.quantity)", value: $draft.quantity, in: 1...99)
+                    .font(.system(size: 16)).foregroundStyle(Color.ink)
+            }
         }
-        Section("Price and availability") {
-            VStack(alignment: .leading) {
-                Text("Target per item · USD (optional)").font(.caption).foregroundStyle(.secondary)
-                TextField("0.00", text: $draft.targetPrice).keyboardType(.decimalPad)
+        VStack(alignment: .leading, spacing: 12) {
+            ShelfSectionTitle("Price and availability")
+            ShelfField(label: "Target per item · USD (optional)", note: "Target applies to each item before tax and shipping.") {
+                TextField("0.00", text: $draft.targetPrice).keyboardType(.decimalPad).font(.display(28))
             }
-            Text("Target applies to each item before tax and shipping.").font(.caption).foregroundStyle(.secondary)
-            VStack(alignment: .leading) {
-                Text("Maximum total · USD (optional)").font(.caption).foregroundStyle(.secondary)
+            ShelfField(label: "Maximum total · USD (optional)",
+                       note: "A total limit includes the requested quantity, shipping, tax and fees. Unknown full costs cannot satisfy this limit.") {
                 TextField("No total limit", text: $draft.maxTotal).keyboardType(.decimalPad)
             }
-            Text("Includes shipping, tax and fees. Unknown totals do not qualify.").font(.caption).foregroundStyle(.secondary)
-            Picker("Fulfillment", selection: $draft.fulfillment) { Text("Delivery").tag("delivery"); Text("Pickup").tag("pickup") }
-            TextField("Delivery region or pickup store", text: $draft.location)
-            Text("Delivery region, or store/postcode for pickup.").font(.caption).foregroundStyle(.secondary)
-            TextField("Retailers: retailer.com (optional)", text: $draft.allowedDomains).textInputAutocapitalization(.never).autocorrectionDisabled()
-            Picker("Condition", selection: $draft.condition) { Text("New").tag("new"); Text("Used").tag("used"); Text("Refurbished").tag("refurbished") }
-            Toggle("Allow membership-only offers", isOn: $draft.allowMembership)
-            Toggle("Needed by a date", isOn: $draft.hasDeadline)
-            if draft.hasDeadline { DatePicker("Needed by", selection: $draft.deadline, in: Date()..., displayedComponents: .date) }
-        }
-        Section("Alerts") {
-            Toggle("Enable push alerts", isOn: $draft.pushEnabled)
-            Text("Push permission is requested when you confirm with alerts enabled. Your inbox works if permission is denied.").font(.caption).foregroundStyle(.secondary)
-            Stepper("At most \(draft.dailyCap) alerts per day for this watch", value: $draft.dailyCap, in: 1...20)
-            Stepper("Wait \(draft.cooldownHours) hours between alerts", value: $draft.cooldownHours, in: 1...168)
-            Toggle("Quiet hours", isOn: $draft.quietHours)
-            if draft.quietHours {
-                Picker("Start", selection: $draft.quietStart) { ForEach(0...23, id: \.self) { Text("\($0):00").tag($0) } }
-                Picker("End", selection: $draft.quietEnd) { ForEach(0...23, id: \.self) { Text("\($0):00").tag($0) } }
+            ShelfChoice(label: "Fulfillment", options: [("Delivery", "delivery"), ("Pickup", "pickup")], selection: $draft.fulfillment)
+            ShelfField(label: "Delivery region or pickup store",
+                       note: "Use a merchant-supported region such as US for delivery; an exact store or postcode for pickup. Availability must be verified for this location.") {
+                TextField("Seattle, WA 98107", text: $draft.location)
             }
-            TextField("Time zone", text: $draft.timezone).textInputAutocapitalization(.never).autocorrectionDisabled()
+            ShelfField(label: "Retailers (optional)") {
+                TextField("retailer.com", text: $draft.allowedDomains).textInputAutocapitalization(.never).autocorrectionDisabled()
+            }
+            ShelfChoice(label: "Condition", options: [("New", "new"), ("Used", "used"), ("Refurbished", "refurbished")], selection: $draft.condition)
+            card {
+                Toggle("Allow membership-only offers", isOn: $draft.allowMembership)
+                ShelfDivider()
+                Toggle("Needed by a date", isOn: $draft.hasDeadline)
+                if draft.hasDeadline {
+                    DatePicker("Needed by", selection: $draft.deadline, in: Date()..., displayedComponents: .date)
+                }
+            }
+            .font(.system(size: 16)).foregroundStyle(Color.ink).tint(Color.ink)
         }
-        Section { Text("Wishlist items are watched automatically. These settings refine your search and alerts. A watch finds prices; it does not buy anything.").font(.caption).foregroundStyle(.secondary) }
+        VStack(alignment: .leading, spacing: 12) {
+            ShelfSectionTitle("Alerts")
+            card {
+                Toggle("Enable push alerts", isOn: $draft.pushEnabled)
+                Text("Push permission is requested when you confirm with alerts enabled. Your inbox works if permission is denied.")
+                    .shelfNote().fixedSize(horizontal: false, vertical: true)
+                ShelfDivider()
+                Stepper("At most \(draft.dailyCap) alerts per day for this watch", value: $draft.dailyCap, in: 1...20)
+                ShelfDivider()
+                Stepper("Wait \(draft.cooldownHours) hours between alerts", value: $draft.cooldownHours, in: 1...168)
+                ShelfDivider()
+                Toggle("Quiet hours", isOn: $draft.quietHours)
+            }
+            .font(.system(size: 16)).foregroundStyle(Color.ink).tint(Color.ink)
+            if draft.quietHours {
+                HStack(alignment: .top, spacing: Metrics.space1) {
+                    ShelfMenu(label: "Start", selection: $draft.quietStart) {
+                        ForEach(0...23, id: \.self) { Text("\($0):00").tag($0) }
+                    }
+                    ShelfMenu(label: "End", selection: $draft.quietEnd) {
+                        ForEach(0...23, id: \.self) { Text("\($0):00").tag($0) }
+                    }
+                }
+            }
+            ShelfField(label: "Time zone") {
+                TextField("America/Los_Angeles", text: $draft.timezone).textInputAutocapitalization(.never).autocorrectionDisabled()
+            }
+        }
     }
+
     @ViewBuilder private var reviewSections: some View {
-        Section("Check the product and limits") {
-            Text(draft.query).font(.headline)
-            if !draft.productURL.isEmpty { Text(draft.productURL).font(.caption) }
-            LabeledContent("Must include", value: draft.requiredTerms.isEmpty ? "No additional terms" : draft.requiredTerms)
-            LabeledContent("Must exclude", value: draft.excludedTerms.isEmpty ? "None" : draft.excludedTerms)
-            LabeledContent("Quantity", value: "\(draft.quantity)")
-            LabeledContent("Per item before tax/shipping", value: "$\(draft.targetPrice) USD")
-            LabeledContent("Maximum total", value: draft.maxTotal.isEmpty ? "No limit" : "$\(draft.maxTotal) USD")
-            LabeledContent("Fulfillment", value: draft.fulfillment.capitalized)
-            LabeledContent("Location", value: draft.location)
-            LabeledContent("Condition", value: draft.condition.capitalized)
-            LabeledContent("Retailers", value: draft.allowedDomains.isEmpty ? "Any supported retailer" : draft.allowedDomains)
-            LabeledContent("Membership offers", value: draft.allowMembership ? "Allowed" : "Excluded")
-            if draft.hasDeadline { LabeledContent("Needed by", value: WishlistDraft.dateFormatter.string(from: draft.deadline)) }
+        ShelfHero(title: "Review watch settings", size: 30,
+                  subtitle: "Confirm only if these details identify the exact product you want. Offers with another variant or missing verification will be excluded.")
+        VStack(alignment: .leading, spacing: 10) {
+            ShelfSectionTitle("Check the product and limits")
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    ShelfTile(seed: draft.query, label: draft.query, size: 48)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(draft.query).shelfName().fixedSize(horizontal: false, vertical: true)
+                        if !draft.productURL.isEmpty { Text(draft.productURL).shelfNote() }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text("$\(draft.targetPrice)").font(.display(22)).foregroundStyle(Color.ink).monospacedDigit()
+                        Text("each, USD").shelfNote()
+                    }
+                }
+                ShelfDivider()
+                ShelfFacts(rows: reviewRows)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dibsCard()
         }
-        Section("Alert preferences") {
-            LabeledContent("Push alerts", value: draft.pushEnabled ? "Enabled" : "Off")
-            Text("Maximum \(draft.dailyCap) per day for this watch; at least \(draft.cooldownHours) hours apart.")
-            if draft.quietHours { Text("Quiet \(draft.quietStart):00–\(draft.quietEnd):00 · \(draft.timezone)") }
-            else { Text("No quiet hours · \(draft.timezone)") }
+        VStack(alignment: .leading, spacing: 10) {
+            ShelfSectionTitle("Alert preferences")
+            VStack(alignment: .leading, spacing: 8) {
+                ShelfFacts(rows: [("Push alerts", draft.pushEnabled ? "Enabled" : "Off")])
+                Text("Maximum \(draft.dailyCap) per day for this watch; at least \(draft.cooldownHours) hours apart.").shelfBody()
+                if draft.quietHours { Text("Quiet \(draft.quietStart):00–\(draft.quietEnd):00 · \(draft.timezone)").shelfBody() }
+                else { Text("No quiet hours · \(draft.timezone)").shelfBody() }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dibsCard()
         }
-        Section {
-            Text("Confirm only if these details identify the exact product you want. Offers with another variant or missing verification will be excluded.")
-            if store.discoveryUnavailable && draft.productURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { Label(store.discoveryExplanation, systemImage: "exclamationmark.triangle").font(.caption) }
+        if store.discoveryUnavailable && draft.productURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ShelfPill(text: store.discoveryExplanation, symbol: "exclamationmark.triangle", style: .muted)
         }
     }
+
+    private var reviewRows: [(title: String, value: String)] {
+        var rows: [(title: String, value: String)] = [
+            ("Must include", draft.requiredTerms.isEmpty ? "No additional terms" : draft.requiredTerms),
+            ("Must exclude", draft.excludedTerms.isEmpty ? "None" : draft.excludedTerms),
+            ("Quantity", "\(draft.quantity)"),
+            ("Per item before tax/shipping", "$\(draft.targetPrice) USD"),
+            ("Maximum total", draft.maxTotal.isEmpty ? "No limit" : "$\(draft.maxTotal) USD"),
+            ("Fulfillment", draft.fulfillment.capitalized),
+            ("Location", draft.location),
+            ("Condition", draft.condition.capitalized),
+            ("Retailers", draft.allowedDomains.isEmpty ? "Any supported retailer" : draft.allowedDomains),
+            ("Membership offers", draft.allowMembership ? "Allowed" : "Excluded")]
+        if draft.hasDeadline { rows.append(("Needed by", WishlistDraft.dateFormatter.string(from: draft.deadline))) }
+        return rows
+    }
+
     private func save() {
         saving = true; error = nil
         Task {
@@ -338,33 +621,58 @@ struct WatchEditor: View {
 struct WatchInboxView: View {
     @ObservedObject var store: WatchStore
     var body: some View {
-        AgoraList {
-            if let error = store.error { Section { Text(error).foregroundStyle(.red) } }
+        ShelfPage {
+            ShelfHero(title: "Offer inbox",
+                      subtitle: store.notifications.isEmpty ? nil : "Verified matches from your price watches.")
+            if let error = store.error { ShelfBanner(message: error, kind: .error) }
             if store.notifications.isEmpty {
-                AgoraEmptyState(title: "No offers yet", detail: "Verified matches will appear here.")
+                ShelfEmpty(symbol: "tray", title: "Your offer inbox",
+                           message: "Verified matches appear here, including when push notifications are off.")
             }
             ForEach(store.notifications) { notification in
                 NavigationLink {
                     if let watchID = notification.watchId { WatchDetailView(store: store, watchID: watchID) }
-                    else { Text(notification.body).padding().agoraSurface()
-                    .navigationTitle(notification.title) }
+                    else {
+                        ShelfPage {
+                            ShelfHero(title: notification.title, size: 30)
+                            Text(notification.body).shelfBody()
+                        }
+                        .navigationTitle("")
+                    }
                 } label: {
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack { if notification.readAt == nil { Image(systemName: "circle.fill").font(.caption2).foregroundStyle(Color.agoraAccent).accessibilityLabel("Unread") }; Text(notification.title).font(.headline) }
-                        Text(notification.body).font(.subheadline)
-                        Text(notification.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
-                    }.padding(.vertical, 4)
-                }.simultaneousGesture(TapGesture().onEnded { Task { await store.markRead(notification) } })
+                    HStack(alignment: .top, spacing: 12) {
+                        ShelfTile(seed: notification.id.uuidString, label: notification.title, size: 44)
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                if notification.readAt == nil {
+                                    Image(systemName: "circle.fill").font(.system(size: 8)).foregroundStyle(Color.ink).accessibilityLabel("Unread")
+                                }
+                                Text(notification.title).shelfName().lineLimit(2)
+                            }
+                            Text(notification.body).shelfBody().fixedSize(horizontal: false, vertical: true)
+                            Text(notification.createdAt.formatted(date: .abbreviated, time: .shortened)).shelfNote()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.muted)
+                            .padding(.top, 4).accessibilityHidden(true)
+                    }
+                    .dibsCard(radius: 14, padding: 12)
+                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded { Task { await store.markRead(notification) } })
             }
-        }.agoraSurface()
-        .navigationTitle("Offer inbox").task(id: store.context) { await store.refreshInbox() }
-            .refreshable { await store.refreshInbox() }
+        }
+        .navigationTitle("")
+        .task(id: store.context) { await store.refreshInbox() }
+        .refreshable { await store.refreshInbox() }
     }
 }
 
 struct WatchShoppingNotice: View {
     @ObservedObject var store: WatchStore
     var body: some View {
-        if let notice = store.notice { Text(notice).font(.subheadline).foregroundStyle(.secondary) }
+        if let notice = store.notice { Text(notice).font(.system(size: 15)).foregroundStyle(Color.muted) }
     }
 }

@@ -1,9 +1,18 @@
-// Source A for the wish page: the team's household API (FastAPI, `backend/` on main). This server signs
-// in as the household's demo account (POST /v1/dev/login), then reads the open hand-made shopping lists,
-// the ranked wishlist suggestions and the 7-day run-out forecasts. Configured only by env:
-//   TEAM_API_BASE_URL    the API origin, e.g. https://agora-api-yq3m.onrender.com (a trailing /v1 is fine)
-//   AGORA_DEMO_PASSWORD  the password the hosted API requires for dev login (its own AGORA_DEMO_PASSWORD)
-// Neither is ever logged or returned. Every answer is untrusted data: it is clamped and shown, never followed.
+// Source A for the wish page: the team's household API (FastAPI, `backend/` on main). It reads the open
+// hand-made shopping lists, the ranked wishlist suggestions and the 7-day run-out forecasts, as one of two people:
+//   - the signed-in person: the app sends their own team-API bearer token (X-Household-Token) and their household
+//     is read with it. This server never signs in for them, and a refused token means no household picks.
+//   - no one in particular: with no token, and only when AGORA_DEMO_PASSWORD is set, this server signs in as the
+//     household's demo account (POST /v1/dev/login) and reads that household. Without the password, no token
+//     means run history only.
+// Configured only by env (never by a request):
+//   TEAM_API_BASE_URL    the API origin, e.g. https://agora-api-yq3m.onrender.com (a trailing /v1 is fine);
+//                        on its own it is enough for the token path
+//   AGORA_DEMO_PASSWORD  optional: the password the hosted API requires for dev login (its own AGORA_DEMO_PASSWORD);
+//                        enables only the no-token demo path
+// Neither the password nor a person's token is ever logged, returned, stored on disk, or sent anywhere but
+// TEAM_API_BASE_URL. Every answer is untrusted data: it is clamped and shown, never followed.
+import { createHash } from 'node:crypto';
 import { cleanSentence, cleanText } from './clean.js';
 import { MAX_NAME, type HouseholdList, type HouseholdPicks, type HouseholdSource, type WishSuggestion } from '../wish-picks.js';
 
@@ -11,8 +20,20 @@ import { MAX_NAME, type HouseholdList, type HouseholdPicks, type HouseholdSource
 export const TEAM_HANDLE = 'demo';
 const DAY = 86_400_000;
 const MAX_BODY = 2_000_000;
+/** How many people's answers are kept at once; the oldest goes first. */
+const MAX_CACHED_TOKENS = 100;
+const MAX_TOKEN = 4096;
 
-export type TeamConfig = { baseUrl: string; password: string };
+/**
+ * The person's team-API bearer token from the X-Household-Token header: 1 to 4096 printable ASCII characters,
+ * no whitespace. Anything else (missing, repeated, oversized, odd characters) is treated as absent.
+ */
+export function householdToken(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length <= MAX_TOKEN && /^[\x21-\x7E]+$/.test(value) ? value : undefined;
+}
+
+/** `password` is null when only the signed-in person's own token may be used (no demo login). */
+export type TeamConfig = { baseUrl: string; password: string | null };
 
 export type TeamOptions = {
   fetchImpl?: typeof fetch;
@@ -51,7 +72,10 @@ export function teamBaseUrl(raw: string | undefined): string | null {
   return `${url.origin}${path}`;
 }
 
-/** Null (Source A off) unless both TEAM_API_BASE_URL and AGORA_DEMO_PASSWORD are set and usable. */
+/**
+ * Null (Source A off) unless TEAM_API_BASE_URL is set and usable. AGORA_DEMO_PASSWORD is optional: without it
+ * only the signed-in person's own token reaches the household.
+ */
 export function teamConfigFromEnv(env: NodeJS.ProcessEnv, log: (line: string) => void = console.warn): TeamConfig | null {
   if (!env.TEAM_API_BASE_URL?.trim()) return null;
   const baseUrl = teamBaseUrl(env.TEAM_API_BASE_URL);
@@ -59,12 +83,7 @@ export function teamConfigFromEnv(env: NodeJS.ProcessEnv, log: (line: string) =>
     log('wish-picks: TEAM_API_BASE_URL must be an https origin (http only for localhost); using run history');
     return null;
   }
-  const password = env.AGORA_DEMO_PASSWORD ?? '';
-  if (!password) {
-    log('wish-picks: TEAM_API_BASE_URL is set but AGORA_DEMO_PASSWORD is not; using run history');
-    return null;
-  }
-  return { baseUrl, password };
+  return { baseUrl, password: env.AGORA_DEMO_PASSWORD || null };
 }
 
 export function teamBackendFromEnv(env: NodeJS.ProcessEnv = process.env, options: TeamOptions = {}): TeamBackend | null {
@@ -75,6 +94,9 @@ export function teamBackendFromEnv(env: NodeJS.ProcessEnv = process.env, options
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/** What is remembered for one person's token: their picks until `until`, or why there are none. */
+type TokenEntry = { until: number; picks: HouseholdPicks; error?: undefined } | { until: number; error: TeamError; picks?: undefined };
+
 export class TeamBackend implements HouseholdSource {
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
@@ -82,10 +104,15 @@ export class TeamBackend implements HouseholdSource {
   private readonly cacheMs: number;
   private readonly failCacheMs: number;
   private readonly log: (line: string) => void;
+  // The demo account's own state (the no-token path).
   private token: { value: string; expiresAt: number } | null = null;
   private cached: { at: number; picks: HouseholdPicks } | null = null;
   private failed: { at: number; error: TeamError } | null = null;
   private inflight: Promise<HouseholdPicks> | null = null;
+  // People's own answers, by SHA-256 of their token (never the token), oldest first. Entries are only ever
+  // served for the token that made them.
+  private readonly byToken = new Map<string, TokenEntry>();
+  private readonly loading = new Map<string, Promise<HouseholdPicks>>();
 
   constructor(private readonly config: TeamConfig, options: TeamOptions = {}) {
     this.fetchImpl = options.fetchImpl ?? fetch;
@@ -96,8 +123,14 @@ export class TeamBackend implements HouseholdSource {
     this.log = options.log ?? console.warn;
   }
 
-  /** The household's picks: cached for a minute; concurrent callers share one load. */
-  async picks(): Promise<HouseholdPicks> {
+  /**
+   * The household's picks, cached for a minute; concurrent callers share one load. With `token` (a person's
+   * own team-API bearer token) it is that person's household, read with that token alone: no dev login, no
+   * retry, no fallback to another account. Without one it is the demo account's household, when configured.
+   */
+  async picks(token?: string): Promise<HouseholdPicks> {
+    if (token !== undefined) return this.picksFor(token);
+    if (!this.config.password) throw new TeamError('no demo account configured');
     const t = this.now();
     if (this.cached && t - this.cached.at < this.cacheMs) return this.cached.picks;
     if (this.failed && t - this.failed.at < this.failCacheMs) throw this.failed.error;
@@ -107,16 +140,57 @@ export class TeamBackend implements HouseholdSource {
     return this.inflight;
   }
 
+  private async picksFor(token: string): Promise<HouseholdPicks> {
+    const key = createHash('sha256').update(token).digest('hex');
+    const t = this.now();
+    for (const [k, entry] of this.byToken) if (entry.until <= t) this.byToken.delete(k);
+    const hit = this.byToken.get(key);
+    if (hit) {
+      if (hit.error) throw hit.error;
+      return hit.picks;
+    }
+    let load = this.loading.get(key);
+    if (!load) {
+      load = this.loadFor(key, token).finally(() => {
+        this.loading.delete(key);
+      });
+      this.loading.set(key, load);
+    }
+    return load;
+  }
+
+  private async loadFor(key: string, token: string): Promise<HouseholdPicks> {
+    try {
+      const picks = await this.fetchAll(token);
+      this.remember(key, { until: this.now() + this.cacheMs, picks });
+      return picks;
+    } catch (e) {
+      const error = e instanceof TeamError ? e : new TeamError('unexpected error');
+      this.remember(key, { until: this.now() + this.failCacheMs, error });
+      this.log(`wish-picks: team backend unavailable (${error.kind}); using run history`);
+      throw error;
+    }
+  }
+
+  private remember(key: string, entry: TokenEntry): void {
+    this.byToken.delete(key);
+    this.byToken.set(key, entry);
+    for (const oldest of this.byToken.keys()) {
+      if (this.byToken.size <= MAX_CACHED_TOKENS) break;
+      this.byToken.delete(oldest);
+    }
+  }
+
   private async load(): Promise<HouseholdPicks> {
     try {
       let picks: HouseholdPicks;
       try {
-        picks = await this.fetchAll();
+        picks = await this.fetchAll(await this.signIn());
       } catch (e) {
         // A token the backend no longer accepts (restart, new secret): sign in again once.
         if (!(e instanceof TeamError) || e.kind !== 'token refused') throw e;
         this.token = null;
-        picks = await this.fetchAll();
+        picks = await this.fetchAll(await this.signIn());
       }
       this.cached = { at: this.now(), picks };
       this.failed = null;
@@ -129,8 +203,7 @@ export class TeamBackend implements HouseholdSource {
     }
   }
 
-  private async fetchAll(): Promise<HouseholdPicks> {
-    const token = await this.signIn();
+  private async fetchAll(token: string): Promise<HouseholdPicks> {
     const [lists, suggestions, runouts] = await Promise.all([
       this.get('/v1/lists?status=open', token),
       this.get('/v1/wishlist/suggestions', token),
@@ -142,6 +215,7 @@ export class TeamBackend implements HouseholdSource {
   /** A bearer token from dev login, reused until a minute before it expires. */
   private async signIn(): Promise<string> {
     if (this.token && this.now() < this.token.expiresAt - 60_000) return this.token.value;
+    if (!this.config.password) throw new TeamError('no demo account configured');
     const body = await this.call('/v1/dev/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -161,7 +235,7 @@ export class TeamBackend implements HouseholdSource {
   private async call(path: string, init: RequestInit, on401: string): Promise<unknown> {
     let res: Response;
     try {
-      // No redirects: the password and token go only to the configured origin.
+      // No redirects: a password or token goes only to the configured origin.
       res = await this.fetchImpl(`${this.config.baseUrl}${path}`, {
         ...init,
         redirect: 'error',

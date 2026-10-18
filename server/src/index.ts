@@ -33,7 +33,7 @@ import type { Run } from './types.js';
 import { getDetector, type Detector } from './vision/detect.js';
 import { getVision, type VisionProvider } from './vision/provider.js';
 import { matchProduct, parseQfcPage } from './price/qfc-page.js';
-import { teamBackendFromEnv } from './team/backend.js';
+import { householdToken, teamBackendFromEnv } from './team/backend.js';
 import { composePicks, historyPicks, householdPicks, type HouseholdSource } from './wish-picks.js';
 
 export type Deps = {
@@ -433,7 +433,8 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
       const run = guard(req, reply, req.params.id, { as: personId });
       if (!run) return;
       if (!run.people.some((p) => p.id === personId)) return fail(reply, 'unknown person');
-      const household = await householdPicks(deps.team ?? null);
+      // The person's own team-API token, if they sent a usable one: it picks whose household is read.
+      const household = await householdPicks(deps.team ?? null, householdToken(req.headers['x-household-token']));
       const current = store.get(run.id) ?? run;
       return composePicks(current, household, historyPicks(store.all(), current));
     },

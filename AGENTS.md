@@ -21,6 +21,6 @@ For operations read [docs/deployment.md](docs/deployment.md); for client integra
 [docs/frontend-handoff.md](docs/frontend-handoff.md). The backend spec and original planning notes include
 unimplemented proposals: they are context, not proof that a feature exists or authorization to deploy it.
 
-Dibs, the shared grocery-run app in `ios/`, `server/` and `web/`, is separate from Agora's backend and deploy;
+Dibs, the shared grocery-run app (the core of the merged iOS app in `Agora/Dibs/`, plus `server/` and `web/`), is separate from Agora's backend and deploy;
 read [docs/dibs/README.md](docs/dibs/README.md) and the Dibs section of [CLAUDE.md](CLAUDE.md) before touching it.
 

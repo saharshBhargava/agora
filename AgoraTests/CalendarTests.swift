@@ -378,6 +378,28 @@ final class DemoAccessTests: XCTestCase {
         await connection.connectDemo(handle: "demo", password: "sample-password")
         XCTAssertFalse(connection.connected); XCTAssertFalse(connection.isDemoAccount); XCTAssertNil(store.session)
     }
+    /// The demo account uses built-in samples until the person saves a Gemini key; then it uses Gemini.
+    func testDemoAccountUsesGeminiOnceAKeyIsSaved() async throws {
+        installLogin()
+        let connection = CalendarConnection(authorization: FakeGoogleAuthorization(), http: session(),
+            demoBaseURL: URL(string: "https://api.example.com"), sessionStore: MemoryDemoSessions())
+        await connection.connectDemo(handle: "demo", password: "sample-password")
+        let suite = "demo-gemini-tests-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite); try? SettingsStore(keychainService: suite, defaults: defaults).deleteKey() }
+        let settings = SettingsStore(keychainService: suite, defaults: defaults)
+        settings.demoCalendar = connection
+        XCTAssertTrue(settings.usesBuiltInSamples)
+        XCTAssertEqual(try settings.client(for: .chat).identity.provider, .builtin)
+        try settings.saveKey("test-gemini-key")
+        XCTAssertFalse(settings.usesBuiltInSamples)
+        XCTAssertEqual(try settings.client(for: .chat).identity.provider, .gemini)
+        XCTAssertEqual(try settings.client(for: .inventory).identity.provider, .gemini)
+        try settings.deleteKey()
+        XCTAssertTrue(settings.usesBuiltInSamples)
+        XCTAssertEqual(try settings.client(for: .chat).identity.provider, .builtin)
+    }
+
     func testBuiltinFeaturesIgnoreMediaAndConfiguredRealModelsAndStopAfterSignOut() async throws {
         installLogin()
         let connection = CalendarConnection(authorization: FakeGoogleAuthorization(), http: session(),
@@ -433,5 +455,32 @@ final class DemoAccessTests: XCTestCase {
         _ = try await connection.execute(call, taskID: taskID)
         _ = try await connection.execute(call, taskID: taskID)
         XCTAssertEqual(auth.accessTokenCalls, 0); XCTAssertEqual(auth.idTokenCalls, 0)
+    }
+}
+
+/// A personal build can carry its owner's Gemini key; a key saved on the device still wins.
+@MainActor
+final class BundledGeminiKeyTests: XCTestCase {
+    func testBundledKeyIsUsedUntilOneIsSaved() throws {
+        let suite = "bundled-key-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        let settings = SettingsStore(keychainService: suite, defaults: defaults, bundledKey: "bundled-key")
+        defer { try? settings.deleteKey(); defaults.removePersistentDomain(forName: suite) }
+        XCTAssertTrue(settings.hasKey)
+        XCTAssertEqual(try settings.apiKey(), "bundled-key")
+        try settings.saveKey("saved-key")
+        XCTAssertEqual(try settings.apiKey(), "saved-key")
+        try settings.deleteKey()
+        XCTAssertTrue(settings.hasKey)
+        XCTAssertEqual(try settings.apiKey(), "bundled-key")
+    }
+
+    func testNoBundledKeyMeansNone() {
+        let suite = "no-bundled-key-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(keychainService: suite, defaults: defaults, bundledKey: nil)
+        XCTAssertFalse(settings.hasKey)
+        XCTAssertNil(SettingsStore.infoPlistGeminiKey(Bundle(for: Self.self)))
     }
 }

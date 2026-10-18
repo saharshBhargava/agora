@@ -1,61 +1,19 @@
 import SwiftUI
-import GoogleSignIn
 
 @main
 struct BrowserChatApp: App {
     @UIApplicationDelegateAdaptor(AgoraNotificationDelegate.self) private var notificationsDelegate
-    @ObservedObject private var push = PushNotifications.shared
     @StateObject private var workspace = ChatWorkspace()
-    @State private var selectedTab: AppTab = .home
-    @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
-            CalendarGate(calendar: workspace.calendar, onDisconnect: { workspace.agent.resetConversations() }) {
-                TabView(selection: $selectedTab) {
-                    HomeView(selectedTab: $selectedTab, store: workspace.inventory, shopping: workspace.shopping, settings: workspace.settings, trips: workspace.trips)
-                        .tabItem { Label("Home", systemImage: "house") }
-                        .tag(AppTab.home)
-                    ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser)
-                        .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
-                        .tag(AppTab.chat)
-                    CaptureView(settings: workspace.settings, inventory: workspace.inventory)
-                        .tabItem { Label("Capture", systemImage: "camera.viewfinder") }
-                        .tag(AppTab.capture)
-                    ListsView(inventory: workspace.inventory, shopping: workspace.shopping, settings: workspace.settings, trips: workspace.trips)
-                        .tabItem { Label("Lists", systemImage: "list.bullet") }
-                        .tag(AppTab.lists)
-                    SettingsView(settings: workspace.settings, workspace: workspace)
-                        .tabItem { Label("Settings", systemImage: "gearshape") }
-                        .tag(AppTab.settings)
-                }
-                .background { InventoryRefresh(store: workspace.inventory) }
-                .background { ShoppingRefresh(store: workspace.shopping) }
-                .background { TripRefresh(store: workspace.trips) }
-                .background { WatchRefresh(store: workspace.shopping.watches) }
-            }
-            .background { ItemImageSessionSync(store: workspace.images, inventory: workspace.inventory) }
-            .tint(Color.agoraAccent)
-            .sheet(isPresented: Binding(get: { push.openWatchID != nil && workspace.calendar.connected },
-                                       set: { if !$0 { push.openWatchID = nil } })) {
-                if let id = push.openWatchID {
-                    NavigationStack { WatchDetailView(store: workspace.shopping.watches, watchID: id) }
-                }
-            }
-            .environment(\.itemImages, workspace.images)
-            .background { PushSessionSync(calendar: workspace.calendar, api: workspace.api) }
-            .background { WatchBrowserReviewNavigation(store: workspace.shopping.watches, selectedTab: $selectedTab) }
-            .onOpenURL { url in
-                if workspace.calendar.configurationIssue == nil { _ = GIDSignIn.sharedInstance.handle(url) }
-            }
-            .onChange(of: scenePhase) { _, phase in
-                AppLog.event(.app, phase == .active ? "scene.active" : phase == .background ? "scene.background" : "scene.inactive")
-                if phase != .active { workspace.agent.stop(reason: "Paused while the app is inactive. Press Resume to continue.", paused: true) }
-            }
+            // The old Dibs app is the core: its home at the root of one stack, the household screens
+            // (lists, pantry, wishlist, assistant) pushed from it. See DibsRootView.
+            DibsRootView(workspace: workspace)
         }
     }
 }
 
-private struct PushSessionSync: View {
+struct PushSessionSync: View {
     @ObservedObject var calendar: CalendarConnection
     let api: AgoraClient
     @Environment(\.scenePhase) private var phase
@@ -78,6 +36,7 @@ final class ChatWorkspace: ObservableObject {
     let inventory: InventoryStore
     let shopping: ShoppingStore
     let trips: TripStore
+    let commerce: CommerceStore
     let images: ItemImageStore
     let watchBrowser: WatchBrowserRunner
     init() {
@@ -95,7 +54,8 @@ final class ChatWorkspace: ObservableObject {
         inventory = InventoryStore(api: api, calendar: calendar)
         shopping = ShoppingStore(api: api, inventory: inventory)
         trips = TripStore(api: api, inventory: inventory, calendar: calendar)
-        agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar, shopping: shopping, trips: trips)
+        commerce = CommerceStore(api: api, inventory: inventory)
+        agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar, shopping: shopping, trips: trips, commerce: commerce)
         let agent = agent
         watchBrowser = WatchBrowserRunner(api: api, browser: browser, store: shopping.watches) { [weak agent, weak calendar] in
             calendar?.connected == true && calendar?.isDemoAccount == false && agent?.running == false
@@ -134,7 +94,7 @@ final class ChatWorkspace: ObservableObject {
     }
 }
 
-private struct WatchRefresh: View {
+struct WatchRefresh: View {
     @ObservedObject var store: WatchStore
     @Environment(\.scenePhase) private var phase
     var body: some View {
@@ -150,7 +110,7 @@ private struct WatchRefresh: View {
     }
 }
 
-private struct TripRefresh: View {
+struct TripRefresh: View {
     @ObservedObject var store: TripStore
     @Environment(\.scenePhase) private var phase
     var body: some View {
@@ -165,7 +125,7 @@ private struct TripRefresh: View {
     }
 }
 
-private struct InventoryRefresh: View {
+struct InventoryRefresh: View {
     @ObservedObject var store: InventoryStore
     @Environment(\.scenePhase) private var phase
     var body: some View {
@@ -182,7 +142,7 @@ private struct InventoryRefresh: View {
     }
 }
 
-private struct ShoppingRefresh: View {
+struct ShoppingRefresh: View {
     @ObservedObject var store: ShoppingStore
     @Environment(\.scenePhase) private var phase
     var body: some View {
@@ -197,15 +157,16 @@ private struct ShoppingRefresh: View {
     }
 }
 
-private struct WatchBrowserReviewNavigation: View {
+/// A watch's "review in the browser" opens the assistant, where the shared browser lives.
+struct WatchBrowserReviewNavigation: View {
     @ObservedObject var store: WatchStore
-    @Binding var selectedTab: AppTab
+    let openAssistant: () -> Void
     var body: some View {
         Color.clear.frame(width: 0, height: 0)
             .onChange(of: store.browserReviewRequestID) { _, request in
                 guard request != nil, store.canUse else { return }
                 PushNotifications.shared.openWatchID = nil
-                selectedTab = .chat
+                openAssistant()
             }
     }
 }

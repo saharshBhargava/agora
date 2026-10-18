@@ -321,3 +321,45 @@ final class BrowserPresentationTests: XCTestCase {
         XCTAssertFalse(viewport.touchObserver.delaysTouchesBegan)
     }
 }
+
+/// Gemini sometimes sends reference ids as numbers ("elementId": 12); they are accepted as the same id text.
+final class BrowserCallNumericIDTests: XCTestCase {
+    func testNumericReferenceIdsBecomeText() throws {
+        let call = try BrowserCall(["name": "browser_act", "args": ["action": "click", "documentId": 3, "observationId": 7, "elementId": 12] as [String: Any]])
+        XCTAssertEqual(call.arguments["elementId"] as? String, "12")
+        XCTAssertEqual(call.arguments["documentId"] as? String, "3")
+        XCTAssertEqual(call.arguments["observationId"] as? String, "7")
+    }
+
+    func testBooleansAndFractionsAreStillRejectedForIds() {
+        XCTAssertThrowsError(try BrowserCall(["name": "browser_act", "args": ["action": "click", "documentId": "d", "observationId": "o", "elementId": true] as [String: Any]]))
+        XCTAssertThrowsError(try BrowserCall(["name": "browser_act", "args": ["action": "click", "documentId": "d", "observationId": "o", "elementId": 1.5] as [String: Any]]))
+    }
+}
+
+/// A click or typing action without a page reference uses the latest observation's; the error names what is missing.
+final class BrowserCallReferenceTests: XCTestCase {
+    override func tearDown() { BrowserCall.lastReference = nil }
+
+    func testMissingReferenceIsFilledFromTheLatestObservation() throws {
+        BrowserCall.lastReference = ("doc-1", "obs-9")
+        let call = try BrowserCall(["name": "browser_act", "args": ["action": "click", "elementId": "e4"] as [String: Any]])
+        XCTAssertEqual(call.arguments["documentId"] as? String, "doc-1")
+        XCTAssertEqual(call.arguments["observationId"] as? String, "obs-9")
+        let typed = try BrowserCall(["name": "browser_act", "args": ["action": "type", "elementId": "e4", "text": "eggs"] as [String: Any]])
+        XCTAssertEqual(typed.arguments["observationId"] as? String, "obs-9")
+    }
+
+    func testSuppliedReferenceWins() throws {
+        BrowserCall.lastReference = ("doc-1", "obs-9")
+        let call = try BrowserCall(["name": "browser_act", "args": ["action": "click", "elementId": "e4", "documentId": "doc-2", "observationId": "obs-3"] as [String: Any]])
+        XCTAssertEqual(call.arguments["documentId"] as? String, "doc-2")
+    }
+
+    func testWithoutAnyObservationTheErrorNamesTheMissingFields() {
+        BrowserCall.lastReference = nil
+        XCTAssertThrowsError(try BrowserCall(["name": "browser_act", "args": ["action": "click", "elementId": "e4"] as [String: Any]])) { error in
+            XCTAssertTrue(String(describing: error).contains("documentId, observationId"))
+        }
+    }
+}

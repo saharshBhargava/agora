@@ -578,7 +578,7 @@ final class ShoppingTests: XCTestCase {
         await trips.refresh()
         XCTAssertNil(trips.error)
         XCTAssertEqual(trips.lists.count, 4)
-        let lists = UIHostingController(rootView: ListsView(inventory: inventory, shopping: shopping, settings: settings, trips: trips))
+        let lists = UIHostingController(rootView: NavigationStack { TripsView(store: trips) })
         window.rootViewController = lists; window.makeKeyAndVisible()
         lists.view.frame = window.bounds; lists.view.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(300))
@@ -588,13 +588,15 @@ final class ShoppingTests: XCTestCase {
         let path = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("lists-overview.png")
         try XCTUnwrap(image.pngData()).write(to: path)
         print("Lists screenshot: \(path.path)")
-        let attachment = XCTAttachment(image: image); attachment.name = "Lists overview"; attachment.lifetime = .keepAlways
+        let attachment = XCTAttachment(image: image); attachment.name = "Shopping lists and trips"; attachment.lifetime = .keepAlways
         add(attachment)
         func scrollViews(_ view: UIView) -> [UIScrollView] {
             (view as? UIScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews)
         }
-        let vertical = try XCTUnwrap(scrollViews(lists.view).first { $0.contentSize.height > $0.bounds.height })
-        vertical.setContentOffset(CGPoint(x: 0, y: 580), animated: false)
+        // The Dibs lists page may fit on one screen; scroll to the store groups only when it doesn't.
+        if let vertical = scrollViews(lists.view).first(where: { $0.contentSize.height > $0.bounds.height }) {
+            vertical.setContentOffset(CGPoint(x: 0, y: min(580, vertical.contentSize.height - vertical.bounds.height)), animated: false)
+        }
         try await Task.sleep(for: .milliseconds(200))
         let storesImage = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
             XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
@@ -604,7 +606,7 @@ final class ShoppingTests: XCTestCase {
         print("Lists stores screenshot: \(storesPath.path)")
         let storesAttachment = XCTAttachment(image: storesImage); storesAttachment.name = "Lists by store"
         storesAttachment.lifetime = .keepAlways; add(storesAttachment)
-        let accessible = UIHostingController(rootView: ListsView(inventory: inventory, shopping: shopping, settings: settings, trips: trips)
+        let accessible = UIHostingController(rootView: NavigationStack { TripsView(store: trips) }
             .environment(\.dynamicTypeSize, .accessibility3))
         window.rootViewController = accessible; accessible.view.frame = window.bounds; accessible.view.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(300))
@@ -616,9 +618,6 @@ final class ShoppingTests: XCTestCase {
         print("Lists large text screenshot: \(largePath.path)")
         let largeAttachment = XCTAttachment(image: largeImage); largeAttachment.name = "Lists large text"
         largeAttachment.lifetime = .keepAlways; add(largeAttachment)
-        await calendar.signOut()
-        let home = UIHostingController(rootView: HomeView(selectedTab: .constant(.home), store: inventory, shopping: shopping, settings: settings, trips: trips))
-        home.loadViewIfNeeded(); home.view.layoutIfNeeded(); XCTAssertNotNil(home.view)
     }
 }
 

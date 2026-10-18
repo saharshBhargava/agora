@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
     <key>NSSpeechRecognitionUsageDescription</key>
-    <string>Agora uses speech recognition to turn your spoken message into an editable draft.</string>
+    <string>Dibs uses speech recognition to turn your spoken message into an editable draft.</string>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Agora connects to the model server you configure on your local network.</string>
+    <string>Dibs connects to the model server you configure on your local network.</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key>
@@ -26,10 +26,19 @@
     <string>$(AGORA_PUSH_ENVIRONMENT)</string>
     <key>GIDClientID</key>
     <string>$(AGORA_GOOGLE_IOS_CLIENT_ID)</string>
+    <key>DibsDefaultGeminiModel</key>
+    <string>$(DIBS_DEFAULT_GEMINI_MODEL)</string>
+    <key>DibsDefaultGeminiKey</key>
+    <string>$(DIBS_DEFAULT_GEMINI_KEY)</string>
+    <key>DibsServerURL</key>
+    <string>$(DIBS_SERVER_URL)</string>
     <key>CFBundleURLTypes</key>
     <array><dict>
         <key>CFBundleURLName</key><string>dev.agora.browserchat.oauth</string>
         <key>CFBundleURLSchemes</key><array><string>$(AGORA_GOOGLE_REVERSED_CLIENT_ID)</string></array>
+    </dict><dict>
+        <key>CFBundleURLName</key><string>dev.agora.browserchat.dibs</string>
+        <key>CFBundleURLSchemes</key><array><string>dibs</string></array>
     </dict></array>
 </dict>
 </plist>

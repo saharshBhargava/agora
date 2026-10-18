@@ -68,7 +68,7 @@ final class GoogleCalendarAuthorization: GoogleCalendarAuthorizing {
         let signIn = try configuredSignIn()
         guard var presenter = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene })
             .first(where: { $0.activationState == .foregroundActive })?.windows.first(where: \.isKeyWindow)?.rootViewController else {
-            throw BrowserError("google_sign_in_failed", "Open Agora and try connecting again.")
+            throw BrowserError("google_sign_in_failed", "Open Dibs and try connecting again.")
         }
         while let presented = presenter.presentedViewController { presenter = presented }
         do {
@@ -116,7 +116,7 @@ final class GoogleCalendarAuthorization: GoogleCalendarAuthorizing {
         if error is CancellationError || error is BrowserError { return error }
         let ns = error as NSError
         if ns.domain == kGIDSignInErrorDomain, ns.code == GIDSignInError.Code.canceled.rawValue {
-            return BrowserError("google_sign_in_cancelled", "Connect Google Calendar to finish setting up Agora.")
+            return BrowserError("google_sign_in_cancelled", "Connect Google Calendar to finish setting up your household.")
         }
         if ns.domain == NSURLErrorDomain {
             return BrowserError("connection_failed", "Could not reach Google. Check your connection and try again.")

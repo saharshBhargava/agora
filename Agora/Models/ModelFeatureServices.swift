@@ -183,18 +183,19 @@ final class DemoModelClient: ModelClient {
             return response(String(decoding: try JSONSerialization.data(withJSONObject: result), as: UTF8.self))
         case .chat:
             if let reply = try shoppingReply(request) { return reply }
+            if let reply = try purchaseReply(request) { return reply }
             if let result = request.messages.last?.toolResults.last {
                 let value = result.value.object ?? [:]
                 if value["error"] != nil { return response("The action could not be completed. Review the account or try a new request when you are ready.") }
-                if result.name == "calendar_create_event" { return response("The grocery trip is saved to your Agora Calendar. No invitations were sent.") }
+                if result.name == "calendar_create_event" { return response("The grocery trip is saved to your Dibs calendar. No invitations were sent.") }
                 if let busyValue = value["busy"], case .array(let busy) = busyValue {
                     let intervals = busy.compactMap { entry -> String? in
                         guard let window = entry.object, let startValue = window["start"], let endValue = window["end"],
                               case .string(let start) = startValue, case .string(let end) = endValue else { return nil }
                         return "\(start) → \(end)"
                     }
-                    return response(intervals.isEmpty ? "Your Agora Calendar has no busy intervals in the checked window." :
-                        "Your Agora Calendar is busy at:\n" + intervals.joined(separator: "\n"))
+                    return response(intervals.isEmpty ? "Your Dibs calendar has no busy intervals in the checked window." :
+                        "Your Dibs calendar is busy at:\n" + intervals.joined(separator: "\n"))
                 }
                 return response("I could not confirm Calendar availability. Please try a new request.")
             }
@@ -220,6 +221,45 @@ final class DemoModelClient: ModelClient {
             return response("Your household inventory, shopping lists, wishlist and purchase history are ready to explore. Try ‘Check my calendar’ or ‘Schedule a grocery trip’. You can review captured groceries before saving them to inventory.")
         }
     }
+    /// "Buy olive oil for $18.99" → `purchase_request`; then the tool's own summary and reasons, verbatim.
+    private func purchaseReply(_ request: ModelRequest) throws -> ModelResponse? {
+        func reply(_ text: String, calls: [ModelToolCall] = []) -> ModelResponse {
+            ModelResponse(message: .init(role: .assistant, content: [.text(text)], toolCalls: calls))
+        }
+        if let result = request.messages.last?.toolResults.last, result.name == PurchaseCall.name {
+            let value = result.value.foundation as? [String: Any] ?? [:]
+            if let error = value["error"] as? String { return reply("I couldn't place that purchase. \(error)") }
+            let summary = value["summary"] as? String ?? "Dibs didn't confirm the purchase. Check Spending before trying again."
+            let reasons = (value["reasons"] as? [String] ?? []).filter { !summary.contains($0) }
+            if value["status"] as? String == "rejected", value["user_decision"] as? String == "rejected" {
+                return reply("Okay, I didn't buy it.")
+            }
+            return reply(([summary] + (value["status"] as? String == "succeeded" ? [] : reasons)).joined(separator: "\n"))
+        }
+        let prompt = request.messages.reversed().first { message in
+            message.role == .user && message.content.contains { if case .text = $0 { return true }; return false }
+        }?.content.compactMap { if case .text(let text) = $0 { return text }; return nil }.joined(separator: " ") ?? ""
+        guard let parsed = Self.purchaseArguments(prompt) else { return nil }
+        guard let cents = parsed.cents else {
+            return reply("How much should I spend on \(parsed.title)? Try ‘Buy \(parsed.title) for $12.99’.")
+        }
+        guard request.tools.contains(where: { $0.name == PurchaseCall.name }) else { return reply("Open Spending to load your household, then try again.") }
+        let args: [String: ModelJSON] = ["title": .string(parsed.title), "amount_cents": .number(Double(cents)),
+                                         "merchant_name": .string(parsed.merchant ?? "PCC Community Markets")]
+        return reply("I’ll ask Dibs to buy \(parsed.title).", calls: [.init(id: UUID().uuidString, name: PurchaseCall.name, arguments: args)])
+    }
+    /// "Buy olive oil for $18.99 at QFC" → ("olive oil", 1899, "QFC"); nil when the message isn't a purchase request.
+    static func purchaseArguments(_ prompt: String) -> (title: String, cents: Int?, merchant: String?)? {
+        guard let match = purchasePattern.firstMatch(in: prompt, range: NSRange(prompt.startIndex..., in: prompt)),
+              let itemRange = Range(match.range(at: 1), in: prompt) else { return nil }
+        let title = String(prompt[itemRange]).trimmingCharacters(in: .whitespaces)
+        let cents = Range(match.range(at: 2), in: prompt).flatMap { MandateDraft.cents(String(prompt[$0])) }
+        let merchant = Range(match.range(at: 3), in: prompt).map { String(prompt[$0]).trimmingCharacters(in: .whitespaces) }
+        return (title, cents, merchant)
+    }
+    private static let purchasePattern = try! NSRegularExpression(
+        pattern: #"(?i)^\s*(?:please\s+)?(?:buy|order|purchase)\s+(?:me\s+)?(.+?)(?:\s+for\s+\$?([0-9]+(?:\.[0-9]{1,2})?))?(?:\s+(?:at|from)\s+(.+?))?\s*[.!]?\s*$"#)
+
     /// Small, disclosed demo grammar. Ordinary accounts use their configured model's tool calls.
     private func shoppingReply(_ request: ModelRequest) throws -> ModelResponse? {
         func reply(_ text: String, calls: [ModelToolCall] = []) -> ModelResponse {

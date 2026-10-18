@@ -141,7 +141,7 @@ final class ChatInterfaceTests: XCTestCase {
         let previous = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
-        let host = UIHostingController(rootView: AnyView(ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser)))
+        let host = UIHostingController(rootView: AnyView(NavigationStack { ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser) }))
         window.rootViewController = host; window.makeKeyAndVisible()
         defer { window.isHidden = true; previous?.makeKeyAndVisible(); workspace.agent.stop(); workspace.browser.close() }
         for (style, label) in [(UIUserInterfaceStyle.light, "light"), (.dark, "dark")] {
@@ -150,7 +150,7 @@ final class ChatInterfaceTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(350))
             try capture(window, name: label)
         }
-        host.rootView = AnyView(ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser))
+        host.rootView = AnyView(NavigationStack { ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser) })
         host.view.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
         try await Task.sleep(for: .milliseconds(350)); try capture(window, name: "dynamic-type")
         host.view.traitOverrides.preferredContentSizeCategory = .large
@@ -165,12 +165,17 @@ final class ChatInterfaceTests: XCTestCase {
         let cookies = webView.configuration.websiteDataStore.httpCookieStore
         await withCheckedContinuation { continuation in cookies.setCookie(cookie) { continuation.resume() } }
         _ = try await webView.evaluateJavaScript("window.scrollTo(0, 60); window.location.hash = 'second'")
-        // WebKit applies scrolling asynchronously; capture the settled position before changing presentation.
-        for _ in 0..<100 {
-            if (try await webView.evaluateJavaScript("window.scrollY")) as? Double == 60 { break }
-            try await Task.sleep(for: .milliseconds(20))
+        // WebKit applies a scroll and re-lays out a resized page asynchronously, so read the offset once it settles
+        // (a moment of 0 during re-layout is not a lost position; a value that never comes back is).
+        func settledScroll(toward expected: Double?) async throws -> Double? {
+            var value = try await webView.evaluateJavaScript("window.scrollY") as? Double
+            for _ in 0..<40 where value != expected {
+                try await Task.sleep(for: .milliseconds(50))
+                value = try await webView.evaluateJavaScript("window.scrollY") as? Double
+            }
+            return value
         }
-        let scroll = try await webView.evaluateJavaScript("window.scrollY") as? Double
+        let scroll = try await settledScroll(toward: 60)
         XCTAssertEqual(scroll, 60)
         let historyCount = webView.backForwardList.backList.count
         let identity = ObjectIdentifier(webView)
@@ -181,7 +186,7 @@ final class ChatInterfaceTests: XCTestCase {
             XCTAssertNotNil(webView.superview)
             let input = try await webView.evaluateJavaScript("document.getElementById('note').value")
             XCTAssertEqual(input as? String, "Keep this text")
-            let offset = try await webView.evaluateJavaScript("window.scrollY") as? Double
+            let offset = try await settledScroll(toward: scroll)
             XCTAssertEqual(offset, scroll)
             let savedCookies = await withCheckedContinuation { continuation in cookies.getAllCookies { continuation.resume(returning: $0) } }
             XCTAssertTrue(savedCookies.contains { $0.name == cookie.name && $0.value == cookie.value })

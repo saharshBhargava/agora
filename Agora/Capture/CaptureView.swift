@@ -4,6 +4,9 @@ import PhotosUI
 import PDFKit
 import UniformTypeIdentifiers
 
+/// Scan: add items to the pantry from a photo, a shelf video, the photo library or Files. Every new scan joins a
+/// review queue and opens in `RecognitionView` one at a time; nothing is saved until the review is confirmed.
+/// Pushed from the Dibs home and the pantry, in the Dibs look (hero, cards, one pinned ink action).
 struct CaptureView: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var inventory: InventoryStore
@@ -40,154 +43,163 @@ struct CaptureView: View {
     private var disabled: Bool { library.busy || requestingPermission }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    scanActions
-                    if library.busy {
-                        ProgressView("Preparing your scans…").frame(maxWidth: .infinity)
-                    }
-                    recentScans
+        ShelfPage {
+            ShelfHero(title: "Add items to your pantry",
+                      subtitle: "Scan, review, and save. You choose what gets added.")
+            Label("Keep labels visible and include the whole item.", systemImage: "viewfinder")
+                .font(.system(size: 13)).foregroundStyle(Color.muted)
+            sources
+            Text("Photos and videos are identified automatically. Review the results before saving. PDFs are kept for viewing only.")
+                .shelfNote()
+                .fixedSize(horizontal: false, vertical: true)
+            if library.busy {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Preparing your scans…").font(.system(size: 14)).foregroundStyle(Color.muted)
                 }
-                .padding(20)
-                .frame(maxWidth: 700, alignment: .leading)
-                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .combine)
             }
-            .background(Color.agoraBackground)
-            .agoraSurface()
-            .navigationTitle("Capture")
-            .navigationBarTitleDisplayMode(.large)
-            .task { await library.load() }
-            .fullScreenCover(item: $camera, onDismiss: {
-                cameraDismissed = true
-                presentNextReview()
-            }) { mode in
-                // The native camera provides Use Photo / Retake before handing us the capture.
-                CameraPicker(video: mode == .video) { result in
-                    camera = nil
-                    switch result {
-                    case .success(let media): if let (url, kind) = media { saveTemporary(url, kind: kind) }
-                    case .failure(let error): library.error = error.localizedDescription
-                    }
-                }.ignoresSafeArea()
-            }
-            .sheet(item: $sheet, onDismiss: {
-                sheetDismissed = true
-                if scanAfterDismiss {
-                    scanAfterDismiss = false
-                    Task { await openCamera(.photo) }
-                } else { presentNextReview() }
-            }) { destination in
-                switch destination {
-                case .library:
-                    LibraryPicker { results in
-                        sheet = nil
-                        guard !results.isEmpty else { return }
-                        importPhotos(results)
-                    }
-                case .review(let item):
-                    RecognitionView(item: item, url: library.url(for: item), settings: settings,
-                                    store: inventory, library: library,
-                                    onClose: { reviewQueue.clear() },
-                                    onScanMore: {
-                                        reviewQueue.clear(); scanAfterDismiss = true; sheet = nil
-                                    },
-                                    onNextScan: reviewQueue.isEmpty ? nil : { sheet = nil })
-                case .preview(let item):
-                    MediaPreview(item: item, url: library.url(for: item), settings: settings, inventory: inventory, library: library)
-                }
-            }
-            .fileImporter(isPresented: $pickingFiles, allowedContentTypes: [.image, .movie, .pdf], allowsMultipleSelection: true) { result in
+            recentScans
+        } bottom: {
+            Button { Task { await openCamera(.photo) } } label: { Label("Scan items", systemImage: "camera.viewfinder") }
+                .buttonStyle(.dibs)
+                .accessibilityIdentifier("capture.photo")
+                .disabled(disabled)
+        }
+        .task { await library.load() }
+        .fullScreenCover(item: $camera, onDismiss: {
+            cameraDismissed = true
+            presentNextReview()
+        }) { mode in
+            // The native camera provides Use Photo / Retake before handing us the capture.
+            CameraPicker(video: mode == .video) { result in
+                camera = nil
                 switch result {
-                case .success(let urls): importFiles(urls)
+                case .success(let media): if let (url, kind) = media { saveTemporary(url, kind: kind) }
                 case .failure(let error): library.error = error.localizedDescription
                 }
-            }
-            .onChange(of: pickingFiles) { _, presented in if !presented { presentNextReview() } }
-            .onChange(of: inventory.context) { _, _ in
-                inputContext = nil
-                reviewQueue.clear(); scanAfterDismiss = false; sheet = nil; camera = nil
-            }
-            .alert("Capture", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
-                if needsSettings {
-                    Button("Open Settings") { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } }
+            }.ignoresSafeArea()
+        }
+        .sheet(item: $sheet, onDismiss: {
+            sheetDismissed = true
+            if scanAfterDismiss {
+                scanAfterDismiss = false
+                Task { await openCamera(.photo) }
+            } else { presentNextReview() }
+        }) { destination in
+            switch destination {
+            case .library:
+                LibraryPicker { results in
+                    sheet = nil
+                    guard !results.isEmpty else { return }
+                    importPhotos(results)
                 }
-                Button("OK", role: .cancel) { library.error = nil; needsSettings = false }
-            } message: { Text(library.error ?? "") }
-            .confirmationDialog("Delete this item from Agora?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
-                Button("Delete", role: .destructive) {
-                    if let item = deleting { Task { await library.remove(item) } }
-                    deleting = nil
-                }
+            case .review(let item):
+                RecognitionView(item: item, url: library.url(for: item), settings: settings,
+                                store: inventory, library: library,
+                                onClose: { reviewQueue.clear() },
+                                onScanMore: {
+                                    reviewQueue.clear(); scanAfterDismiss = true; sheet = nil
+                                },
+                                onNextScan: reviewQueue.isEmpty ? nil : { sheet = nil })
+            case .preview(let item):
+                MediaPreview(item: item, url: library.url(for: item), settings: settings, inventory: inventory, library: library)
+            }
+        }
+        .fileImporter(isPresented: $pickingFiles, allowedContentTypes: [.image, .movie, .pdf], allowsMultipleSelection: true) { result in
+            switch result {
+            case .success(let urls): importFiles(urls)
+            case .failure(let error): library.error = error.localizedDescription
+            }
+        }
+        .onChange(of: pickingFiles) { _, presented in if !presented { presentNextReview() } }
+        .onChange(of: inventory.context) { _, _ in
+            inputContext = nil
+            reviewQueue.clear(); scanAfterDismiss = false; sheet = nil; camera = nil
+        }
+        .alert("Capture", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
+            if needsSettings {
+                Button("Open Settings") { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } }
+            }
+            Button("OK", role: .cancel) { library.error = nil; needsSettings = false }
+        } message: { Text(library.error ?? "") }
+        .confirmationDialog("Delete this item?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                if let item = deleting { Task { await library.remove(item) } }
+                deleting = nil
             }
         }
     }
 
-    private var scanActions: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Button { Task { await openCamera(.photo) } } label: {
-                Label("Take Image", systemImage: "camera.fill")
-                    .labelStyle(.titleAndIcon)
+    /// A shelf video, the photo library and Files: other ways in besides the pinned "Scan items".
+    private var sources: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ShelfSectionTitle("More ways to add")
+            VStack(spacing: 0) {
+                Button { Task { await openCamera(.video) } } label: {
+                    DibsLinkRow(title: "Scan a shelf", detail: "Record a short video. Pan slowly so labels stay clear.", symbol: "video", tint: 0xDCEFD9)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("capture.video")
+                Hairline()
+                Button { present(.library) } label: {
+                    DibsLinkRow(title: "Choose photos", detail: "Pick photos or videos you already have", symbol: "photo.on.rectangle", tint: 0xD8E2FA)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("capture.library")
+                Hairline()
+                Button { inputContext = inventory.context; pickingFiles = true } label: {
+                    DibsLinkRow(title: "Import", detail: "Photos, videos, or PDFs from Files", symbol: "square.and.arrow.down", tint: 0xF2E3B5)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("capture.files")
             }
-            .buttonStyle(AgoraPrimaryButtonStyle())
-            .accessibilityIdentifier("capture.photo")
-            Button { Task { await openCamera(.video) } } label: {
-                Label("Take Video", systemImage: "video.fill")
-                    .labelStyle(.titleAndIcon)
-            }
-            .buttonStyle(AgoraPrimaryButtonStyle())
-            .accessibilityIdentifier("capture.video")
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 16) { importActions }
-                VStack(alignment: .leading, spacing: 12) { importActions }
-            }
-            Text("Review items before saving. PDFs are view-only.")
-                .font(.footnote).foregroundStyle(.secondary)
+            .dibsCard()
+            .disabled(disabled)
         }
-        .disabled(disabled)
-    }
-
-    @ViewBuilder private var importActions: some View {
-        Button { present(.library) } label: { Label("Choose photos", systemImage: "photo.on.rectangle") }
-            .buttonStyle(.bordered).accessibilityIdentifier("capture.library")
-        Menu {
-            Button("Photos, videos, or PDFs", systemImage: "folder") {
-                inputContext = inventory.context; pickingFiles = true
-            }
-        } label: { Label("Import", systemImage: "square.and.arrow.down") }
-        .accessibilityIdentifier("capture.files")
     }
 
     private var recentScans: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Recent scans").font(.title3.bold()).accessibilityAddTraits(.isHeader)
-                Spacer()
+                ShelfSectionTitle("Recent scans")
                 if library.items.count > 3 {
                     Button(showingAll ? "Show less" : "See all") { showingAll.toggle() }
-                        .font(.subheadline)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.ink)
+                        .frame(minHeight: Metrics.tap)
                 }
             }
             if library.items.isEmpty {
-                Label("No scans yet.", systemImage: "clock")
-                    .font(.subheadline).foregroundStyle(.secondary).padding(.vertical, 8)
+                ShelfEmpty(symbol: "clock", title: "No scans yet",
+                           message: "Your scans will appear here. You can return to review them anytime.")
             } else {
-                ForEach(showingAll ? library.items : Array(library.items.prefix(3))) { item in
-                    HStack(spacing: 8) {
-                        Button { present(item.kind == .document ? .preview(item) : .review(item)) } label: {
-                            RecentScanRow(item: item, url: library.url(for: item),
-                                          status: item.scanStatus(accountID: inventory.accountID, householdID: inventory.householdID))
+                VStack(spacing: 0) {
+                    let shown = showingAll ? library.items : Array(library.items.prefix(3))
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, item in
+                        if index > 0 { Hairline() }
+                        HStack(spacing: 4) {
+                            Button { present(item.kind == .document ? .preview(item) : .review(item)) } label: {
+                                RecentScanRow(item: item, url: library.url(for: item),
+                                              status: item.scanStatus(accountID: inventory.accountID, householdID: inventory.householdID))
+                            }
+                            .buttonStyle(.plain)
+                            Menu {
+                                Button("View media & captions", systemImage: "photo") { present(.preview(item)) }
+                                ShareLink(item: library.url(for: item)) { Label("Share", systemImage: "square.and.arrow.up") }
+                                Button("Delete", systemImage: "trash", role: .destructive) { deleting = item }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundStyle(Color.ink)
+                                    .frame(width: Metrics.tap, height: Metrics.tap)
+                                    .contentShape(Rectangle())
+                            }
+                            .accessibilityLabel("Options for \(item.title)")
                         }
-                        .buttonStyle(.plain)
-                        Menu {
-                            Button("View media & captions", systemImage: "photo") { present(.preview(item)) }
-                            ShareLink(item: library.url(for: item)) { Label("Share", systemImage: "square.and.arrow.up") }
-                            Button("Delete", systemImage: "trash", role: .destructive) { deleting = item }
-                        } label: {
-                            Image(systemName: "ellipsis").frame(width: 44, height: 44).contentShape(Rectangle())
-                        }.accessibilityLabel("Options for \(item.title)")
                     }
                 }
+                .dibsCard()
             }
         }
     }
@@ -271,6 +283,7 @@ struct CaptureView: View {
     }
 }
 
+/// One recent scan: its thumbnail as a tile, the title, where its review stands, and when it was taken.
 private struct RecentScanRow: View {
     let item: CaptureItem
     let url: URL
@@ -278,24 +291,33 @@ private struct RecentScanRow: View {
     @State private var thumbnail: UIImage?
     var body: some View {
         HStack(spacing: 12) {
-            ZStack {
-                Color.secondary.opacity(0.08)
-                if let thumbnail { Image(uiImage: thumbnail).resizable().scaledToFill() }
-                else { Text(item.kind == .document ? "PDF" : "Scan").font(.caption).foregroundStyle(.secondary) }
-                if item.kind == .video { Text("Video").font(.caption2).padding(4).background(.ultraThinMaterial, in: Capsule()) }
+            Color(hex: Palette.tileHex[2])
+                .frame(width: 56, height: 56)
+                .overlay {
+                    if let thumbnail { Image(uiImage: thumbnail).resizable().scaledToFill() }
+                    else { Image(systemName: item.symbol).font(.system(size: 20)).foregroundStyle(Color.muted) }
+                }
+                .overlay {
+                    if item.kind == .video {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color.white)
+                            .frame(width: 24, height: 24)
+                            .background(Circle().fill(Color.ink.opacity(0.85)))
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink).lineLimit(1)
+                ShelfPill(text: status, style: status == "Added to inventory" ? .line : status == "Needs review" ? .ink : .muted)
+                Text(item.createdAt, format: .dateTime.month().day().hour().minute()).shelfNote()
             }
-            .frame(width: 64, height: 64).clipped().clipShape(RoundedRectangle(cornerRadius: 12))
-            .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.title).font(.subheadline.weight(.semibold))
-                Text(status).font(.caption).foregroundStyle(.secondary)
-                Text(item.createdAt, format: .dateTime.month().day().hour().minute())
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle()).accessibilityElement(children: .combine)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
         .task(id: item.id) {
             if item.kind == .image { thumbnail = await Task.detached { MediaLibrary.thumbnail(url) }.value }
             else if item.kind == .video {
@@ -322,28 +344,35 @@ private struct MediaPreview: View {
     @State private var reviewingInventory = false
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 0) {
-                    Group {
-                        if item.kind == .video { VideoPlayer(player: player) }
-                        else if item.kind == .document { PDFPreview(url: url) }
-                        else if let image { Image(uiImage: image).resizable().scaledToFit() }
-                        else if loaded { ContentUnavailableView("Cannot preview image", systemImage: "photo", description: Text("You can still share the original file.")) }
-                        else { ProgressView() }
-                    }.frame(maxWidth: .infinity).frame(height: item.kind == .document ? 550 : 300)
-                    if item.kind != .document {
-                        Button { reviewingInventory = true } label: {
-                            Label("Identify items and add store", systemImage: "viewfinder")
-                                .frame(maxWidth: .infinity)
-                        }.buttonStyle(.borderedProminent).padding()
-                            .disabled(caption.busy)
-                            .accessibilityIdentifier("capture.recognizeInventory")
-                        CaptionPanel(item: item, url: url, settings: settings, library: library, controller: caption)
-                    }
+            ShelfPage(bottomVisible: item.kind != .document) {
+                ShelfHero(title: item.title, size: 28,
+                          subtitle: item.createdAt.formatted(date: .abbreviated, time: .shortened))
+                Group {
+                    if item.kind == .video { VideoPlayer(player: player) }
+                    else if item.kind == .document { PDFPreview(url: url) }
+                    else if let image { Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 420) }
+                    else if loaded { ShelfEmpty(symbol: "photo", title: "Cannot preview image", message: "You can still share the original file.").padding(Metrics.space2) }
+                    else { ProgressView() }
                 }
+                .frame(maxWidth: .infinity)
+                .frame(height: item.kind == .document ? 550 : item.kind == .image && image != nil ? nil : 300)
+                .background(Color.card)
+                .clipShape(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous).strokeBorder(Color.line))
+                if item.kind != .document {
+                    CaptionPanel(item: item, url: url, settings: settings, library: library, controller: caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.card, in: RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous).strokeBorder(Color.line))
+                }
+            } bottom: {
+                Button { reviewingInventory = true } label: {
+                    Label("Identify items and add store", systemImage: "viewfinder")
+                }
+                .buttonStyle(.dibs)
+                .disabled(caption.busy)
+                .accessibilityIdentifier("capture.recognizeInventory")
             }
-            .agoraSurface()
-            .navigationTitle(item.title).navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") {
