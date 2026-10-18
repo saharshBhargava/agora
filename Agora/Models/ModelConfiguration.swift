@@ -35,8 +35,12 @@ struct ModelConfiguration: Codable, Equatable {
 
 @MainActor
 extension SettingsStore {
+    /// The demo account answers with built-in samples until a Gemini API key is saved; with a key it uses
+    /// the person's real Gemini (assistant, captions, pantry recognition, suggestions).
+    var usesBuiltInSamples: Bool { demoCalendar?.isDemoAccount == true && !hasKey }
+
     func client(for feature: ModelFeature, profileID: UUID? = nil, http: CaptionHTTPClient? = nil, kind: CaptureItem.Kind? = nil) throws -> ModelClient {
-        if let calendar = demoCalendar, calendar.isDemoAccount, calendar.connected {
+        if let calendar = demoCalendar, calendar.isDemoAccount, calendar.connected, !hasKey {
             return DemoModelClient(calendar: calendar, feature: feature)
         }
         let profile = try modelConfiguration.profile(for: feature, override: profileID)
@@ -62,7 +66,7 @@ extension SettingsStore {
         }
     }
     func availableModels(connection: ModelConnection, http: CaptionHTTPClient? = nil) async throws -> [String] {
-        if demoCalendar?.isDemoAccount == true { return ["agora-sample-v1"] }
+        if usesBuiltInSamples { return ["agora-sample-v1"] }
         let key = try connectionKey(connection)
         switch connection.provider {
         case .builtin: throw BrowserError("integration_unavailable", "Sign in to the sample account to use built-in responses.")
@@ -74,13 +78,13 @@ extension SettingsStore {
         }
     }
     func featureDescription(_ feature: ModelFeature) -> String {
-        if demoCalendar?.isDemoAccount == true { return "Dibs · Built-in responses" }
+        if usesBuiltInSamples { return "Dibs · Built-in responses" }
         guard let profile = try? modelConfiguration.profile(for: feature),
               let connection = try? modelConfiguration.connection(for: profile) else { return "Choose a model in Settings" }
         return "\(connection.name) · \(profile.model)"
     }
     func mediaDisclosure(for feature: ModelFeature, kind: CaptureItem.Kind) -> String {
-        if demoCalendar?.isDemoAccount == true { return "Built-in sample results for testing. Your media stays on this device; no external model is called." }
+        if usesBuiltInSamples { return "Built-in sample results for testing. Your media stays on this device; no external model is called." }
         guard let profile = try? modelConfiguration.profile(for: feature),
               let connection = try? modelConfiguration.connection(for: profile) else { return "Choose a model in Settings." }
         if kind == .video {

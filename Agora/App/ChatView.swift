@@ -157,7 +157,7 @@ private struct ChatTitle: View {
     let showSettings: () -> Void
     var body: some View {
         Menu {
-            if settings.demoCalendar?.isDemoAccount == true { Text("Dibs · Built-in sample responses") }
+            if settings.usesBuiltInSamples { Text("Dibs · Built-in sample responses") }
             else {
                 ForEach(settings.modelConfiguration.profiles.filter { $0.capabilities.tools }) { profile in
                     Button(profile.name + " · " + profile.model) { settings.modelConfiguration.assignments[ModelFeature.chat.rawValue] = profile.id }
@@ -168,7 +168,7 @@ private struct ChatTitle: View {
             VStack(spacing: 2) {
                 Text(chat.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink).lineLimit(1)
                 HStack(spacing: 4) {
-                    Text(settings.demoCalendar?.isDemoAccount == true ? "Dibs · Sample" : (try? settings.modelConfiguration.profile(for: .chat).name) ?? "Choose model")
+                    Text(settings.usesBuiltInSamples ? "Dibs · Sample" : (try? settings.modelConfiguration.profile(for: .chat).name) ?? "Choose model")
                     Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
                 }.font(.system(size: 12)).foregroundStyle(Color.muted)
             }.frame(maxWidth: 180, minHeight: 44)
@@ -204,7 +204,7 @@ private struct ChatConversationView: View {
                                     .font(.system(size: 15))
                                     .foregroundStyle(Color.bodyInk)
                                     .fixedSize(horizontal: false, vertical: true)
-                                if settings.demoCalendar?.isDemoAccount == true {
+                                if settings.usesBuiltInSamples {
                                     Text("Demo uses built-in sample responses, not live AI research.")
                                         .font(.system(size: 13)).foregroundStyle(Color.muted)
                                 }

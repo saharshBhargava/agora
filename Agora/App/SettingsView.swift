@@ -9,13 +9,13 @@ struct HouseholdSettingsLinks: View {
     var body: some View {
         VStack(spacing: 0) {
             NavigationLink {
-                if workspace.calendar.isDemoAccount {
+                if settings.usesBuiltInSamples {
                     ShelfPage {
                         ShelfHero(title: "Models", subtitle: "Which models answer chat, captions and recognition.")
                         SettingsCard(symbol: "cpu", tint: 0xE5DDF7, title: "Built-in integrations") {
                             Text("Chat, captions and recognition use sample responses. Calendar events stay inside the sample account. No external API keys are needed.")
                                 .shelfBody()
-                            Text("Sign out and connect your own Google account to configure real providers.")
+                            Text("Save your Gemini API key under Connected accounts to use Gemini instead.")
                                 .shelfNote()
                         }
                     }
@@ -33,7 +33,7 @@ struct HouseholdSettingsLinks: View {
             NavigationLink {
                 ConnectedAccountsSettingsView(settings: settings, workspace: workspace)
             } label: {
-                DibsLinkRow(title: "Connected accounts", detail: workspace.calendar.isDemoAccount ? "Built-in integrations" : "Google Calendar and Gemini",
+                DibsLinkRow(title: "Connected accounts", detail: settings.usesBuiltInSamples ? "Built-in integrations · add a Gemini key" : "Google Calendar and Gemini",
                             symbol: "person.crop.circle.badge.checkmark", tint: 0xD8E2FA)
             }
             Hairline()
@@ -201,9 +201,9 @@ private struct ConnectedAccountsSettingsView: View {
     var body: some View {
         ShelfPage {
             ShelfHero(title: "Connected accounts",
-                      subtitle: workspace.calendar.isDemoAccount ? "Built-in integrations are active." : "Google Calendar and Gemini.")
+                      subtitle: settings.usesBuiltInSamples ? "Built-in integrations are active. Save a Gemini key to use Gemini." : "Google Calendar and Gemini.")
             CalendarAccountCard(calendar: workspace.calendar, stopAgent: { workspace.agent.stop() })
-            if !workspace.calendar.isDemoAccount { gemini }
+            gemini
         }
     }
 

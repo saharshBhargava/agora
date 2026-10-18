@@ -23,7 +23,7 @@ struct ChatComposer: View {
                         ForEach(chat.attachments) { attachment in attachmentChip(attachment) }
                     }
                 }
-                Text(settings.demoCalendar?.isDemoAccount == true ? "Demo ignores attachments; sample responses only." : "Attachments are sent to your selected model. PDFs share extracted text.").font(.system(size: 13)).foregroundStyle(Color.muted)
+                Text(settings.usesBuiltInSamples ? "Demo ignores attachments; sample responses only." : "Attachments are sent to your selected model. PDFs share extracted text.").font(.system(size: 13)).foregroundStyle(Color.muted)
             }
             if importing { ProgressView("Preparing attachment…").font(.system(size: 13)).foregroundStyle(Color.muted) }
             if let error = error ?? dictation.error {
