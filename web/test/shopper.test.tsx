@@ -169,7 +169,7 @@ test('mock mode: Eggs posts the prop and the chip appears in the grid', async ()
   const { rerender } = render(<ShopperScreen />);
   fireEvent.click(screen.getByRole('button', { name: 'Eggs' }));
   await act(async () => {});
-  expect(addChip).toHaveBeenCalledWith('r1', expect.objectContaining({ hint: 'eggs' }));
+  expect(addChip).toHaveBeenCalledWith('r1', 'shop', expect.objectContaining({ hint: 'eggs' }));
   setSock(baseRun({ chips: [mk({ id: 'e', name: 'Eggs', priceCents: 872 })] }));
   rerender(<ShopperScreen />);
   expect(screen.getByLabelText(/^Eggs/)).toBeInTheDocument();

@@ -148,7 +148,7 @@ test('shopper at receipt can mark Mine and Confirm & charge', async () => {
   }));
   render(<SettleScreen />);
   fireEvent.click(screen.getByRole('button', { name: 'Mine' }));
-  await waitFor(() => expect(api.fixReceiptLine).toHaveBeenCalledWith('r1', 1, 'mine'));
+  await waitFor(() => expect(api.fixReceiptLine).toHaveBeenCalledWith('r1', 'shop', 1, 'mine'));
   fireEvent.click(screen.getByRole('button', { name: 'Confirm & charge' }));
   await waitFor(() => expect(api.confirm).toHaveBeenCalledWith('r1', 'shop'));
 });
@@ -174,7 +174,7 @@ test('mock=1 at locked offers Use printed receipt, posting an empty image', asyn
   mk(base({ state: 'locked' }));
   render(<SettleScreen />);
   fireEvent.click(screen.getByRole('button', { name: 'Use printed receipt' }));
-  await waitFor(() => expect(api.receipt).toHaveBeenCalledWith('r1', ''));
+  await waitFor(() => expect(api.receipt).toHaveBeenCalledWith('r1', 'shop', ''));
 });
 
 test('a $0 share shows nothing captured and the full release', () => {
@@ -192,7 +192,7 @@ test('the receipt camera sends a picked photo when the shopper uses From photos'
   const input = screen.getByLabelText('From photos') as HTMLInputElement;
   expect(input).toHaveAttribute('accept', 'image/*');
   fireEvent.change(input, { target: { files: [new File(['abc'], 'receipt.jpg', { type: 'image/jpeg' })] } });
-  await waitFor(() => expect(api.receipt).toHaveBeenCalledWith('r1', 'YWJj'));
+  await waitFor(() => expect(api.receipt).toHaveBeenCalledWith('r1', 'shop', 'YWJj'));
 });
 
 test('the shutter without a frame yet asks to point the camera at the receipt', () => {

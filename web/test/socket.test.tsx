@@ -149,3 +149,36 @@ test('close code 1008 stops reconnecting and marks the run ended', () => {
   expect(FakeWS.instances).toHaveLength(1);
   expect(result.current.ended).toBe(true);
 });
+
+// ---- per-person keys ----
+import { clearKeys, keyFor, saveKey } from '@/lib/keys';
+import { endedMessage } from '@/lib/ended';
+
+test('the socket URL carries this browser\'s key for the person', () => {
+  clearKeys();
+  saveKey('r1', 'p1', 'k/+=');
+  renderHook(() => useRun('r1', 'p1'));
+  expect(last().url).toMatch(/\/ws\?run=r1&person=p1&key=k%2F%2B%3D$/);
+});
+
+test('a key in the link fragment is saved and stripped from the address bar', () => {
+  clearKeys();
+  window.history.replaceState(null, '', '/shopper?run=r1&person=p1#key=from-link');
+  renderHook(() => useRun('r1', 'p1'));
+  expect(keyFor('r1', 'p1')).toBe('from-link');
+  expect(window.location.hash).toBe('');
+  expect(window.location.search).toBe('?run=r1&person=p1');
+  expect(last().url).toMatch(/&key=from-link$/);
+  window.history.replaceState(null, '', '/');
+});
+
+test('a refusal keeps the server\'s reason and says what to do', () => {
+  const { result } = renderHook(() => useRun('r1', 'p1'));
+  act(() => last().onclose?.({ code: 1008, reason: 'old run' } as { code: number }));
+  expect(result.current.ended).toBe(true);
+  expect(result.current.endedReason).toBe('old run');
+  expect(endedMessage('old run')).toBe('This run was started before an update. Start a new run.');
+  expect(endedMessage('not allowed')).toBe('This run is open on another device. Open it from the phone that joined.');
+  expect(endedMessage('unknown run or person')).toBe('This run has ended');
+  expect(endedMessage(null)).toBe('This run has ended');
+});

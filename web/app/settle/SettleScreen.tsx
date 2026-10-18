@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useRun } from '@/lib/socket';
+import { endedMessage } from '@/lib/ended';
 import { formatCents, wholeCents } from '@/lib/money';
 import { coverage, isLiveChip, lineCents, listNames, nameWithQty } from '@/lib/share';
 import { ReceiptCamera } from '@/components/ReceiptCamera';
@@ -30,12 +31,12 @@ export default function SettleScreen() {
   const runId = params.get('run') ?? '';
   const personId = params.get('person') ?? '';
   const mock = params.get('mock') === '1';
-  const { run, connected, ended } = useRun(runId || null, personId || null);
+  const { run, connected, ended, endedReason } = useRun(runId || null, personId || null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!runId || !personId) return <p className="error" role="alert">This link is missing its run.</p>;
-  if (ended) return <p className="muted" role="status">This run has ended</p>;
+  if (ended) return <p className="muted" role="status">{endedMessage(endedReason)}</p>;
   if (!run) return <p className="muted" role="status">{connected ? 'Loading the run' : 'Connecting'}</p>;
 
   const isShopper = personId === run.shopperId;
@@ -73,7 +74,7 @@ export default function SettleScreen() {
         mockHref={mockHref}
         error={error}
         onError={setError}
-        onSubmit={(imageBase64) => void act(() => api.receipt(runId, imageBase64))}
+        onSubmit={(imageBase64) => void act(() => api.receipt(runId, personId, imageBase64))}
       />
     );
   }
@@ -134,7 +135,7 @@ export default function SettleScreen() {
             people={run.people}
             compact={settled}
             busy={busy}
-            onFix={(i, target) => void act(() => api.fixReceiptLine(runId, i, target))}
+            onFix={(i, target) => void act(() => api.fixReceiptLine(runId, personId, i, target))}
           />
         )}
 

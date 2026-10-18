@@ -141,3 +141,9 @@ test('an ended run says so instead of reconnecting', () => {
   render(<ClaimScreen />);
   expect(screen.getByText('This run has ended')).toBeInTheDocument();
 });
+
+test('a run the server refuses for an old version says to start a new run', () => {
+  mk(run(), { run: null, ended: true, endedReason: 'old run' });
+  render(<ClaimScreen />);
+  expect(screen.getByRole('status')).toHaveTextContent('This run was started before an update. Start a new run.');
+});

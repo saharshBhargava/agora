@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useRun } from '@/lib/socket';
+import { endedMessage } from '@/lib/ended';
 import { useCountdown } from '@/lib/countdown';
 import { useHighlight } from '@/lib/highlight';
 import { formatCents } from '@/lib/money';
@@ -28,7 +29,7 @@ export default function ShopperScreen() {
   const runId = params.get('run') ?? '';
   const personId = params.get('person') ?? '';
   const mock = params.get('mock') === '1';
-  const { run, send, connected, lastCallEndsAt, identifyingRegion, errorEvent, ended } = useRun(runId || null, personId || null);
+  const { run, send, connected, lastCallEndsAt, identifyingRegion, errorEvent, ended, endedReason } = useRun(runId || null, personId || null);
 
   const [fixing, setFixing] = useState<Chip | null>(null);
   const [removed, setRemoved] = useState<{ key: number; chip: Chip } | null>(null);
@@ -67,7 +68,7 @@ export default function ShopperScreen() {
   const highlight = useHighlight(chips, identifyingRegion ?? null);
 
   if (!runId || !personId) return <p className="error" role="alert">This link is missing its run.</p>;
-  if (ended) return <p className="muted" role="status">This run has ended</p>;
+  if (ended) return <p className="muted" role="status">{endedMessage(endedReason)}</p>;
   if (!run) return <p className="muted" role="status">{connected ? 'Loading the run' : 'Connecting'}</p>;
   if (personId !== run.shopperId) {
     return (
@@ -133,7 +134,7 @@ export default function ShopperScreen() {
           {mock ? (
             <MockProps
               busy={busy}
-              onPick={(name, imageBase64) => act(() => api.addChip(runId, { imageBase64, hint: name }))}
+              onPick={(name, imageBase64) => act(() => api.addChip(runId, personId, { imageBase64, hint: name }))}
             />
           ) : (
             <Camera

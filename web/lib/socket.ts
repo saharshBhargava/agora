@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { adoptKeyFromHash, keyFor } from './keys';
 import type { Box, Run } from './types';
 
 export type ClientMsg = Record<string, unknown>;
@@ -16,15 +17,19 @@ export type UseRun = {
   /** Every server {t:'error'} bumps seq, so identical repeats are distinguishable. */
   errorEvent: { reason: string; seq: number } | null;
   connected: boolean;
-  /** The server refused the socket (close code 1008: unknown run or person). No more reconnects. */
+  /** The server refused the socket (close code 1008: unknown run or person, or a missing key). No more reconnects. */
   ended: boolean;
+  /** The server's close reason for `ended` ("old run", "not allowed", ...); see `endedMessage` (lib/ended). */
+  endedReason: string | null;
 };
 
+/** `/ws?run=&person=&key=`: the key proves this browser is that person (lib/keys). */
 export function wsUrl(runId: string, personId: string): string {
   const base =
     process.env.NEXT_PUBLIC_WS_URL ??
     `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
-  return `${base}/ws?run=${encodeURIComponent(runId)}&person=${encodeURIComponent(personId)}`;
+  const key = keyFor(runId, personId);
+  return `${base}/ws?run=${encodeURIComponent(runId)}&person=${encodeURIComponent(personId)}${key ? `&key=${encodeURIComponent(key)}` : ''}`;
 }
 
 export function useRun(runId: string | null, personId: string | null): UseRun {
@@ -36,6 +41,7 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
   const [errorEvent, setErrorEvent] = useState<{ reason: string; seq: number } | null>(null);
   const [connected, setConnected] = useState(false);
   const [ended, setEnded] = useState(false);
+  const [endedReason, setEndedReason] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -46,7 +52,9 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
     setError(null);
     setErrorEvent(null);
     setEnded(false);
+    setEndedReason(null);
     if (!runId || !personId) return;
+    adoptKeyFromHash(runId, personId);
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let attempt = 0;
@@ -93,13 +101,14 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
             break;
         }
       };
-      ws.onclose = (ev?: { code?: number }) => {
+      ws.onclose = (ev?: { code?: number; reason?: string }) => {
         setConnected(false);
         if (wsRef.current === ws) wsRef.current = null;
         if (closed) return;
         if (ev?.code === 1008) {
           closed = true;
           setEnded(true);
+          setEndedReason(ev.reason || null);
           return;
         }
         attempt += 1;
@@ -132,5 +141,5 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
     return false;
   }, []);
 
-  return { run, send, lastFrame, lastCallEndsAt, identifyingRegion, error, errorEvent, connected, ended };
+  return { run, send, lastFrame, lastCallEndsAt, identifyingRegion, error, errorEvent, connected, ended, endedReason };
 }

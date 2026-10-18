@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { ApiError } from '@/lib/api-error';
 import { useRun } from '@/lib/socket';
+import { endedMessage } from '@/lib/ended';
 import { useCountdown } from '@/lib/countdown';
 import { useHighlight } from '@/lib/highlight';
 import { formatCents, wholeCents } from '@/lib/money';
@@ -25,7 +26,7 @@ export default function ClaimScreen() {
   const router = useRouter();
   const runId = params.get('run') ?? '';
   const personId = params.get('person') ?? '';
-  const { run, send, connected, lastFrame, lastCallEndsAt, identifyingRegion, errorEvent, ended } = useRun(runId || null, personId || null);
+  const { run, send, connected, lastFrame, lastCallEndsAt, identifyingRegion, errorEvent, ended, endedReason } = useRun(runId || null, personId || null);
   const secs = useCountdown(run?.state === 'lastCall' ? (lastCallEndsAt ?? run.lastCallEndsAt ?? null) : null);
 
   const [large, setLarge] = useState(false);
@@ -66,7 +67,7 @@ export default function ClaimScreen() {
 
   if (!runId) return <p className="error" role="alert">This link is missing its run.</p>;
   if (!personId) return <p className="muted" role="status">Joining</p>;
-  if (ended) return <p className="muted" role="status">This run has ended</p>;
+  if (ended) return <p className="muted" role="status">{endedMessage(endedReason)}</p>;
   if (!run || !me) return <p className="muted" role="status">{connected ? 'Loading the run' : 'Connecting'}</p>;
   if (me.isShopper) {
     return (
