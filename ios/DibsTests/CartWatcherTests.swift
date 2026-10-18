@@ -166,19 +166,87 @@ final class CartWatcherTests: XCTestCase {
 
     // MARK: camera shifts and scene changes
 
-    func testSmallCameraShiftRebaselinesWithoutTriggers() {
+    func testSmallCameraShiftIsCompensatedWithoutTriggers() {
         var (w, scene) = startWithCanAndApple()
         scene.sx = 2
         scene.sy = -1
         let ds = feed(&w, scene, [scene.box(item: 0), scene.box(item: 1)], from: 2.6, seconds: 4)
         XCTAssertEqual(triggers(ds), [])
-        XCTAssertTrue(ds.contains(.cameraShift(dx: 2, dy: -1)), "\(ds.prefix(3))")
+        XCTAssertFalse(ds.contains { if case .cameraShift = $0 { true } else { false } }, "jitter-sized shifts do not rebaseline")
+        let merged = scene.box(item: 0).union(scene.box(item: 1))
+        XCTAssertEqual(triggers(feed(&w, scene, [merged], from: 6.7, seconds: 3)), [])
+    }
+
+    func testLargerCameraShiftRebaselinesWithoutTriggers() {
+        var (w, scene) = startWithCanAndApple()
+        scene.sx = 4
+        scene.sy = -1
+        let ds = feed(&w, scene, [scene.box(item: 0), scene.box(item: 1)], from: 2.6, seconds: 4)
+        XCTAssertEqual(triggers(ds), [])
+        XCTAssertTrue(ds.contains(.cameraShift(dx: 4, dy: -1)), "\(ds.prefix(3))")
         // Settled boxes followed the shift.
         XCTAssertEqual(w.settled[0].minX, scene.box(item: 0).minX, accuracy: 1e-9)
         XCTAssertEqual(w.settled[0].minY, scene.box(item: 0).minY, accuracy: 1e-9)
-        // Merged and separate boxes after the shift still never trigger.
         let merged = scene.box(item: 0).union(scene.box(item: 1))
         XCTAssertEqual(triggers(feed(&w, scene, [merged], from: 6.7, seconds: 3)), [])
+    }
+
+    // MARK: device run 4: hand flicker and hand-held jitter must not block hands-free adds
+
+    /// Feeds one observation per 0.1 s with a per-step scene, boxes and hands.
+    private func run(_ w: inout CartWatcher, from start: Double, steps: Int,
+                     _ frame: (Int) -> (scene: Scene, boxes: [CGRect], hands: [CGRect])) -> [CartWatcher.Decision] {
+        var out: [CartWatcher.Decision] = []
+        for i in 0..<steps {
+            let f = frame(i)
+            out += w.observe(.init(time: start + Double(i) * 0.1, boxes: f.boxes, handPresent: false, thumb: f.scene.thumb, hands: f.hands))
+        }
+        return out
+    }
+
+    func testDeviceRun4HandFlickerAndJitterStillAddEveryItemOnce() {
+        var w = CartWatcher()
+        // A hand (or a false "hand") flickering in the lower corner, on and off every 100-300 ms.
+        let hand = CGRect(x: 0.76, y: 0.0, width: 0.2, height: 0.15)   // clear of every item, margin included
+        let flicker: (Int) -> [CGRect] = { i in [0, 1, 4, 5, 6, 9].contains(i % 10) ? [hand] : [] }
+        // Phone held in the hand: the view wobbles by a pixel.
+        func scene(_ items: [(x: Int, y: Int, w: Int, h: Int)], _ i: Int) -> Scene {
+            var s = Scene(items: items)
+            s.sx = [0, 1, 1, 0][i % 4]
+            return s
+        }
+        // Can and apple in view at start: each triggers once, within 1.5 s, despite the hand flicker.
+        let start = run(&w, from: 0, steps: 15) { i in
+            let s = scene([self.can, self.apple], i)
+            return (s, [Scene(items: [self.can, self.apple]).box(item: 0), Scene(items: [self.can, self.apple]).box(item: 1)], flicker(i))
+        }
+        XCTAssertEqual(triggers(start).count, 2, "\(start)")
+        // Keep going until watching starts (time cap even if the wobble never fully stops).
+        let mid = run(&w, from: 1.5, steps: 60) { i in
+            let s = scene([self.can, self.apple], i)
+            return (s, [Scene(items: [self.can, self.apple]).box(item: 0), Scene(items: [self.can, self.apple]).box(item: 1)], flicker(i))
+        }
+        XCTAssertEqual(triggers(mid), [])
+        XCTAssertTrue(w.watching)
+        // An apple-sized item placed later triggers once after ~1 s, hands free, with flicker and wobble.
+        let later = run(&w, from: 7.6, steps: 40) { i in
+            let items = [self.can, self.apple, self.milk]
+            let base = Scene(items: items)
+            return (scene(items, i), [base.box(item: 0), base.box(item: 1), base.box(item: 2)], flicker(i))
+        }
+        XCTAssertEqual(triggers(later), [Scene(items: [can, apple, milk]).box(item: 2)])
+    }
+
+    func testHandOverAnItemBlocksOnlyThatItem() {
+        var (w, scene) = startWithCanAndApple()
+        scene.items.append(milk)
+        let milkBox = scene.box(item: 2)
+        // A hand right over the milk: no trigger while it is there.
+        let over = run(&w, from: 2.6, steps: 20) { _ in (scene, [scene.box(item: 0), scene.box(item: 1), milkBox], [milkBox]) }
+        XCTAssertEqual(triggers(over), [])
+        // Hand gone: the milk settles and triggers.
+        let after = run(&w, from: 4.6, steps: 12) { _ in (scene, [scene.box(item: 0), scene.box(item: 1), milkBox], []) }
+        XCTAssertEqual(triggers(after), [milkBox])
     }
 
     func testBrightnessChangeDoesNotTrigger() {
@@ -227,13 +295,73 @@ final class CartWatcherTests: XCTestCase {
         XCTAssertEqual(t, [a, b])
     }
 
-    func testOverlappingBoxesMergeAndCapAtThree() {
+    func testOverlappingBoxesMergeAndCapAtFour() {
         var w = CartWatcher()
-        let items = (0..<4).map { (x: 2 + $0 * 13, y: 10, w: 11, h: 16) }
+        let items = (0..<5).map { (x: 1 + $0 * 10, y: 10, w: 9, h: 20) }
         let scene = Scene(items: items)
         let boxes = items.indices.map { scene.box(item: $0) }
         let near = boxes[0].offsetBy(dx: 0.01, dy: 0)
-        XCTAssertEqual(triggers(feed(&w, scene, [boxes[0], near] + boxes.dropFirst(), from: 0, seconds: 2)), Array(boxes.prefix(3)))
+        XCTAssertEqual(triggers(feed(&w, scene, [boxes[0], near] + boxes.dropFirst(), from: 0, seconds: 2)), Array(boxes.prefix(4)))
+    }
+
+    // MARK: instance boxes
+
+    private func feedInstances(_ w: inout CartWatcher, _ scene: Scene, instances: [CGRect], saliency: [CGRect],
+                               from start: Double, seconds: Double) -> [CartWatcher.Decision] {
+        var out: [CartWatcher.Decision] = []
+        let thumb = scene.thumb
+        for i in 0...Int((seconds / 0.1).rounded()) {
+            out += w.observe(.init(time: start + Double(i) * 0.1, boxes: saliency, handPresent: false, thumb: thumb, instances: instances))
+        }
+        return out
+    }
+
+    private let three = [(x: 4, y: 40, w: 12, h: 16), (x: 18, y: 40, w: 12, h: 16), (x: 32, y: 40, w: 14, h: 16)]
+
+    func testThreeAdjacentItemsFromInstancesTriggerSeparately() {
+        var w = CartWatcher()
+        let scene = Scene(items: three)
+        let inst = three.indices.map { scene.box(item: $0) }
+        let merged = inst.dropFirst().reduce(inst[0]) { $0.union($1) }   // what saliency reports
+        let ds = feedInstances(&w, scene, instances: inst, saliency: [merged], from: 0, seconds: 3)
+        XCTAssertEqual(triggers(ds), inst)
+    }
+
+    func testSaliencyIsTheFallbackWithoutInstances() {
+        var w = CartWatcher()
+        let scene = Scene(items: three)
+        let a = scene.box(item: 0)
+        XCTAssertEqual(triggers(feedInstances(&w, scene, instances: [], saliency: [a], from: 0, seconds: 2)), [a])
+    }
+
+    func testBigBoxIsSplitIntoTheInstancesInsideIt() {
+        var w = CartWatcher()
+        let scene = Scene(items: three)
+        let inner = three.indices.map { scene.box(item: $0) }
+        let big = scene.box((x: 2, y: 20, w: 48, h: 60))
+        XCTAssertGreaterThan(big.width * big.height, 0.35)
+        XCTAssertEqual(triggers(feedInstances(&w, scene, instances: [big] + inner, saliency: [], from: 0, seconds: 3)), inner)
+        // One big instance with the items only seen by saliency: the saliency boxes inside it are used.
+        var w2 = CartWatcher()
+        XCTAssertEqual(triggers(feedInstances(&w2, scene, instances: [big], saliency: Array(inner.prefix(2)), from: 0, seconds: 3)),
+                       Array(inner.prefix(2)))
+        // Nothing inside: the big box stands.
+        var w3 = CartWatcher()
+        XCTAssertEqual(triggers(feedInstances(&w3, scene, instances: [big], saliency: [], from: 0, seconds: 3)), [big])
+    }
+
+    func testInstanceMaskToBoxes() {
+        // 10x8 mask, rows top-first: label 1 at x 1..3, y 0..1; label 2 at x 5..9, y 4..7; label 3 ignored.
+        var mask = [UInt8](repeating: 0, count: 80)
+        for y in 0...1 { for x in 1...3 { mask[y * 10 + x] = 1 } }
+        for y in 4...7 { for x in 5...9 { mask[y * 10 + x] = 2 } }
+        mask[0] = 3
+        let boxes = InstanceBoxes.boxes(labels: mask, width: 10, height: 8, instances: [1, 2])
+        XCTAssertEqual(boxes.count, 2)
+        // Largest first; Vision boxes have a bottom-left origin.
+        XCTAssertEqual(boxes[0], CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5))
+        XCTAssertEqual(boxes[1], CGRect(x: 0.1, y: 0.75, width: 0.3, height: 0.25))
+        XCTAssertEqual(InstanceBoxes.boxes(labels: mask, width: 10, height: 8, instances: []), [])
     }
 
     // MARK: tracking
@@ -393,5 +521,22 @@ final class CartWatcherTests: XCTestCase {
         XCTAssertEqual(CartWatcher.iou(a, CGRect(x: 0.5, y: 0, width: 1, height: 1)), 1.0 / 3, accuracy: 1e-9)
         XCTAssertEqual(CartWatcher.edgesTouched(CGRect(x: 0.004, y: 0.002, width: 0.194, height: 0.269), margin: 0.008), 2)
         XCTAssertEqual(CartWatcher.edgesTouched(CGRect(x: 0, y: 0.354, width: 0.498, height: 0.633), margin: 0.008), 1)
+    }
+}
+
+final class TapGateTests: XCTestCase {
+    func testDebouncesTapsWithinTwoSeconds() {
+        var g = TapGate()
+        XCTAssertTrue(g.allow(CGPoint(x: 100, y: 100), at: 10, busy: []))
+        XCTAssertFalse(g.allow(CGPoint(x: 300, y: 500), at: 10.165, busy: []), "double tap 165 ms later")
+        XCTAssertFalse(g.allow(CGPoint(x: 300, y: 500), at: 11.9, busy: []))
+        XCTAssertTrue(g.allow(CGPoint(x: 300, y: 500), at: 12.0, busy: []))
+    }
+
+    func testIgnoresTapsInsideARegionBeingIdentified() {
+        var g = TapGate()
+        let busy = [CGRect(x: 200, y: 200, width: 100, height: 100)]
+        XCTAssertFalse(g.allow(CGPoint(x: 250, y: 250), at: 0, busy: busy))
+        XCTAssertTrue(g.allow(CGPoint(x: 50, y: 50), at: 0.5, busy: busy), "an ignored tap does not start the debounce")
     }
 }

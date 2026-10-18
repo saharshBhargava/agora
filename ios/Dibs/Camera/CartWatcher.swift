@@ -20,7 +20,8 @@ struct SceneThumb: Sendable, Equatable {
 /// Decides when new items have landed in the cart and stayed still. Pure: it is fed timestamped
 /// Vision results plus a thumbnail and returns decisions, so it is tested without a camera.
 ///
-/// Boxes: Vision saliency boxes (confidence-sorted) are filtered (area `minBoxArea...maxBoxArea`, not
+/// Boxes: foreground instance boxes (or saliency boxes, confidence-sorted, when there are none); a box
+/// over `splitArea` of the frame is replaced by the boxes inside it. They are filtered (area `minBoxArea...maxBoxArea`, not
 /// touching two or more frame edges), merged (IoU > `mergeIoU`), capped at `maxBoxes`, and a box that
 /// groups two smaller ones is dropped. Each box is tracked; it is stable after `settleSeconds` at
 /// IoU >= `stableIoU` frame to frame (one missed observation within `missGrace` is tolerated).
@@ -44,9 +45,24 @@ struct CartWatcher: Sendable {
         /// Seconds, any monotonic clock (the frame's presentation time).
         var time: TimeInterval
         /// Salient objects, Vision-normalized (bottom-left origin), highest confidence first.
+        /// Used when there are no instance boxes.
         var boxes: [CGRect]
         var handPresent: Bool
         var thumb: SceneThumb
+        /// One box per foreground instance (Vision-normalized), largest first. Preferred over `boxes`.
+        var instances: [CGRect]
+        /// Where hands are (Vision-normalized). When given, a hand only blocks boxes near it; when
+        /// empty with `handPresent`, the whole frame is blocked.
+        var hands: [CGRect]
+
+        init(time: TimeInterval, boxes: [CGRect], handPresent: Bool, thumb: SceneThumb, instances: [CGRect] = [], hands: [CGRect] = []) {
+            self.time = time
+            self.boxes = boxes
+            self.handPresent = handPresent || !hands.isEmpty
+            self.thumb = thumb
+            self.instances = instances
+            self.hands = hands
+        }
     }
 
     enum Decision: Sendable, Equatable {
@@ -104,7 +120,9 @@ struct CartWatcher: Sendable {
     var minBoxArea: CGFloat = 0.03
     var maxBoxArea: CGFloat = 0.7
     var edgeMargin: CGFloat = 0.008
-    var maxBoxes = 3
+    var maxBoxes = 4
+    /// A box covering more than this is replaced by the item boxes found inside it.
+    var splitArea: CGFloat = 0.35
     var groupRatio: CGFloat = 2.5
     var missGrace: TimeInterval = 0.25
     var initialSeconds: TimeInterval = 2.0
@@ -116,6 +134,12 @@ struct CartWatcher: Sendable {
     var regionMeanDelta: Double = 12
     var regionChangedFraction: Double = 0.15
     var maxShift = 5
+    /// Shifts up to this many thumbnail pixels (hand-held jitter) are compensated without a rebaseline.
+    var smallShift = 2
+    /// Margin around a hand box inside which tracks are blocked.
+    var handMargin: CGFloat = 0.08
+    /// The initial scene ends after this long even if the camera never holds perfectly still.
+    var initialMaxSeconds: TimeInterval = 6.0
     var triggerOnInitialScene = true
     var removeSeconds: TimeInterval = 2.0
     var moveWindow: TimeInterval = 5.0
@@ -135,6 +159,7 @@ struct CartWatcher: Sendable {
     private var tracks: [Track] = []
     private var previous: SceneThumb?
     private var stillSince: TimeInterval?
+    private var startTime: TimeInterval?
     private var needsReference = false
 
     init(triggerOnInitialScene: Bool = true) {
@@ -149,15 +174,27 @@ struct CartWatcher: Sendable {
         lastTime = o.time
         items.removeAll { $0.removed && o.time - ($0.wentMissingAt ?? o.time) > moveWindow + 1e-6 }
         let motion = SceneDiff.changeFraction(previous: previous, current: o.thumb)
+        // Stillness tolerates 1 px of hand-held jitter (3x3 neighbourhood).
+        let jitter = previous.map {
+            SceneDiff.regionChange(current: o.thumb, reference: $0, rect: nil, alignment: .identity, pixelDelta: SceneDiff.pixelDelta).fraction
+        } ?? 0
         previous = o.thumb
-        let still = motion < stillFraction && !o.handPresent
+        startTime = startTime ?? o.time
+        let globalHand = o.handPresent && o.hands.isEmpty
+        let localHands = o.hands.map { $0.insetBy(dx: -handMargin, dy: -handMargin) }
+        let still = jitter < stillFraction && !globalHand
         if still { stillSince = stillSince ?? o.time } else { stillSince = nil }
 
-        if motion > motionFraction || o.handPresent {
-            // Motion or a hand pauses the removal clocks.
+        if o.handPresent {
+            // A hand pauses the removal clocks.
             for i in items.indices { if let m = items[i].missingSince { items[i].missingSince = m + dt } }
+        }
+        if motion > motionFraction || globalHand {
+            if !o.handPresent {
+                for i in items.indices { if let m = items[i].missingSince { items[i].missingSince = m + dt } }
+            }
             tracks = []
-            return [o.handPresent && motion <= motionFraction ? .handPresent : .motion]
+            return [globalHand && motion <= motionFraction ? .handPresent : .motion]
         }
 
         var alignment = SceneDiff.Alignment.identity
@@ -173,7 +210,8 @@ struct CartWatcher: Sendable {
             alignment = SceneDiff.align(current: o.thumb, reference: ref, maxShift: maxShift)
             let global = SceneDiff.regionChange(current: o.thumb, reference: ref, rect: nil,
                                                 alignment: alignment, pixelDelta: regionPixelDelta)
-            if global.fraction > shiftFraction {
+            // A hand can cover much of the frame: never rebaseline on it.
+            if global.fraction > shiftFraction && !o.handPresent {
                 tracks = []
                 settled = []
                 needsReference = true
@@ -185,7 +223,9 @@ struct CartWatcher: Sendable {
                 }
                 return [.rebaseline]
             }
-            if alignment.isShift {
+            // Small shifts (hand-held jitter) are compensated in every comparison; only a larger
+            // one retakes the reference.
+            if alignment.isShift && max(abs(alignment.dx), abs(alignment.dy)) > smallShift && !o.handPresent {
                 let dx = CGFloat(alignment.dx) / CGFloat(o.thumb.width)
                 let dy = CGFloat(alignment.dy) / CGFloat(o.thumb.height)
                 // Content moved by (-dx, -dy) in top-left pixels; Vision's y axis points up.
@@ -198,7 +238,11 @@ struct CartWatcher: Sendable {
             }
         }
 
-        let cands = candidates(o.boxes)
+        let nearHand = { (b: CGRect) in localHands.contains { $0.intersects(b) } }
+        let cands = candidates(primary: o.instances.isEmpty ? o.boxes : o.instances, all: o.instances + o.boxes)
+            .filter { !nearHand($0) }
+        // A hand near a track restarts its stillness clock.
+        tracks.removeAll { nearHand($0.box) }
         track(cands, at: o.time)
 
         var out: [Decision] = []
@@ -273,12 +317,17 @@ struct CartWatcher: Sendable {
         }
 
         // Removal: a remembered item whose spot changed with no box over it, for removeSeconds.
-        if watching {
+        if watching && !o.handPresent {
             for i in items.indices where !items[i].removed && !touched.contains(items[i].id) {
                 let item = items[i]
-                let gate = SceneDiff.regionChange(current: o.thumb, reference: item.reference,
-                                                  rect: SceneDiff.pixelRect(item.box, width: o.thumb.width, height: o.thumb.height),
+                let rect = SceneDiff.pixelRect(item.box, width: o.thumb.width, height: o.thumb.height)
+                var gate = SceneDiff.regionChange(current: o.thumb, reference: item.reference, rect: rect,
                                                   alignment: SceneDiff.Alignment(offset: alignment.offset), pixelDelta: regionPixelDelta)
+                if gate.mean >= regionMeanDelta && gate.fraction >= regionChangedFraction {
+                    // Check again after compensating a camera shift since the item's reference.
+                    let a = SceneDiff.align(current: o.thumb, reference: item.reference, maxShift: maxShift)
+                    gate = SceneDiff.regionChange(current: o.thumb, reference: item.reference, rect: rect, alignment: a, pixelDelta: regionPixelDelta)
+                }
                 let gone = gate.mean >= regionMeanDelta && gate.fraction >= regionChangedFraction
                 let boxed = cands.contains { Self.iou($0, item.box) > presentIoU }
                 guard gone, !boxed else {
@@ -304,7 +353,9 @@ struct CartWatcher: Sendable {
         }
 
         // End of the initial scene: still long enough and nothing left settling.
-        if !watching, let since = stillSince, o.time - since + 1e-6 >= initialSeconds, longest == nil {
+        let stillLongEnough = stillSince.map { o.time - $0 + 1e-6 >= initialSeconds } ?? false
+        let timedOut = o.time - (startTime ?? o.time) + 1e-6 >= initialMaxSeconds
+        if !watching, longest == nil, stillLongEnough || timedOut {
             watching = true
             reference = o.thumb
             rereferenceItems(o.thumb)
@@ -312,6 +363,7 @@ struct CartWatcher: Sendable {
         }
         if !out.isEmpty { return out }
         if let longest { return [.settling(elapsed: longest)] }
+        if !localHands.isEmpty { return [.handPresent] }
         return [anyVisible ? .known : .empty]
     }
 
@@ -369,7 +421,16 @@ struct CartWatcher: Sendable {
     }
 
     /// Size and edge filter, merge, cap, then drop a box that groups two smaller ones.
-    private func candidates(_ raw: [CGRect]) -> [CGRect] {
+    /// `primary` are instance boxes (or saliency boxes when there are none); `all` is every box seen,
+    /// used to split a box over `splitArea` into the item boxes inside it.
+    private func candidates(primary: [CGRect], all: [CGRect]) -> [CGRect] {
+        let usable = { (b: CGRect) in Self.isItemSized(b, min: self.minBoxArea, max: self.maxBoxArea) && Self.edgesTouched(b, margin: self.edgeMargin) < 2 }
+        var raw: [CGRect] = []
+        for box in primary {
+            guard box.width * box.height > splitArea else { raw.append(box); continue }
+            let inner = all.filter { $0 != box && usable($0) && $0.width * $0.height * 1.5 < box.width * box.height && Self.overlapOfSmaller(box, $0) >= 0.8 }
+            raw += inner.isEmpty ? [box] : inner
+        }
         var kept: [CGRect] = []
         for box in raw where Self.isItemSized(box, min: minBoxArea, max: maxBoxArea) && Self.edgesTouched(box, margin: edgeMargin) < 2 {
             if kept.contains(where: { Self.iou($0, box) > mergeIoU }) { continue }
@@ -564,5 +625,37 @@ enum SceneDiff {
         let x1 = max(x0 + 1, min(width, Int((top.maxX * CGFloat(width)).rounded(.up))))
         let y1 = max(y0 + 1, min(height, Int((top.maxY * CGFloat(height)).rounded(.up))))
         return (x0, y0, x1, y1)
+    }
+}
+
+/// Foreground instance mask (one label per pixel, 0 = background) to one box per instance.
+enum InstanceBoxes {
+    /// Vision-normalized (bottom-left origin) boxes for each label in `labels`, largest first. The mask
+    /// rows are top-first, `rowBytes` apart.
+    static func boxes(mask: UnsafeBufferPointer<UInt8>, width: Int, height: Int, rowBytes: Int, labels: [Int]) -> [CGRect] {
+        guard width > 0, height > 0, !labels.isEmpty else { return [] }
+        let wanted = Set(labels)
+        var minX = [Int: Int](), minY = [Int: Int](), maxX = [Int: Int](), maxY = [Int: Int]()
+        for y in 0..<height {
+            let row = y * rowBytes
+            for x in 0..<width {
+                let l = Int(mask[row + x])
+                guard l != 0, wanted.contains(l) else { continue }
+                minX[l] = min(minX[l] ?? x, x); maxX[l] = max(maxX[l] ?? x, x)
+                minY[l] = min(minY[l] ?? y, y); maxY[l] = max(maxY[l] ?? y, y)
+            }
+        }
+        let w = CGFloat(width), h = CGFloat(height)
+        return labels.compactMap { l -> CGRect? in
+            guard let x0 = minX[l], let x1 = maxX[l], let y0 = minY[l], let y1 = maxY[l] else { return nil }
+            let top = CGRect(x: CGFloat(x0) / w, y: CGFloat(y0) / h,
+                             width: CGFloat(x1 + 1 - x0) / w, height: CGFloat(y1 + 1 - y0) / h)
+            return CGRect(x: top.minX, y: 1 - top.maxY, width: top.width, height: top.height)
+        }
+        .sorted { $0.width * $0.height > $1.width * $1.height }
+    }
+
+    static func boxes(labels mask: [UInt8], width: Int, height: Int, instances: [Int]) -> [CGRect] {
+        mask.withUnsafeBufferPointer { boxes(mask: $0, width: width, height: height, rowBytes: width, labels: instances) }
     }
 }

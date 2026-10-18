@@ -21,6 +21,7 @@ final class ShopperCamera {
     @ObservationIgnored private let store: RunStore
     @ObservationIgnored private let runId: String
     @ObservationIgnored private var cropCount = 0
+    @ObservationIgnored private var tapGate = TapGate()
 
     init(store: RunStore, api: DibsAPI, runId: String, triggerOnInitialScene: Bool = true) {
         self.store = store
@@ -72,6 +73,16 @@ final class ShopperCamera {
     func tap(at point: CGPoint, in container: CGSize) {
         guard let streamSize else { return }
         let p = ScanGeometry.framePoint(viewPoint: point, content: streamSize, in: container)
+        // Regions being identified right now, in frame pixels: the server's, and crops being named.
+        var busy = pending.values.map {
+            CGRect(x: $0.minX * streamSize.width, y: $0.minY * streamSize.height,
+                   width: $0.width * streamSize.width, height: $0.height * streamSize.height)
+        }
+        if let r = store.identifyingRegion { busy.append(CGRect(x: r.x, y: r.y, width: r.w, height: r.h)) }
+        guard tapGate.allow(p, at: Date().timeIntervalSince1970, busy: busy) else {
+            DibsLog.event("identifyAt (\(Int(p.x)),\(Int(p.y))) ignored (debounce or already identifying)")
+            return
+        }
         let sent = store.identifyAt(x: p.x, y: p.y)
         DibsLog.event("identifyAt (\(Int(p.x)),\(Int(p.y))) sent=\(sent)")
     }
@@ -118,5 +129,21 @@ final class ShopperCamera {
             }
             self?.pending[id] = nil
         }
+    }
+}
+
+/// Debounces tap-to-identify: one tap per `interval`, and none inside a region already being identified.
+struct TapGate: Sendable {
+    var interval: TimeInterval = 2.0
+    private var lastAccepted: TimeInterval?
+
+    init(interval: TimeInterval = 2.0) { self.interval = interval }
+
+    /// `busy` rects and `point` share one coordinate space (frame pixels).
+    mutating func allow(_ point: CGPoint, at time: TimeInterval, busy: [CGRect]) -> Bool {
+        if let last = lastAccepted, time - last < interval { return false }
+        if busy.contains(where: { $0.contains(point) }) { return false }
+        lastAccepted = time
+        return true
     }
 }

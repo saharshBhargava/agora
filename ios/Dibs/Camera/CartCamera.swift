@@ -18,7 +18,8 @@ struct CartTrigger: Sendable {
 /// queue, and a photo output for receipts. Frames are rotated to portrait.
 ///
 /// On the video queue: every `FrameEncoder.streamInterval` while `streaming`, a 640 px JPEG goes to
-/// `onStreamFrame`; every third frame while `watching`, Vision (saliency + hand pose) and the scene
+/// `onStreamFrame`; every third frame while `watching`, Vision (foreground instances, saliency as a
+/// fallback, hand pose) and the scene
 /// thumbnail feed `CartWatcher`, and a trigger crops the same full-resolution frame to `onTrigger`.
 final class CartCamera: NSObject, @unchecked Sendable {
     enum Permission: Sendable { case authorized, denied, unavailable }
@@ -61,9 +62,15 @@ final class CartCamera: NSObject, @unchecked Sendable {
     private var lastDecisionKind = ""
     private var loggedFrameSize = false
     private let saliency = VNGenerateObjectnessBasedSaliencyImageRequest()
+    private let instancesRequest = VNGenerateForegroundInstanceMaskRequest()
+    private var visionRuns = 0
+    private var visionMillis: Double = 0
+    private var lastInstanceCount = -1
+    private var loggedInstanceFailure = false
+    private var lastHandCount = -1
     private let hands: VNDetectHumanHandPoseRequest = {
         let r = VNDetectHumanHandPoseRequest()
-        r.maximumHandCount = 1
+        r.maximumHandCount = 2
         return r
     }()
     /// Feature prints of item crops, by watcher item id (video queue).
@@ -170,15 +177,46 @@ final class CartCamera: NSObject, @unchecked Sendable {
         guard watching, frameIndex % 3 == 0 else { return }
         let thumb = encoder.thumbnail(buffer)
 
+        let started = CFAbsoluteTimeGetCurrent()
         let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: .up, options: [:])
-        do { try handler.perform([saliency, hands]) } catch {
-            DibsLog.event("vision failed: \(error.localizedDescription)")
-            return
+        var instances: [CGRect] = []
+        do {
+            try handler.perform([instancesRequest, hands])
+            instances = instancesRequest.results?.first.map(Self.instanceBoxes) ?? []
+        } catch {
+            // Keep watching with saliency if the instance request is unavailable.
+            if !loggedInstanceFailure {
+                loggedInstanceFailure = true
+                DibsLog.event("instance masks failed, using saliency: \(error.localizedDescription)")
+            }
+            do { try handler.perform([hands]) } catch {
+                DibsLog.event("vision failed: \(error.localizedDescription)")
+                return
+            }
         }
-        let boxes = (saliency.results?.first?.salientObjects ?? [])
-            .sorted { $0.confidence > $1.confidence }
-            .map(\.boundingBox)
-        let handPresent = (hands.results ?? []).contains { $0.confidence > 0.3 }
+        // Saliency only as a fallback when no foreground instance was found.
+        var boxes: [CGRect] = []
+        if instances.isEmpty {
+            do { try handler.perform([saliency]) } catch { DibsLog.event("saliency failed: \(error.localizedDescription)") }
+            boxes = (saliency.results?.first?.salientObjects ?? [])
+                .sorted { $0.confidence > $1.confidence }
+                .map(\.boundingBox)
+        }
+        let handBoxes = (hands.results ?? []).compactMap(Self.handBox)
+        if handBoxes.count != lastHandCount {
+            lastHandCount = handBoxes.count
+            DibsLog.event("hands n=\(handBoxes.count) \(handBoxes.map(Self.fmt).joined(separator: " "))")
+        }
+        let ms = (CFAbsoluteTimeGetCurrent() - started) * 1000
+        visionRuns += 1
+        visionMillis += ms
+        if instances.count != lastInstanceCount {
+            lastInstanceCount = instances.count
+            DibsLog.event("instances n=\(instances.count) \(instances.map(Self.fmt).joined(separator: " ")) saliency=\(boxes.count) vision=\(Int(ms)) ms")
+        }
+        if visionRuns % 30 == 0 {
+            DibsLog.event(String(format: "vision avg=%.0f ms over %d runs, instances n=%d", visionMillis / Double(visionRuns), visionRuns, instances.count))
+        }
 
         // Feature-print distance between a candidate box in this frame and a remembered item.
         var candidatePrints: [String: VNFeaturePrintObservation] = [:]
@@ -192,7 +230,7 @@ final class CartCamera: NSObject, @unchecked Sendable {
             do { try candidate.computeDistance(&d, to: itemPrint) } catch { return nil }
             return Double(d)
         }
-        let decisions = watcher.observe(.init(time: t, boxes: boxes, handPresent: handPresent, thumb: thumb), distance: distance)
+        let decisions = watcher.observe(.init(time: t, boxes: boxes, handPresent: false, thumb: thumb, instances: instances, hands: handBoxes), distance: distance)
         for decision in decisions {
             logDecision(decision, boxes: boxes.count)
             switch decision {
@@ -233,6 +271,29 @@ final class CartCamera: NSObject, @unchecked Sendable {
             watcher.forget(item: itemId)
             prints[itemId] = nil
         }
+    }
+
+    /// Bounding box of a confidently seen hand (Vision-normalized), or nil for a weak detection.
+    /// Requires an overall confidence over 0.5 and at least 8 joints over 0.3, so a stray
+    /// low-confidence "hand" on an object does not block the cart.
+    private static func handBox(_ obs: VNHumanHandPoseObservation) -> CGRect? {
+        guard obs.confidence > 0.5, let points = try? obs.recognizedPoints(.all) else { return nil }
+        let good = points.values.filter { $0.confidence > 0.3 }
+        guard good.count >= 8 else { return nil }
+        let xs = good.map(\.location.x), ys = good.map(\.location.y)
+        guard let x0 = xs.min(), let x1 = xs.max(), let y0 = ys.min(), let y1 = ys.max() else { return nil }
+        return CGRect(x: x0, y: y0, width: max(x1 - x0, 0.02), height: max(y1 - y0, 0.02))
+    }
+
+    /// One Vision-normalized box per foreground instance, from the low-res instance mask.
+    private static func instanceBoxes(_ obs: VNInstanceMaskObservation) -> [CGRect] {
+        let mask = obs.instanceMask
+        CVPixelBufferLockBaseAddress(mask, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(mask, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(mask) else { return [] }
+        let w = CVPixelBufferGetWidth(mask), h = CVPixelBufferGetHeight(mask), rb = CVPixelBufferGetBytesPerRow(mask)
+        let buffer = UnsafeBufferPointer(start: base.assumingMemoryBound(to: UInt8.self), count: rb * h)
+        return InstanceBoxes.boxes(mask: buffer, width: w, height: h, rowBytes: rb, labels: obs.allInstances.map { $0 })
     }
 
     /// Vision feature print of a box (Vision-normalized) in the frame.
