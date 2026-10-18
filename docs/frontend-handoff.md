@@ -5,8 +5,9 @@ Pending UI work: [frontend-requests.md](frontend-requests.md).
 
 ## Current deployment record
 
-As of October 17, 2026, the owner has not created the hosting accounts. No live API URL has been issued or
-verified in this setup session. Replace the fields below after deploying; examples are not working hosts.
+As of October 17, 2026, the owner has created Tiger Cloud and Render accounts. Database/API resource setup
+is in progress; no live API URL has been supplied or verified in this session. Replace the fields below
+after deploying; examples are not working hosts.
 
 | Field | Actual value |
 |---|---|
