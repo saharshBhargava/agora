@@ -20,3 +20,10 @@ test('a network failure becomes friendly copy', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
   await expect(api.createRun()).rejects.toThrow("Can't reach the server. Check your connection and try again.");
 });
+
+test('createRun sends a JSON body so the server accepts the POST', async () => {
+  const fetchMock = vi.fn(async (..._a: unknown[]) => ({ ok: true, json: async () => ({ runId: 'r', shopperId: 's' }) }));
+  vi.stubGlobal('fetch', fetchMock);
+  await api.createRun();
+  expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBe('{}');
+});

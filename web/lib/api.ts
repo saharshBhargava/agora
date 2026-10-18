@@ -32,7 +32,8 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 const run = (runId: string) => `/api/runs/${encodeURIComponent(runId)}`;
 
 export const api = {
-  createRun: () => call<{ runId: string; shopperId: string }>('/api/runs', { method: 'POST' }),
+  // Fastify rejects a JSON content-type with an empty body, so send an empty object.
+  createRun: () => call<{ runId: string; shopperId: string }>('/api/runs', { method: 'POST', body: '{}' }),
   getRun: (runId: string) => call<Run>(`/api/runs/${encodeURIComponent(runId)}`),
   join: (runId: string, name: string, capCents: number, opts: { decline?: boolean } = {}) =>
     call<JoinResult>(`/api/runs/${encodeURIComponent(runId)}/join`, {
