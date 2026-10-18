@@ -97,14 +97,19 @@ struct PriceAPI {
 /// Finds store prices for the server's open price requests with in-app browsers.
 /// Runs on the shopper's phone while a run is open: `start(api:)` / `stop()`.
 ///
-/// A pool of 2 StoreBrowsers, warmed on the store's home page at start, takes one request each.
+/// Up to 2 StoreBrowsers take one request each: the second is made only when two requests are open
+/// at once, and browsers idle for 2 min are closed. The home page is warmed at most once per launch,
+/// only if no request is waiting. When QFC rate-limits, all QFC traffic pauses (QFCTraffic).
 /// Per request: open the store's search page, poll the page until it shows a price line for the
 /// item (or "results"), send the visible text to `/extract` (the server asks Gemini). If that finds
 /// nothing, fall back to the team's browser agent loop through `/agent-step`.
 @MainActor
 @Observable
 final class PriceWorker {
-    enum Via: String, Sendable { case page, agent, notFound, failed }
+    enum Via: String, Sendable { case page, agent, notFound, failed, rateLimited }
+
+    /// QFC answered "Too many requests": everything waits for the shared pause.
+    struct RateLimited: Error {}
 
     struct Outcome: Equatable, Sendable {
         let requestId: String
@@ -174,6 +179,7 @@ final class PriceWorker {
         var busy = false
         /// Home-page warm-up; a lookup cuts it short.
         var warm: Task<Void, Never>?
+        var lastUsed = ContinuousClock.now
         init(_ browser: PriceBrowsing) { self.browser = browser }
     }
 
@@ -194,6 +200,11 @@ final class PriceWorker {
     @ObservationIgnored private var storeBrowser: PriceBrowsing?
     @ObservationIgnored private var storeTask: Task<Void, Never>?
     @ObservationIgnored private var storeTarget: StoreLocation?
+    @ObservationIgnored private let storeSetupEnabled: Bool
+    @ObservationIgnored private let idleClose: Duration
+    @ObservationIgnored let traffic: QFCTraffic
+    /// Reloads used per request (at most one, fast path and agent together).
+    @ObservationIgnored private var reloads: [String: Int] = [:]
     @ObservationIgnored private var slots: [Slot] = []
     @ObservationIgnored private var inFlight: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var lookupBrowsers: [String: PriceBrowsing] = [:]
@@ -211,6 +222,9 @@ final class PriceWorker {
          storeLocation: StoreLocation = .universityVillage,
          giveUpSteps: Int = 3, giveUpSeconds: Double = 10,
          storeAttempts: Int = 3, storeRetryInterval: Duration = .seconds(60),
+         storeSetupEnabled: Bool = PriceWorker.storeSetupFlag,
+         idleClose: Duration = .seconds(120),
+         traffic: QFCTraffic = .shared,
          makeBrowser: @escaping @MainActor () -> PriceBrowsing = { BrowserToolExecutor(session: StoreBrowser()) },
          makeStoreBrowser: (@MainActor () -> PriceBrowsing)? = nil) {
         self.pollInterval = pollInterval
@@ -225,6 +239,9 @@ final class PriceWorker {
         self.giveUpSeconds = giveUpSeconds
         self.storeAttempts = max(1, storeAttempts)
         self.storeRetryInterval = storeRetryInterval
+        self.storeSetupEnabled = storeSetupEnabled
+        self.idleClose = idleClose
+        self.traffic = traffic
         self.makeBrowser = makeBrowser
         self.makeStoreBrowser = makeStoreBrowser ?? makeBrowser
     }
@@ -234,26 +251,49 @@ final class PriceWorker {
         guard loop == nil else { return }
         isRunning = true
         PriceLog.event("price worker start \(api.base.absoluteString)")
-        while slots.count < poolSize { slots.append(Slot(makeBrowser())) }
-        if let warmUpURL {
-            for (i, slot) in slots.enumerated() where !slot.busy && slot.warm == nil {
-                let browser = slot.browser
-                slot.warm = Task {
-                    let t0 = ContinuousClock.now
-                    await browser.warmUp(warmUpURL)
-                    PriceLog.event("price browser \(i) warm-up \(Self.ms(since: t0)) ms\(Task.isCancelled ? " (cut short)" : "")")
-                }
-            }
-        }
-        setUpStore(storeLocation)
+        if storeSetupEnabled { setUpStore(storeLocation) }
         let interval = pollInterval
         loop = Task { [weak self] in
+            var first = true
             while !Task.isCancelled {
                 await self?.pollOnce()
+                if first { first = false; self?.warmIfIdle() }
+                self?.closeIdleBrowsers()
                 try? await Task.sleep(for: interval)
             }
         }
     }
+
+    /// Off by default (QFC rate-limits); launch with `-DibsStoreSetup YES` to switch stores.
+    static var storeSetupFlag: Bool { UserDefaults.standard.bool(forKey: "DibsStoreSetup") }
+
+    /// After the first poll, if no lookup started: load the home page in one browser, once per launch.
+    private func warmIfIdle() {
+        guard let warmUpURL, !traffic.homeWarmed, !traffic.isPaused, inFlight.isEmpty, let slot = freeSlot() else { return }
+        traffic.homeWarmed = true
+        let browser = slot.browser
+        slot.warm = Task {
+            let t0 = ContinuousClock.now
+            await browser.warmUp(warmUpURL)
+            slot.lastUsed = .now
+            PriceLog.event("price browser warm-up \(Self.ms(since: t0)) ms\(Task.isCancelled ? " (cut short)" : "")")
+        }
+    }
+
+    /// Closes browsers nobody used for `idleClose`; a later lookup makes a fresh one.
+    func closeIdleBrowsers() {
+        let now = ContinuousClock.now
+        slots.removeAll { slot in
+            guard !slot.busy, now - slot.lastUsed >= idleClose else { return false }
+            slot.warm?.cancel()
+            slot.browser.close()
+            PriceLog.event("price browser closed after \(QFCTraffic.seconds(idleClose)) s idle")
+            return true
+        }
+    }
+
+    /// Browsers open right now (tests and debugging).
+    var browserCount: Int { slots.count }
 
     func stop() {
         guard isRunning || !inFlight.isEmpty else { return }
@@ -282,7 +322,7 @@ final class PriceWorker {
     /// One poll: fetch open requests and start each due one on a free browser. Returns without
     /// waiting for the lookups (see `isIdle`).
     func pollOnce() async {
-        guard let api else { return }
+        guard let api, !traffic.isPaused else { return }
         let open: [PriceRequest]
         do {
             open = try await api.open()
@@ -321,9 +361,9 @@ final class PriceWorker {
 
     /// New requests, and a priceless first attempt once its retry delay has passed.
     private func isDue(_ id: String) -> Bool {
-        guard inFlight[id] == nil else { return false }
+        guard inFlight[id] == nil, !traffic.isPaused else { return false }
         switch attempts[id] ?? 0 {
-        case 0: return true
+        case 0: return retryAt[id].map { ContinuousClock.now >= $0 } ?? true
         case 1: return retryAt[id].map { ContinuousClock.now >= $0 } ?? false
         default: return false
         }
@@ -333,6 +373,7 @@ final class PriceWorker {
         lookupBrowsers[request.id] = slot.browser
         defer {
             slot.busy = false
+            slot.lastUsed = .now
             inFlight[request.id] = nil
             lookupBrowsers[request.id] = nil
         }
@@ -342,12 +383,17 @@ final class PriceWorker {
             await warm.value
             slot.warm = nil
         }
-        if let location = request.storeLocation { setUpStore(location) }
+        if storeSetupEnabled, let location = request.storeLocation { setUpStore(location) }
         let outcome = await handle(request, browser: slot.browser, api: api)
         if Task.isCancelled { return }
         lastOutcome = outcome
         outcomes.append(outcome)
-        if outcome.cents != nil {
+        if outcome.via == .rateLimited {
+            // Not an attempt: try again, from the start, once the pause ends.
+            attempts[request.id] = attempt - 1
+            retryAt[request.id] = traffic.pausedUntil ?? .now
+            PriceLog.event("price \(request.id) waits for the qfc pause")
+        } else if outcome.cents != nil {
             gaveUpNames.remove(request.name)
         } else if attempt == 1 && outcome.retryable {
             retryAt[request.id] = .now + retryDelay
@@ -375,6 +421,7 @@ final class PriceWorker {
         storeBrowser = browser
         defer { if !Task.isCancelled { browser.close() } }
         for attempt in 1...storeAttempts {
+            while traffic.isPaused, !Task.isCancelled { try? await Task.sleep(for: .seconds(1)) }
             if Task.isCancelled { return }
             let t0 = ContinuousClock.now
             let result = await browser.setStore(location)
@@ -390,6 +437,7 @@ final class PriceWorker {
                 return
             case .failed(let step):
                 PriceLog.event("price store setup attempt \(attempt)/\(storeAttempts) failed at \(step)")
+                if step.localizedCaseInsensitiveContains("too many requests") { traffic.rateLimited() }
             }
             if attempt < storeAttempts { try? await Task.sleep(for: storeRetryInterval) }
         }
@@ -419,7 +467,10 @@ final class PriceWorker {
             PriceLog.event("price \(request.id) timing open=\(timing.open) render=\(timing.render) extract=\(timing.extract) total=\(Self.ms(since: start))")
         }
         browser.restrict(to: url)
+        reloads[request.id] = 0
+        defer { reloads[request.id] = nil }
         PriceLog.event("price \(request.id) start \"\(request.name)\" at \(request.store)")
+        let rateLimited = Outcome(requestId: request.id, name: request.name, via: .rateLimited)
 
         var readNoMatch = false
         do {
@@ -428,6 +479,8 @@ final class PriceWorker {
             case .noMatch: readNoMatch = true
             case .unreadable: break
             }
+        } catch is RateLimited {
+            return rateLimited
         } catch let error as DibsError {
             PriceLog.event("price \(request.id) extract failed: \(error.localizedDescription); skipping")
             return Outcome(requestId: request.id, name: request.name, via: .failed)
@@ -435,6 +488,7 @@ final class PriceWorker {
             PriceLog.event("price \(request.id) page failed: \(error.localizedDescription); trying agent")
         }
         if Task.isCancelled { return Outcome(requestId: request.id, name: request.name, via: .failed) }
+        if traffic.isPaused { return rateLimited }   // no agent during a pause
 
         if readNoMatch {
             // The results page loaded and had no match: the store likely doesn't carry it.
@@ -446,6 +500,8 @@ final class PriceWorker {
         }
         do {
             return try await agentLoop(request, browser: browser, api: api, seed: Self.priceSeed(request), maxSteps: Self.maxAgentSteps)
+        } catch is RateLimited {
+            return rateLimited
         } catch {
             PriceLog.event("price \(request.id) agent stopped: \(error.localizedDescription)")
             return Outcome(requestId: request.id, name: request.name, via: .failed)
@@ -468,6 +524,8 @@ final class PriceWorker {
         switch result {
         case .success(let outcome?): return outcome
         case .success(nil): return Outcome(requestId: request.id, name: request.name, via: .failed)
+        case .failure(let error) where error is RateLimited:
+            return Outcome(requestId: request.id, name: request.name, via: .rateLimited)
         case .failure where capped.on || Task.isCancelled:
             PriceLog.event("price \(request.id) quick agent hit the \(Int(seconds)) s cap")
             return Outcome(requestId: request.id, name: request.name, via: .notFound)
@@ -502,15 +560,16 @@ final class PriceWorker {
                           timing: inout Timing) async throws -> FastResult {
         PriceLog.event("price \(request.id) open \(BrowserPolicy.safeURL(URL(string: request.searchUrl)))")
         var t0 = ContinuousClock.now
-        _ = try await browser.run(tool: "browser_open", args: ["url": request.searchUrl])
+        _ = try await qfc(browser, request, "browser_open", ["url": request.searchUrl])
         timing.open = Self.ms(since: t0)
         t0 = ContinuousClock.now
-        var (ready, text) = await waitRendered(browser, item: request.name, seconds: waitSeconds)
+        var (ready, text) = try await waitRendered(browser, request, seconds: waitSeconds)
         if !ready {
             PriceLog.event("price \(request.id) not rendered after \(Int(waitSeconds)) s; reloading")
-            _ = try await browser.run(tool: "browser_act", args: ["action": "reload"])
-            (ready, text) = await waitRendered(browser, item: request.name, seconds: reloadWaitSeconds)
+            _ = try await qfc(browser, request, "browser_act", ["action": "reload"])
+            (ready, text) = try await waitRendered(browser, request, seconds: reloadWaitSeconds)
         }
+        if ready { traffic.pageOK() }
         timing.render = Self.ms(since: t0)
         text = String(text.prefix(Self.pageTextLimit))
         PriceLog.event("price \(request.id) \(ready ? "rendered" : "still not rendered"), \(text.count) chars")
@@ -532,17 +591,39 @@ final class PriceWorker {
     }
 
     /// Observes every `renderPoll` until `rendered` or `seconds` pass. Returns the last page text.
-    private func waitRendered(_ browser: PriceBrowsing, item: String, seconds: Double) async -> (Bool, String) {
+    /// Throws RateLimited when QFC answers "Too many requests".
+    private func waitRendered(_ browser: PriceBrowsing, _ request: PriceRequest, seconds: Double) async throws -> (Bool, String) {
         let deadline = ContinuousClock.now + .milliseconds(Int(seconds * 1000))
         var text = ""
         while true {
-            if let observation = try? await browser.run(tool: "browser_observe", args: [:]) {
+            do {
+                let observation = try await qfc(browser, request, "browser_observe", [:])
                 text = observation["text"] as? String ?? ""
-                if Self.rendered(text, item: item) { return (true, text) }
-            }
+                if Self.rendered(text, item: request.name) { return (true, text) }
+            } catch is RateLimited {
+                throw RateLimited()
+            } catch {}
             if Task.isCancelled || ContinuousClock.now >= deadline { return (false, text) }
             try? await Task.sleep(for: renderPoll)
         }
+    }
+
+    /// Every QFC browser call goes through here: nothing during a pause, one reload per request,
+    /// and a "Too many requests" page starts the shared pause.
+    private func qfc(_ browser: PriceBrowsing, _ request: PriceRequest, _ tool: String, _ args: [String: Any]) async throws -> [String: Any] {
+        if traffic.isPaused { throw RateLimited() }
+        if tool == "browser_act", args["action"] as? String == "reload" {
+            guard reloads[request.id, default: 0] < 1 else {
+                throw BrowserError("reload_limit", "The page was already reloaded once for this item. Observe instead.")
+            }
+            reloads[request.id, default: 0] += 1
+        }
+        let result = try await browser.run(tool: tool, args: args)
+        if QFCTraffic.isRateLimited(result) {
+            traffic.rateLimited()
+            throw RateLimited()
+        }
+        return result
     }
 
     /// The team's Gemini browser agent, with the model on the server: post the conversation,
@@ -559,6 +640,7 @@ final class PriceWorker {
         var contents: [[String: Any]] = [["role": "user", "parts": [["text": seed]]]]
         for step in 1...max(1, min(maxSteps, Self.maxAgentSteps)) {
             try Task.checkCancellation()
+            if traffic.isPaused { throw RateLimited() }
             Self.fit(&contents)
             PriceLog.event("price \(request.id) agent step \(step)")
             let reply = try await api.agentStep(id: request.id, contents: contents)
@@ -588,8 +670,10 @@ final class PriceWorker {
                 let args = call["args"] as? [String: Any] ?? [:]
                 var result: [String: Any]
                 do {
-                    result = Self.compact(try await browser.run(tool: name, args: args))
+                    result = Self.compact(try await qfc(browser, request, name, args))
                     PriceLog.event("price \(request.id) tool \(name) ok")
+                } catch is RateLimited {
+                    throw RateLimited()
                 } catch {
                     result = ["error": error.localizedDescription]
                     PriceLog.event("price \(request.id) tool \(name) error: \(error.localizedDescription)")

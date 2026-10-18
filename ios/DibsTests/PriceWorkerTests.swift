@@ -101,6 +101,10 @@ final class FakeBrowser: PriceBrowsing {
     var renderAfterReload = false
     var neverRender = false
     var loadingText = "QFC Sign In Loading"
+    /// After this many tool calls, every page is QFC's rate-limit answer.
+    var rateLimitAfter: Int?
+    var httpStatus: Int?
+    static let rateLimitBody = #"{ "message": "Too many requests", "referenceNum": "0.8f2e1b17.1760770000.1a2b3c", "clientIP": "203.0.113.7" }"#
     var observeDelay: Duration = .zero
     var warmedUp: [URL] = []
     /// What setStore answers, in order (the last repeats).
@@ -129,9 +133,12 @@ final class FakeBrowser: PriceBrowsing {
         if name == "browser_act" && args["action"] as? String == "reload" { reloaded = true }
         if name == "browser_observe" && observeDelay > .zero { try await Task.sleep(for: observeDelay) }
         let loading = neverRender || (renderAfterReload && !reloaded)
-        return ["documentId": "d1", "observationId": "d1:\(calls.count)", "title": "Search",
-                "text": loading ? loadingText : pageText,
+        let limited = rateLimitAfter.map { calls.count > $0 } ?? false
+        var result: [String: Any] = ["documentId": "d1", "observationId": "d1:\(calls.count)", "title": "Search",
+                "text": limited ? Self.rateLimitBody : loading ? loadingText : pageText,
                 "elements": [["id": "e0", "role": "a", "name": "Large Cosmic Crisp Apple"]]]
+        if let httpStatus { result["httpStatus"] = httpStatus }
+        return result
     }
 }
 
@@ -141,6 +148,7 @@ final class PriceWorkerTests: XCTestCase {
     private var browser: FakeBrowser!
     private var worker: PriceWorker!
     private var storeFake: FakeBrowser!
+    private var traffic: QFCTraffic!
 
     private let openOne = #"[{"id":"r1","name":"cosmic crisp apple","store":"QFC","searchUrl":"https://www.qfc.com/search?query=cosmic%20crisp%20apple"}]"#
     private let notFound = #"{"found":false}"#
@@ -152,16 +160,18 @@ final class PriceWorkerTests: XCTestCase {
         PriceStub.reset()
         browser = FakeBrowser()
         storeFake = FakeBrowser()
+        traffic = QFCTraffic(pauses: [.milliseconds(150), .milliseconds(300), .milliseconds(600)])
         let fake = browser!
         worker = makeWorker { fake }
     }
 
     private func makeWorker(pool: Int = 1, retryDelay: Duration = .seconds(60), wait: Double = 25,
-                            warmUp: URL? = nil, giveUpSeconds: Double = 10,
+                            warmUp: URL? = nil, giveUpSeconds: Double = 10, idleClose: Duration = .seconds(120),
                             make: @escaping @MainActor () -> PriceBrowsing) -> PriceWorker {
         let w = PriceWorker(pollInterval: .milliseconds(20), poolSize: pool, warmUpURL: warmUp,
                             renderPoll: .milliseconds(10), waitSeconds: wait, reloadWaitSeconds: wait,
-                            retryDelay: retryDelay, giveUpSeconds: giveUpSeconds, makeBrowser: make)
+                            retryDelay: retryDelay, giveUpSeconds: giveUpSeconds,
+                            storeSetupEnabled: false, idleClose: idleClose, traffic: traffic, makeBrowser: make)
         w.use(api: api)
         return w
     }
@@ -278,18 +288,145 @@ final class PriceWorkerTests: XCTestCase {
         }
     }
 
-    func testStartWarmsUpEveryBrowserOnTheStoreHomePage() async throws {
+    func testStartWarmsOneBrowserOncePerLaunchAndLeavesTheStoreAlone() async throws {
         var made: [FakeBrowser] = []
-        worker = makeWorker(pool: 2, warmUp: URL(string: "https://www.qfc.com/")) {
-            let b = FakeBrowser(); made.append(b); return b
-        }
+        let home = URL(string: "https://www.qfc.com/")!
+        worker = makeWorker(pool: 2, warmUp: home) { let b = FakeBrowser(); made.append(b); return b }
         PriceStub.route("GET /api/price-requests?open=1", .json(200, "[]"))
         worker.start(api: api)
+        await waitFor(made.first?.warmedUp.isEmpty == false)
+        try await Task.sleep(for: .milliseconds(60))
+        worker.stop()
+        XCTAssertEqual(made.count, 1, "one browser at start; the second only when two requests are open")
+        XCTAssertEqual(made.first?.warmedUp, [home])
+        XCTAssertEqual(made.flatMap(\.storeCalls), [], "store switching is off by default")
+
+        worker.start(api: api)   // same launch: no second home-page load
         try await Task.sleep(for: .milliseconds(100))
         worker.stop()
-        XCTAssertEqual(made.count, 3, "two lookup browsers and one for store setup")
-        XCTAssertEqual(made.map(\.warmedUp), [[URL(string: "https://www.qfc.com/")!], [URL(string: "https://www.qfc.com/")!], []])
-        XCTAssertEqual(made.map(\.storeCalls), [[], [], [.universityVillage]])
+        XCTAssertEqual(made.flatMap(\.warmedUp), [home])
+    }
+
+    func testNoWarmUpWhenARequestIsAlreadyWaiting() async throws {
+        let fake = browser!
+        worker = makeWorker(warmUp: URL(string: "https://www.qfc.com/")) { fake }
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
+        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":110}"#))
+        worker.start(api: api)
+        await waitFor(self.worker.lastOutcome != nil)
+        try await Task.sleep(for: .milliseconds(60))
+        worker.stop()
+        XCTAssertEqual(worker.lastOutcome?.cents, 110)
+        XCTAssertEqual(browser.warmedUp, [])
+    }
+
+    func testIdleBrowsersCloseAndAreRemadeLazily() async throws {
+        var made: [FakeBrowser] = []
+        worker = makeWorker(idleClose: .milliseconds(50)) { let b = FakeBrowser(); made.append(b); return b }
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
+        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":110}"#))
+        await poll()
+        XCTAssertEqual(worker.browserCount, 1)
+        worker.closeIdleBrowsers()
+        XCTAssertEqual(worker.browserCount, 1, "not idle long enough yet")
+        try await Task.sleep(for: .milliseconds(80))
+        worker.closeIdleBrowsers()
+        XCTAssertEqual(worker.browserCount, 0)
+        XCTAssertTrue(made[0].closed)
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne.replacingOccurrences(of: "r1", with: "r2")))
+        PriceStub.route("POST /api/price-requests/r2/extract", .json(200, #"{"found":true,"priceCents":110}"#))
+        await poll()
+        XCTAssertEqual(made.count, 2, "a fresh browser for the next lookup")
+    }
+
+    // MARK: rate limits
+
+    func testRateLimitDetector() {
+        XCTAssertTrue(QFCTraffic.isRateLimited(["text": FakeBrowser.rateLimitBody]))
+        XCTAssertTrue(QFCTraffic.isRateLimited(["text": "", "httpStatus": 429]))
+        XCTAssertTrue(QFCTraffic.isRateLimited(["text": "Access Denied. Reference #18.5f2e", "httpStatus": 403]))
+        XCTAssertFalse(QFCTraffic.isRateLimited(["text": "308 results", "httpStatus": 200]))
+        XCTAssertFalse(QFCTraffic.isRateLimited(["text": "Forbidden", "httpStatus": 403]))
+    }
+
+    func testRateLimitPausesAllQFCTrafficThenRetriesWithoutUsingAnAttempt() async throws {
+        let fake = browser!
+        worker = makeWorker(retryDelay: .zero) { fake }
+        browser.rateLimitAfter = 0
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
+        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, notFound))
+        PriceStub.route("POST /api/price-requests/r1/agent-step", .json(500, #"{"error":"must not be called"}"#))
+
+        await poll()
+        XCTAssertEqual(worker.lastOutcome?.via, .rateLimited)
+        XCTAssertEqual(browser.calls.map(\.name), ["browser_open"], "stops at the first rate-limited page")
+        XCTAssertTrue(traffic.isPaused)
+        XCTAssertEqual(traffic.lastPause, .milliseconds(150))
+        XCTAssertTrue(PriceStub.requests("POST /api/price-requests/r1/extract").isEmpty)
+        XCTAssertTrue(PriceStub.requests("POST /api/price-requests/r1/agent-step").isEmpty, "no agent during a pause")
+        XCTAssertFalse(worker.gaveUp(for: "cosmic crisp apple"), "a pause is not a give-up")
+
+        await poll()   // still paused: no QFC traffic at all
+        XCTAssertEqual(browser.calls.count, 1)
+
+        try await Task.sleep(for: .milliseconds(200))
+        browser.rateLimitAfter = nil
+        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":110}"#))
+        await poll()
+        XCTAssertEqual(worker.lastOutcome?.cents, 110, "looked up again after the pause")
+    }
+
+    func testRepeatedRateLimitsPauseLonger() async throws {
+        let fake = browser!
+        worker = makeWorker { fake }
+        browser.rateLimitAfter = 0
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
+        await poll()
+        XCTAssertEqual(traffic.lastPause, .milliseconds(150))
+        try await Task.sleep(for: .milliseconds(170))
+        await poll()
+        XCTAssertEqual(traffic.lastPause, .milliseconds(300))
+        try await Task.sleep(for: .milliseconds(320))
+        await poll()
+        XCTAssertEqual(traffic.lastPause, .milliseconds(600))
+        XCTAssertEqual(worker.outcomes.map(\.via), [.rateLimited, .rateLimited, .rateLimited])
+    }
+
+    func testRateLimitDuringTheAgentStopsIt() async throws {
+        browser.rateLimitAfter = 2   // open and the first observe are fine, then QFC says no
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
+        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, notFound))
+        PriceStub.route("POST /api/price-requests/r1/agent-step",
+                        .json(200, #"{"parts":[{"functionCall":{"name":"browser_observe","args":{}}}]}"#))
+        await poll()
+        XCTAssertEqual(PriceStub.requests("POST /api/price-requests/r1/agent-step").count, 1)
+        XCTAssertEqual(worker.lastOutcome?.via, .rateLimited)
+        XCTAssertTrue(traffic.isPaused)
+        XCTAssertFalse(worker.gaveUp(for: "cosmic crisp apple"))
+    }
+
+    func testHTTP429CountsAsARateLimit() async throws {
+        browser.httpStatus = 429
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
+        await poll()
+        XCTAssertEqual(worker.lastOutcome?.via, .rateLimited)
+        XCTAssertTrue(traffic.isPaused)
+    }
+
+    func testAtMostOneReloadPerRequest() async throws {
+        let fake = browser!
+        worker = makeWorker(wait: 0.03) { fake }
+        browser.neverRender = true   // fast path reloads once, then the full agent runs
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
+        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, notFound))
+        PriceStub.route("POST /api/price-requests/r1/agent-step",
+                        .json(200, #"{"parts":[{"functionCall":{"name":"browser_act","args":{"action":"reload"}}}]}"#),
+                        .json(200, #"{"parts":[{"functionCall":{"name":"report_price","args":{"found":false}}}]}"#))
+        await poll()
+        XCTAssertEqual(browser.calls.filter { $0.name == "browser_act" }.count, 1, "the agent's reload is refused")
+        let contents = PriceStub.requests("POST /api/price-requests/r1/agent-step").last?.json["contents"] as? [[String: Any]] ?? []
+        let response = (contents.last?["parts"] as? [[String: Any]])?.first?["functionResponse"] as? [String: Any]
+        XCTAssertTrue(((response?["response"] as? [String: Any])?["error"] as? String ?? "").hasPrefix("reload_limit"))
     }
 
     func testUnreadablePageWithoutAPriceIsRetriedOnceAfterTheDelay() async throws {
@@ -555,6 +692,7 @@ final class PriceWorkerTests: XCTestCase {
         let w = PriceWorker(pollInterval: .milliseconds(20), poolSize: 1, warmUpURL: nil,
                             renderPoll: .milliseconds(10), retryDelay: .seconds(60),
                             storeAttempts: attempts, storeRetryInterval: .milliseconds(20),
+                            storeSetupEnabled: true, traffic: traffic,
                             makeBrowser: { fake }, makeStoreBrowser: { storeFake })
         w.use(api: api)
         return w

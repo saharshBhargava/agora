@@ -20,6 +20,8 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     private var activeNavigation: WKNavigation?
     private var hostWindow: UIWindow?
     private var rulesAttached = false
+    /// HTTP status of the last main-frame response (429 or 403 means QFC is rate-limiting).
+    private(set) var lastStatus: Int?
 
     /// Images, fonts and media are not needed to read prices; skipping them renders search pages faster.
     static let lightRules = #"[{"trigger":{"url-filter":".*","resource-type":["image","font","media"]},"action":{"type":"block"}}]"#
@@ -164,6 +166,7 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         guard !privateMode else { throw BrowserError("user_action_required", "Private page. Open a different page.") }
         var result = try await bridge(["operation": "observe"])
         result["url"] = BrowserPolicy.safeURL(webView.url)
+        if let lastStatus { result["httpStatus"] = lastStatus }
         return result
     }
 
@@ -214,6 +217,7 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
                  decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void) {
+        if response.isForMainFrame { lastStatus = (response.response as? HTTPURLResponse)?.statusCode }
         if response.isForMainFrame && !response.canShowMIMEType {
             navigationFailure = "Downloads are not supported."
             decisionHandler(.cancel)
