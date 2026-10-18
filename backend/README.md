@@ -1,6 +1,8 @@
 # Agora backend
 
-> **Deploying for the demo?** Follow [SETUP.md](../SETUP.md): every account and key, in order, all free.
+> **Deploying for the demo?** Follow [SETUP.md](../SETUP.md): every account and key, in order, using free plans.
+> **Connecting a frontend?** [Frontend handoff](../docs/frontend-handoff.md) tracks the public API URL,
+> iOS configuration, auth, and deployment verification status. Backend credentials stay in Render.
 
 FastAPI + Postgres (TimescaleDB when available). Design and rationale: [docs/backend-spec.md](../docs/backend-spec.md).
 
