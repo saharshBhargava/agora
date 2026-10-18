@@ -117,10 +117,10 @@ final class DemoModelClient: ModelClient {
                 let value = result.value.object ?? [:]
                 if value["error"] != nil { return response("The action could not be completed. Review the account or try a new request when you are ready.") }
                 if result.name == "calendar_create_event" { return response("The grocery trip is saved to your Agora Calendar. No invitations were sent.") }
-                if case .array(let busy) = value["busy"] {
+                if let busyValue = value["busy"], case .array(let busy) = busyValue {
                     let intervals = busy.compactMap { entry -> String? in
-                        guard let window = entry.object, case .string(let start) = window["start"],
-                              case .string(let end) = window["end"] else { return nil }
+                        guard let window = entry.object, let startValue = window["start"], let endValue = window["end"],
+                              case .string(let start) = startValue, case .string(let end) = endValue else { return nil }
                         return "\(start) → \(end)"
                     }
                     return response(intervals.isEmpty ? "Your Agora Calendar has no busy intervals in the checked window." :
