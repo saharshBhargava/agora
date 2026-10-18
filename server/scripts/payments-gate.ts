@@ -80,18 +80,22 @@ async function main(): Promise<void> {
     ),
   );
   print('incremental +5.00', inc);
+  // Authorized total in cents: 40.00, plus 5.00 only if the increment landed.
+  const authorizedCents = 4000 + (inc.ok ? 500 : 0);
+  const captureCents = 436;
+  const reverseStr = ((authorizedCents - captureCents) / 100).toFixed(2);
 
   const rev = await call((cb) =>
     reversals.authReversal(
       auth.id,
       {
         clientReferenceInformation: { code: 'gate-1-rev' },
-        reversalInformation: { amountDetails: { totalAmount: '40.64' }, reason: 'partial release of unused hold' },
+        reversalInformation: { amountDetails: { totalAmount: reverseStr }, reason: 'partial release of unused hold' },
       },
       cb,
     ),
   );
-  print('partial reversal 40.64', rev);
+  print(`partial reversal ${reverseStr}`, rev);
 
   const cap = await call((cb) =>
     captures.capturePayment(
@@ -106,7 +110,12 @@ async function main(): Promise<void> {
   print('capture 4.36', cap);
 
   console.log(`\nprocessor: ${auth.processor}`);
-  console.log(`RAISE_CAP=${inc.ok ? 'on' : 'off'}`);
+  const settleOk = rev.ok && cap.ok;
+  console.log(`SETTLE_FLOW=${settleOk ? 'ok' : 'broken'}`);
+  console.log(`RAISE_CAP=${inc.ok && settleOk ? 'on' : 'off'}`);
+  if (!settleOk) {
+    console.log('WARNING: reversal and/or capture failed. The settle design itself (reverse the unused hold, capture exact shares) is NOT supported by this sandbox account. Do not proceed with PAYMENTS=cybersource.');
+  }
 }
 
 main().catch((e) => {

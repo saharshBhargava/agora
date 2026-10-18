@@ -9,14 +9,13 @@ importers:
   .: {}
 
   server:
-    dependencies:
-      cybersource-rest-client:
-        specifier: ^0.0.84
-        version: 0.0.84(debug@4.4.3)
     devDependencies:
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5
+      cybersource-rest-client:
+        specifier: ^0.0.84
+        version: 0.0.84(debug@4.4.3)
       tsx:
         specifier: ^4.23.15
         version: 4.23.15

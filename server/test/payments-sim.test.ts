@@ -63,7 +63,12 @@ describe('SimPayments', () => {
   });
 
   it('getPayments defaults to sim', () => {
+    const prev = process.env.PAYMENTS;
     delete process.env.PAYMENTS;
-    expect(getPayments()).toBeInstanceOf(SimPayments);
+    try {
+      expect(getPayments()).toBeInstanceOf(SimPayments);
+    } finally {
+      if (prev !== undefined) process.env.PAYMENTS = prev;
+    }
   });
 });
