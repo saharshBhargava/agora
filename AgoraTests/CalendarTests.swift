@@ -23,11 +23,12 @@ private final class FakeGoogleAuthorization: GoogleCalendarAuthorizing {
     var account: GoogleCalendarAccount? = GoogleCalendarAccount(id: "alice", email: "alice@example.com", scopes: GoogleCalendarAuthorization.scopes)
     var accessTokenCalls = 0
     var idTokenCalls = 0
+    var restoreCalls = 0
     var didSignOut = false
     var didDisconnect = false
     var connectionError: Error?
     var holdTokenRefresh = false
-    func restore() async throws -> GoogleCalendarAccount? { account }
+    func restore() async throws -> GoogleCalendarAccount? { restoreCalls += 1; return account }
     func connect() async throws -> GoogleCalendarAccount {
         if let connectionError { throw connectionError }
         return account!
@@ -356,6 +357,19 @@ final class DemoAccessTests: XCTestCase {
         await restored.signOut()
         XCTAssertNil(store.session); XCTAssertFalse(restored.connected); XCTAssertFalse(restored.isDemoAccount)
     }
+    func testExpiredOrDifferentOriginSessionDoesNotFallBackToGoogle() async {
+        for origin in ["https://api.example.com", "https://another.example.com"] {
+            let auth = FakeGoogleAuthorization(); let store = MemoryDemoSessions()
+            store.session = DemoSession(token: "expired", expiresAt: Date().addingTimeInterval(-60),
+                accountID: "agora:11111111-2222-3333-4444-555555555555", origin: origin)
+            CalendarURLProtocol.handler = { _ in XCTFail("Expired session must not make a network request"); return (500, [:]) }
+            let connection = CalendarConnection(authorization: auth, http: session(),
+                demoBaseURL: URL(string: "https://api.example.com"), sessionStore: store)
+            await connection.refresh()
+            XCTAssertFalse(connection.connected); XCTAssertFalse(connection.isDemoAccount)
+            XCTAssertEqual(auth.restoreCalls, 0); XCTAssertEqual(auth.idTokenCalls, 0)
+        }
+    }
     func testNonDemoIdentityCannotEnableBuiltinProviders() async {
         installLogin(profileStatus: 403)
         let store = MemoryDemoSessions()
@@ -407,7 +421,7 @@ final class DemoAccessTests: XCTestCase {
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sample-session")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Idempotency-Key"), key)
             XCTAssertEqual(CalendarURLProtocol.body(request)["confirmed"] as? Bool, true)
-            return (201, ["created": true, "id": "sample-event"])
+            return (201, ["created": true, "id": "22222222-3333-4444-5555-666666666666"])
         }
         _ = try await connection.execute(call, taskID: taskID)
         _ = try await connection.execute(call, taskID: taskID)

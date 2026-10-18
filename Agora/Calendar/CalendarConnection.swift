@@ -40,10 +40,20 @@ final class CalendarConnection: ObservableObject {
         restoring = true
         let version = revision
         defer { restoring = false; checking = false }
-        if demoBaseURL != nil, let stored = try? sessionStore.load() {
+        let storedSession: DemoSession?
+        do { storedSession = try (demoBaseURL == nil ? nil : sessionStore.load()) }
+        catch {
+            apply(nil)
+            message = "Could not read the saved session securely. Sign in again."
+            return
+        }
+        if let stored = storedSession {
             do {
                 guard stored.expiresAt > Date(), stored.origin == demoBaseURL?.absoluteString else { throw BrowserError("session_expired") }
-                _ = try await demoHTTP("v1/demo/profile", token: stored.token)
+                let profile = try await demoHTTP("v1/demo/profile", token: stored.token)
+                guard let id = profile["id"] as? String, stored.accountID == "agora:" + id else {
+                    throw BrowserError("account_changed")
+                }
                 guard revision == version else { return }
                 applyDemo(stored)
             } catch {
@@ -175,6 +185,10 @@ final class CalendarConnection: ObservableObject {
             let token = try await apiToken(for: id)
             let result = try await demoHTTP(path, token: token, method: "POST", body: body, key: key)
             try checkAccount(id, revision: version)
+            if call.name == "calendar_create_event" {
+                guard result["created"] as? Bool == true, let eventID = result["id"] as? String,
+                      UUID(uuidString: eventID) != nil else { throw BrowserError("outcome_unknown") }
+            }
             return result
         }
         if call.name == "calendar_freebusy" {
@@ -279,7 +293,10 @@ final class CalendarConnection: ObservableObject {
         let version = revision
         do {
             let token = try await authorization.idToken(for: id)
-            _ = try await demoHTTP("v1/demo/profile", token: token)
+            let profile = try await demoHTTP("v1/demo/profile", token: token)
+            guard let profileID = profile["id"] as? String, UUID(uuidString: profileID) != nil else {
+                throw BrowserError("invalid_server_response")
+            }
             try checkAccount(id, revision: version)
             isDemoAccount = true
         } catch {
@@ -313,6 +330,9 @@ final class CalendarConnection: ObservableObject {
             if response.statusCode == 401 { throw BrowserError("invalid_credentials", "Wrong username or password, or your session has expired.") }
             if response.statusCode == 403 { throw BrowserError("integration_unavailable", "Use the designated demo account for this sign-in option.") }
             throw BrowserError("connection_failed", "Agora could not complete this request. Please try again.")
+        }
+        guard (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else {
+            throw BrowserError("invalid_server_response")
         }
         return json
     }
