@@ -304,3 +304,115 @@ class AuditVerify(BaseModel):
     ok: bool
     rows_checked: int
     first_broken_id: int | None
+
+
+# ---------------------------------------------------------------- wishlist
+
+RejectReason = Literal["not_interested", "already_have", "too_expensive", "wrong_item", "other"]
+WishlistStatus = Literal["suggested", "active", "snoozed", "rejected", "purchased", "removed"]
+
+
+class Evidence(Strict):
+    kind: Literal["inventory_low", "purchase_history", "calendar", "price", "seasonal", "other"]
+    detail: str = Field(min_length=1, max_length=200)
+
+
+class WishlistItemIn(Strict):
+    household_id: UUID | None = None
+    title: str = Field(min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=1000)
+    category: str | None = Field(default=None, min_length=1, max_length=40)
+    quantity: int = Field(default=1, ge=1, le=99)
+    target_price_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+    needed_by: date | None = None
+    priority: int | None = Field(default=None, ge=1, le=5)
+    pinned: bool = False
+    product_id: UUID | None = None
+    inventory_item_id: UUID | None = None
+
+
+class WishlistSuggestionIn(Strict):
+    household_id: UUID | None = None
+    title: str = Field(min_length=1, max_length=120)
+    rationale: str = Field(min_length=1, max_length=500)
+    confidence: float = Field(ge=0, le=1)
+    evidence: list[Evidence] = Field(default_factory=list, max_length=5)
+    category: str | None = Field(default=None, min_length=1, max_length=40)
+    quantity: int = Field(default=1, ge=1, le=99)
+    target_price_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+    needed_by: date | None = None
+    product_id: UUID | None = None
+    inventory_item_id: UUID | None = None
+
+
+class WishlistPatch(Strict):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=1000)
+    category: str | None = Field(default=None, min_length=1, max_length=40)
+    quantity: int | None = Field(default=None, ge=1, le=99)
+    target_price_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+    needed_by: date | None = None
+    priority: int | None = Field(default=None, ge=1, le=5)
+    pinned: bool | None = None
+
+
+class RejectIn(Strict):
+    reason_code: RejectReason
+    comment: str | None = Field(default=None, max_length=500)
+
+
+class SnoozeIn(Strict):
+    """Either ``until`` (an offset-aware time) or ``days`` from now."""
+
+    until: datetime | None = None
+    days: int | None = Field(default=None, ge=1, le=180)
+
+    @model_validator(mode="after")
+    def _one_of(self) -> "SnoozeIn":
+        if (self.until is None) == (self.days is None):
+            raise ValueError("send exactly one of until or days")
+        return self
+
+
+class FeedbackIn(Strict):
+    rating: Literal["up", "down"]
+    reason_code: RejectReason | None = None
+    comment: str | None = Field(default=None, max_length=500)
+
+
+class FeedbackOut(BaseModel):
+    wishlist_item_id: UUID
+    rating: Literal["up", "down"]
+    reason_code: str | None
+    comment: str | None
+    updated_at: datetime
+
+
+class WishlistItem(BaseModel):
+    id: UUID
+    household_id: UUID
+    title: str
+    notes: str | None
+    category: str | None
+    quantity: int
+    target_price_cents: int | None
+    needed_by: date | None
+    product_id: UUID | None
+    inventory_item_id: UUID | None
+    source: Literal["user", "agent"]
+    status: WishlistStatus
+    pinned: bool
+    priority: int | None
+    confidence: float | None
+    rationale: str | None
+    evidence: list[dict]
+    snoozed_until: datetime | None
+    reject_reason: str | None
+    reject_comment: str | None
+    my_feedback: Literal["up", "down"] | None
+    score: float
+    priority_reasons: list[str]
+    created_at: datetime
+    updated_at: datetime
+    decided_at: datetime | None
+    completed_at: datetime | None
