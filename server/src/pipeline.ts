@@ -138,7 +138,7 @@ async function identifyLive(
 export function lookUpPrice(deps: PipelineDeps, runId: string, chipId: string, name: string, storeName: string): void {
   const { store, price } = deps;
   void price
-    .lookup(name, storeName)
+    .lookup(name, storeName, runId)
     .then((hit) => {
       if (!hit) return;
       // Discard a late price unless the chip is still unpriced and the run still takes changes.

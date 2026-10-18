@@ -44,15 +44,31 @@ afterEach(async () => {
   delete process.env.RAISE_CAP;
 });
 
+/**
+ * Keys handed out by create run and join (person id → key; run id → its shopper's key). `post` and
+ * `connect` act as the person the request names (body personId / byPersonId), else as the run's
+ * shopper; impersonation is covered in security.test.ts.
+ */
+const keys = new Map<string, string>();
+const shopperKeys = new Map<string, string>();
 async function post(path: string, body: unknown = {}) {
-  const r = await app.inject({ method: 'POST', url: path, payload: body as object });
-  return { status: r.statusCode, body: r.json() };
+  const b = (body ?? {}) as Record<string, unknown>;
+  const runId = /^\/api\/runs\/([^/]+)/.exec(path)?.[1];
+  const key = keys.get(String(b.personId ?? b.byPersonId ?? '')) ?? (runId ? shopperKeys.get(runId) : undefined);
+  const r = await app.inject({ method: 'POST', url: path, payload: body as object, headers: key ? { 'x-dibs-key': key } : {} });
+  const json = r.json();
+  if (r.statusCode === 200 && path === '/api/runs') {
+    keys.set(json.shopperId, json.key);
+    shopperKeys.set(json.runId, json.key);
+  }
+  if (r.statusCode === 200 && path.endsWith('/join')) keys.set(json.personId, json.key);
+  return { status: r.statusCode, body: json };
 }
 const getRun = async (id: string): Promise<Run> => (await app.inject({ url: `/api/runs/${id}` })).json();
 
 type Msg = { t: string; [k: string]: unknown };
 function connect(runId: string, personId: string) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?run=${runId}&person=${personId}`);
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?run=${runId}&person=${personId}&key=${encodeURIComponent(keys.get(personId) ?? '')}`);
   sockets.push(ws);
   const msgs: Msg[] = [];
   ws.on('message', (d) => msgs.push(JSON.parse(String(d))));

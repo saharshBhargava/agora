@@ -4,7 +4,8 @@ import { GeminiPrice } from './gemini.js';
 import { StubPrice } from './stub.js';
 
 export interface PriceProvider {
-  lookup(name: string, store: string): Promise<{ cents: number; sourceUrl: string } | null>;
+  /** `runId` scopes a browser-agent lookup to that run's shopper (see AgentPrice). */
+  lookup(name: string, store: string, runId?: string): Promise<{ cents: number; sourceUrl: string } | null>;
 }
 
 export type PriceSetup = { provider: PriceProvider; agent?: AgentPrice };

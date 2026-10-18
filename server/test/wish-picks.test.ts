@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../src/index.js';
+import { hashKey } from '../src/keys.js';
 import { SimPayments } from '../src/payments/sim.js';
 import { StubPrice } from '../src/price/stub.js';
 import { StubVision } from '../src/vision/stub.js';
@@ -285,15 +286,18 @@ describe('GET /api/runs/:id/wish-picks', () => {
     await app.close();
   });
 
+  /** Priya's key in every run (the route answers only the person whose key it is). */
+  const PRIYA_KEY = 'priya-key-0123456789';
   async function start(team: HouseholdSource | null, runs: Run[]) {
     const dataDir = mkdtempSync(join(tmpdir(), 'dibs-wish-'));
     writeFileSync(join(dataDir, 'runs.json'), JSON.stringify(Object.fromEntries(runs.map((r) => [r.id, r]))));
+    writeFileSync(join(dataDir, 'keys.json'), JSON.stringify(Object.fromEntries(runs.map((r) => [r.id, { priya: hashKey(PRIYA_KEY) }]))));
     app = await buildServer({ payments: new SimPayments(), vision: new StubVision(), price: new StubPrice(), dataDir, team });
   }
   const past = run('past', 'QFC', [chip('Greek yogurt', { addedAt: NOW - DAY }), chip('Paper towels', { addedAt: NOW - DAY })]);
   const current = run('now', 'QFC', [chip('Paper towels')]);
   const get = async (url: string) => {
-    const r = await app.inject({ url });
+    const r = await app.inject({ url, headers: { 'x-dibs-key': PRIYA_KEY } });
     return { status: r.statusCode, body: r.json() };
   };
 
@@ -329,7 +333,7 @@ describe('GET /api/runs/:id/wish-picks', () => {
   it('refuses an unknown run or person', async () => {
     await start(null, [current]);
     expect((await get('/api/runs/nope/wish-picks?personId=priya')).status).toBe(404);
-    expect(await get('/api/runs/now/wish-picks?personId=stranger')).toEqual({ status: 409, body: { error: 'unknown person' } });
-    expect((await get('/api/runs/now/wish-picks')).status).toBe(409);
+    expect(await get('/api/runs/now/wish-picks?personId=stranger')).toEqual({ status: 403, body: { error: 'not allowed' } });
+    expect((await get('/api/runs/now/wish-picks')).status).toBe(403);
   });
 });

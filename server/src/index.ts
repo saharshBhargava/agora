@@ -4,7 +4,7 @@ import { dirname, join as pathJoin } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
-import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import QRCode from 'qrcode';
 import sharp from 'sharp';
 import { WebSocketServer, type WebSocket } from 'ws';
@@ -26,6 +26,8 @@ import { MAX_QUANTITY } from './money.js';
 import { seedRun } from './seed.js';
 import { applyReceipt, fixReceiptLine, isLive, matchReceipt, parseReceiptLines, settle } from './settle.js';
 import { createStore } from './store.js';
+import { createKeyring } from './keys.js';
+import { isRun, publicRun } from './redact.js';
 import type { ServerMsg } from './protocol.js';
 import type { Run } from './types.js';
 import { getDetector, type Detector } from './vision/detect.js';
@@ -66,10 +68,14 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   const { payments, vision, price } = deps;
   const now = deps.now ?? Date.now;
   const lastCallMs = deps.lastCallMs ?? 10000;
-  const store = createStore(deps.dataDir ?? defaultDataDir());
+  const dataDir = deps.dataDir ?? defaultDataDir();
+  const store = createStore(dataDir);
+  const keyring = createKeyring(dataDir);
   // Phone photos (receipts, crops) can exceed the 1 MB default.
   const app = Fastify({ bodyLimit: 8 * 1024 * 1024 });
   await app.register(cors, { origin: true });
+  // Every REST reply that is a run goes out redacted (the WebSocket's choke point is store.send).
+  app.addHook('preSerialization', async (_req, _reply, payload) => (isRun(payload) ? publicRun(payload) : payload));
 
   const makeDetector = deps.detector ?? getDetector;
   const relay = createFrameRelay();
@@ -121,15 +127,39 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     reply.code(error === 'unknown run' ? 404 : 409).send({ error });
   const ref = (runId: string) => (personId: string, step: string) => `${runId}-${personId}-${step}`;
 
-  /** Looks up the run and, for shopper-only routes, checks the caller. Sends the error reply itself. */
-  function guard(reply: FastifyReply, runId: string, personId?: string, shopperOnly = false): Run | null {
+  /**
+   * Who may act. Person ids are public, so the caller proves who they are with their key
+   * (`x-dibs-key`, from create run or join). `as`: the person the request acts for (a body or query
+   * personId) must be the key's owner. `shopper`: the key's owner must be the run's shopper.
+   */
+  type Need = { as?: unknown; shopper?: boolean };
+  type Denied = { status: number; error: string };
+  const OLD_RUN = 'This run was started before an update. Start a new run.';
+  const keyOf = (req: FastifyRequest): string | undefined => {
+    const k = req.headers['x-dibs-key'];
+    return Array.isArray(k) ? k[0] : k;
+  };
+  /** The caller's person id, or why not. */
+  function caller(run: Run, key: string | undefined, need: Need): string | Denied {
+    if (!keyring.has(run.id)) return { status: 410, error: OLD_RUN };
+    const who = keyring.owner(run.id, key);
+    if (!who || !run.people.some((p) => p.id === who)) return { status: 403, error: 'not allowed' };
+    if (need.as !== undefined && need.as !== who) return { status: 403, error: 'not allowed' };
+    if (need.shopper && who !== run.shopperId) return { status: 403, error: 'shopper only' };
+    return who;
+  }
+
+  /** Looks up the run and, with `need`, checks the caller's key. Sends the error reply itself. */
+  function guard(req: FastifyRequest, reply: FastifyReply, runId: string, need?: Need): Run | null {
     const run = store.get(runId);
     if (!run) {
       void reply.code(404).send({ error: 'unknown run' });
       return null;
     }
-    if (shopperOnly && personId !== run.shopperId) {
-      void reply.code(403).send({ error: 'shopper only' });
+    if (!need) return run;
+    const who = caller(run, keyOf(req), need);
+    if (typeof who !== 'string') {
+      void reply.code(who.status).send({ error: who.error });
       return null;
     }
     return run;
@@ -140,8 +170,9 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
 
   app.post('/api/runs', async () => {
     const run = seedRun(now());
+    const key = keyring.issue(run.id, run.shopperId);
     store.add(run);
-    return { runId: run.id, shopperId: run.shopperId };
+    return { runId: run.id, shopperId: run.shopperId, key };
   });
 
   app.get<{ Params: { id: string } }>('/api/runs/:id', async (req, reply) => {
@@ -159,8 +190,10 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   app.post<{ Params: { id: string }; Body: { name: string; card: TestCard; capCents: number } }>(
     '/api/runs/:id/join',
     async (req, reply) => {
-      const run = guard(reply, req.params.id);
+      const run = guard(req, reply, req.params.id);
       if (!run) return;
+      // Nobody in a run from before keys could act, so joining one would only strand the hold.
+      if (!keyring.has(run.id)) return reply.code(410).send({ error: OLD_RUN });
       const { name, card, capCents } = req.body;
       if (run.state !== 'open' && run.state !== 'lastCall') return fail(reply, 'cart closed');
       const personId = crypto.randomUUID();
@@ -179,7 +212,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         return 'error' in joined ? joined : setAuthorization(joined, personId, auth.authorizedCents, auth.authId, auth.approvalCode);
       });
       if ('error' in res) return fail(reply, res.error);
-      return { personId, auth };
+      return { personId, key: keyring.issue(run.id, personId), auth };
     },
   );
 
@@ -187,7 +220,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     '/api/runs/:id/raise',
     async (req, reply) => {
       if (process.env.RAISE_CAP === 'off') return reply.code(403).send({ error: 'raise off' });
-      const run = guard(reply, req.params.id);
+      const run = guard(req, reply, req.params.id, { as: req.body?.personId });
       if (!run) return;
       if (run.state !== 'open' && run.state !== 'lastCall') return fail(reply, 'cart closed');
       const { personId, capCents } = req.body;
@@ -226,16 +259,36 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
       return false;
     }
   };
+  /**
+   * The price routes act for one run's shopper (the phone's price worker): each lookup belongs to the
+   * run whose chip asked for it, and only that run's shopper key may list or answer it. The list names
+   * its run in `x-dibs-run`. Creating a run is open to anyone, so a key for "some" run is not enough.
+   */
+  const runHeader = (req: FastifyRequest): string | undefined => {
+    const r = req.headers['x-dibs-run'];
+    return Array.isArray(r) ? r[0] : r;
+  };
+  function priceShopper(req: FastifyRequest, reply: FastifyReply, runId: string | undefined): boolean {
+    if (!runId) {
+      void reply.code(403).send({ error: 'not allowed' });
+      return false;
+    }
+    return guard(req, reply, runId, { shopper: true }) !== null;
+  }
   if (agent) {
-    app.get('/api/price-requests', async () =>
-      agent.open().map((r) => ({ id: r.id, name: r.name, store: r.store, searchUrl: searchUrl(r.name, r.store) })),
-    );
+    app.get('/api/price-requests', async (req, reply) => {
+      const runId = runHeader(req);
+      if (!priceShopper(req, reply, runId)) return;
+      return agent.open(runId).map((r) => ({ id: r.id, name: r.name, store: r.store, searchUrl: searchUrl(r.name, r.store) }));
+    });
     app.post<{ Params: { id: string }; Body: { cents?: unknown; url?: unknown } }>(
       '/api/price-requests/:id',
       async (req, reply) => {
         // Direct price posts skip Gemini entirely; the app never uses them, so they are off on a public URL.
         if (process.env.PRICE_DIRECT_POST !== '1') return reply.code(404).send({ error: 'not found' });
-        if (!agent.get(req.params.id)) return reply.code(404).send({ error: 'unknown request' });
+        const pr = agent.get(req.params.id);
+        if (!pr) return reply.code(404).send({ error: 'unknown request' });
+        if (!priceShopper(req, reply, pr.runId)) return;
         const { cents, url } = req.body ?? {};
         if (!validCents(cents) || !isHttps(url)) return reply.code(400).send({ error: 'invalid price' });
         agent.resolve(req.params.id, { cents, url });
@@ -247,6 +300,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
       async (req, reply) => {
         const pr = agent.get(req.params.id);
         if (!pr) return reply.code(404).send({ error: 'unknown request' });
+        if (!priceShopper(req, reply, pr.runId)) return;
         const text = req.body?.pageText;
         if (typeof text !== 'string') return reply.code(400).send({ error: 'pageText required' });
         const url = searchUrl(pr.name, pr.store);
@@ -303,6 +357,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
       async (req, reply) => {
         const pr = agent.get(req.params.id);
         if (!pr) return reply.code(404).send({ error: 'unknown request' });
+        if (!priceShopper(req, reply, pr.runId)) return;
         const contents = req.body?.contents;
         if (!Array.isArray(contents) || contents.length > 24 || JSON.stringify(contents).length > 60_000 || !contents.every(agentTurn)) {
           return reply.code(400).send({ error: 'invalid contents' });
@@ -344,7 +399,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   app.post<{ Params: { id: string }; Body: { imageBase64: string; hint?: string } }>(
     '/api/runs/:id/chips',
     async (req, reply) => {
-      const run = guard(reply, req.params.id);
+      const run = guard(req, reply, req.params.id, { shopper: true });
       if (!run) return;
       const res = await identifyChip(pipe, run.id, req.body.imageBase64 ?? '', null, {
         hint: typeof req.body.hint === 'string' ? req.body.hint.slice(0, 200) : undefined,
@@ -360,7 +415,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   app.post<{ Params: { id: string }; Body: { name: string; byPersonId: string } }>(
     '/api/runs/:id/chips/text',
     async (req, reply) => {
-      const run = guard(reply, req.params.id);
+      const run = guard(req, reply, req.params.id, { as: req.body?.byPersonId });
       if (!run) return;
       const { name, byPersonId } = req.body;
       if (!run.people.some((p) => p.id === byPersonId)) return fail(reply, 'unknown person');
@@ -374,9 +429,9 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   app.get<{ Params: { id: string }; Querystring: { personId?: string } }>(
     '/api/runs/:id/wish-picks',
     async (req, reply) => {
-      const run = guard(reply, req.params.id);
-      if (!run) return;
       const personId = typeof req.query.personId === 'string' ? req.query.personId : '';
+      const run = guard(req, reply, req.params.id, { as: personId });
+      if (!run) return;
       if (!run.people.some((p) => p.id === personId)) return fail(reply, 'unknown person');
       const household = await householdPicks(deps.team ?? null);
       const current = store.get(run.id) ?? run;
@@ -387,7 +442,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   app.post<{ Params: { id: string; chipId: string }; Body: { personId: string; name?: string; priceCents?: number } }>(
     '/api/runs/:id/chips/:chipId/fix',
     async (req, reply) => {
-      if (!guard(reply, req.params.id, req.body.personId, true)) return;
+      if (!guard(req, reply, req.params.id, { as: req.body?.personId, shopper: true })) return;
       const { name, priceCents } = req.body;
       const res = store.update(req.params.id, (r) =>
         fixable(r) ? fixChip(r, req.params.chipId, name, priceCents, now()) : { error: 'cart closed' },
@@ -400,7 +455,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   app.post<{ Params: { id: string; chipId: string }; Body: { personId?: string; quantity?: unknown } }>(
     '/api/runs/:id/chips/:chipId/quantity',
     async (req, reply) => {
-      if (!guard(reply, req.params.id, req.body?.personId, true)) return;
+      if (!guard(req, reply, req.params.id, { as: req.body?.personId, shopper: true })) return;
       const quantity = req.body?.quantity;
       if (typeof quantity !== 'number' || !Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY) {
         return reply.code(400).send({ error: 'invalid quantity' });
@@ -414,7 +469,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   app.post<{ Params: { id: string; chipId: string }; Body: { personId: string } }>(
     '/api/runs/:id/chips/:chipId/putback',
     async (req, reply) => {
-      if (!guard(reply, req.params.id, req.body.personId, true)) return;
+      if (!guard(req, reply, req.params.id, { as: req.body?.personId, shopper: true })) return;
       const res = store.update(req.params.id, (r) => putBack(r, req.params.chipId));
       return 'error' in res ? fail(reply, res.error) : res.run;
     },
@@ -422,7 +477,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
 
   // ---- checkout / lock ----
   app.post<{ Params: { id: string }; Body: { personId: string } }>('/api/runs/:id/checkout', async (req, reply) => {
-    const run = guard(reply, req.params.id, req.body.personId, true);
+    const run = guard(req, reply, req.params.id, { as: req.body?.personId, shopper: true });
     if (!run) return;
     const wasOpen = run.state === 'open';
     const res = store.update(run.id, (r) => checkout(r, now(), lastCallMs));
@@ -436,7 +491,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   });
 
   app.post<{ Params: { id: string }; Body: { personId: string } }>('/api/runs/:id/back', async (req, reply) => {
-    if (!guard(reply, req.params.id, req.body.personId, true)) return;
+    if (!guard(req, reply, req.params.id, { as: req.body?.personId, shopper: true })) return;
     clearTimeout(timers.get(req.params.id));
     timers.delete(req.params.id);
     const res = store.update(req.params.id, (r) => backToCart(r));
@@ -445,7 +500,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
 
   // ---- receipt and settle ----
   app.post<{ Params: { id: string }; Body: { imageBase64: string } }>('/api/runs/:id/receipt', async (req, reply) => {
-    const run = guard(reply, req.params.id);
+    const run = guard(req, reply, req.params.id, { shopper: true });
     if (!run) return;
     if (run.state !== 'locked' && run.state !== 'receipt') return fail(reply, 'not locked');
     if (settling.has(run.id)) return fail(reply, 'settling');
@@ -481,7 +536,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   app.post<{ Params: { id: string }; Body: { lineIndex: number; target: { chipId: string } | 'mine' } }>(
     '/api/runs/:id/receipt/fix',
     async (req, reply) => {
-      const run = guard(reply, req.params.id);
+      const run = guard(req, reply, req.params.id, { shopper: true });
       if (!run) return;
       if (run.state !== 'receipt' || settling.has(run.id)) return fail(reply, 'no receipt');
       const res = store.update(run.id, (r) => fixReceiptLine(r, req.body.lineIndex, req.body.target));
@@ -498,7 +553,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   };
 
   app.post<{ Params: { id: string }; Body: { personId: string } }>('/api/runs/:id/confirm', async (req, reply) => {
-    const run = guard(reply, req.params.id, req.body.personId, true);
+    const run = guard(req, reply, req.params.id, { as: req.body?.personId, shopper: true });
     if (!run) return;
     if (run.state !== 'receipt' && run.state !== 'partlySettled' && run.state !== 'settled') return fail(reply, 'no receipt');
     // Serialize per run: a second confirm waits for the first, then re-runs against the stored progress.
@@ -602,6 +657,12 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
       const run = store.get(runId);
       if (!run || !run.people.some((p) => p.id === personId)) {
         ws.close(1008, 'unknown run or person');
+        return;
+      }
+      // The key (?key=, from create run or join) must be this person's: ids alone are public.
+      const who = caller(run, url.searchParams.get('key') ?? undefined, { as: personId });
+      if (typeof who !== 'string') {
+        ws.close(1008, who.status === 410 ? 'old run' : 'not allowed');
         return;
       }
       store.attach(runId, ws);

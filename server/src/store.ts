@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path';
 import type { WebSocket } from 'ws';
 import type { ServerMsg } from './protocol.js';
+import { publicRun } from './redact.js';
 import type { Run } from './types.js';
 
 export type Refusal = { error: string };
@@ -38,12 +39,18 @@ export function createStore(dataDir: string) {
     }
   }
 
+  /** Every message leaves through here: a run snapshot is always the public (redacted) run. */
+  const wire = (msg: ServerMsg): string => JSON.stringify(msg.t === 'run' ? { t: 'run', run: publicRun(msg.run) } : msg);
+
   function send(ws: WebSocket, msg: ServerMsg): void {
-    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+    if (ws.readyState === ws.OPEN) ws.send(wire(msg));
   }
 
   function broadcast(runId: string, msg: ServerMsg): void {
-    for (const ws of sockets.get(runId) ?? []) send(ws, msg);
+    const set = sockets.get(runId);
+    if (!set?.size) return;
+    const text = wire(msg);
+    for (const ws of set) if (ws.readyState === ws.OPEN) ws.send(text);
   }
 
   /** Store, snapshot and broadcast a run. The settle sequence uses this as its `persist`. */

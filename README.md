@@ -39,6 +39,17 @@ With `VISION=stub`, the camera path uses a deterministic stub. When a dropped it
 
 The prop images are generated placeholders. To use real photos: put `eggs.jpg`, `towels.jpg`, `milk.jpg` in `server/assets/props/` (and copy them to `web/public/props/`), then regenerate frame fixtures with `pnpm -C server exec tsx scripts/make-frames.ts`. Skip `scripts/make-props.ts`, which only draws the placeholders.
 
+## Who can act in a run
+
+Person ids are public: every run snapshot lists them, because the UI needs them. So an id alone proves nothing.
+
+- **Keys.** `POST /api/runs` returns `{runId, shopperId, key}` and `POST /api/runs/:id/join` returns `{personId, key, auth}`. Each key is 32 random bytes (base64url). The server keeps only its SHA-256, in `DATA_DIR/keys.json`, never in the run. The web app keeps keys in `localStorage` (`dibs.key.<runId>.<personId>`); the iOS app keeps them in `UserDefaults` (`dibs.key.<runId>`).
+- **REST.** Every action sends the actor's key in `x-dibs-key`, and the key must belong to the `personId` (or `byPersonId`) the request names: raise, wish (`chips/text`), `wish-picks`, and the shopper routes (`chips/:id/fix`, `quantity`, `putback`, `checkout`, `back`, `confirm`). `POST /chips`, `/receipt` and `/receipt/fix` need the shopper's key. A missing or wrong key gets `403 {"error":"not allowed"}`; a claimer's own key on a shopper route gets `403 {"error":"shopper only"}`.
+- **WebSocket.** Connect with `/ws?run=&person=&key=`. A missing or wrong key closes with 1008 `not allowed`.
+- **Price requests.** Each browser-agent lookup belongs to the run whose chip asked for it. Only that run's shopper key may list it (`GET /api/price-requests` with `x-dibs-run: <runId>` and `x-dibs-key`) or answer it (`/extract`, `/agent-step`, the direct POST); found prices are reused only within the same run. Anyone can create a run, so a key for some other run is not enough.
+- **Reads.** `GET /api/runs/:id` stays public and read-only. Every run that leaves the server, over REST or WebSocket, is redacted: `authId` is null, and `payoutPan` and `payout.recipientPan` are masked to `•••• 1111`.
+- **Old runs.** A run created before keys existed has none, so nobody can act in it: REST answers `410` "This run was started before an update. Start a new run." and the socket closes with 1008 `old run`. Start a new run.
+
 ## Env flags
 
 | Flag | Demo value | Meaning |
@@ -80,8 +91,8 @@ State is in memory with a JSON snapshot; a redeploy loses runs, so create the ru
 
 HTTPS is required for the camera, which Railway provides.
 
-1. Create a run: `curl -X POST https://<domain>/api/runs` returns `runId` and `shopperId`.
-2. Shopper phone: open `https://<domain>/shopper?run=<runId>&person=<shopperId>` in Safari, Share, Add to Home Screen, then open it from the home screen and allow the camera. On this phone set Settings → Display & Brightness → Auto-Lock → Never (the page also holds a screen wake lock where Safari allows it). Clip it above the basket.
+1. Create a run: `curl -X POST https://<domain>/api/runs` returns `runId`, `shopperId` and the shopper's `key`.
+2. Shopper phone: open `https://<domain>/shopper?run=<runId>&person=<shopperId>#key=<key>` in Safari (the page saves the key and drops it from the address bar; the fragment never reaches the server), Share, Add to Home Screen, then open it from the home screen and allow the camera. Starting the run on the phone itself ("Start a run") needs no key in the link. On this phone set Settings → Display & Brightness → Auto-Lock → Never (the page also holds a screen wake lock where Safari allows it). Clip it above the basket.
 3. Judge B phone: open `https://<domain>/join?run=<runId>&name=B`, tap Join (cap $40), then Start claiming, then Add to Home Screen.
 4. Judge A phone: leave it on the Join screen. Claimers scan the QR from `https://<domain>/api/runs/<runId>/qr` (open it on the laptop) to land on `/join?run=<runId>`.
 5. Run the full loop on the real devices over a real basket before the demo.
