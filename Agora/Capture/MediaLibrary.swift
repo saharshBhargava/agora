@@ -20,12 +20,13 @@ struct CaptureItem: Identifiable, Codable, Equatable {
 }
 
 enum CaptureFailure: LocalizedError {
-    case unsupported, tooLarge, missingFile
+    case unsupported, tooLarge, missingFile, cameraUnavailable
     var errorDescription: String? {
         switch self {
         case .unsupported: return "This file is not a supported image, video, or PDF."
         case .tooLarge: return "Choose a file smaller than 500 MB."
         case .missingFile: return "This file is no longer available."
+        case .cameraUnavailable: return "Camera capture is unavailable. Choose photos or import a video instead."
         }
     }
 }

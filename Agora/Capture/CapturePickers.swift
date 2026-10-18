@@ -6,17 +6,39 @@ struct CameraPicker: UIViewControllerRepresentable {
     let video: Bool
     let onComplete: (Result<(URL, CaptureItem.Kind)?, Error>) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(onComplete) }
-    func makeUIViewController(context: Context) -> UIImagePickerController {
+    func makeUIViewController(context: Context) -> UIViewController {
+        makeController(coordinator: context.coordinator)
+    }
+    static func availableCamera(video: Bool) -> UIImagePickerController.CameraDevice? {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera),
+              UIImagePickerController.availableMediaTypes(for: .camera)?.contains(video ? UTType.movie.identifier : UTType.image.identifier) == true else { return nil }
+        let mode: UIImagePickerController.CameraCaptureMode = video ? .video : .photo
+        return [UIImagePickerController.CameraDevice.rear, .front].first { device in
+            UIImagePickerController.isCameraDeviceAvailable(device) &&
+            UIImagePickerController.availableCaptureModes(for: device)?.contains(NSNumber(value: mode.rawValue)) == true
+        }
+    }
+    func makeController(coordinator: Coordinator) -> UIViewController {
+        // Recheck at presentation: camera availability can change after permission prompts.
+        // UIKit raises Objective-C exceptions for unavailable sources/media types.
+        guard let device = Self.availableCamera(video: video) else {
+            DispatchQueue.main.async { coordinator.complete(.failure(CaptureFailure.cameraUnavailable)) }
+            return UIViewController()
+        }
         let picker = UIImagePickerController()
+        picker.delegate = coordinator
         picker.sourceType = .camera
+        picker.cameraDevice = device
+        // A single media type selects its capture interface. Do not force a second
+        // cameraCaptureMode transition while UIKit is starting the camera session.
         picker.mediaTypes = [video ? UTType.movie.identifier : UTType.image.identifier]
-        picker.cameraCaptureMode = video ? .video : .photo
-        picker.videoQuality = .typeHigh
-        picker.videoMaximumDuration = 300
-        picker.delegate = context.coordinator
+        if video {
+            picker.videoQuality = .typeHigh
+            picker.videoMaximumDuration = 300
+        }
         return picker
     }
-    func updateUIViewController(_ controller: UIImagePickerController, context: Context) {}
+    func updateUIViewController(_ controller: UIViewController, context: Context) {}
     final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
         let complete: (Result<(URL, CaptureItem.Kind)?, Error>) -> Void
         init(_ complete: @escaping (Result<(URL, CaptureItem.Kind)?, Error>) -> Void) { self.complete = complete }

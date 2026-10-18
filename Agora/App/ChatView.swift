@@ -8,7 +8,7 @@ struct ChatView: View {
     @ObservedObject var agent: AgentCoordinator
     @ObservedObject var browser: BrowserSession
     var body: some View {
-        ChatWorkspaceView(workspace: workspace, agent: agent, browser: browser, store: agent.conversations).tint(.teal)
+        ChatWorkspaceView(workspace: workspace, agent: agent, browser: browser, store: agent.conversations).tint(Color.agoraAccent)
     }
 }
 
@@ -58,7 +58,7 @@ private struct ChatWorkspaceView: View {
                         .environment(\.browserDragBounds, CGSize(width: geometry.size.width - thumbnail.width - 12, height: geometry.size.height - thumbnail.height - 12))
                 }
             }
-            .background(Color(.systemBackground))
+            .agoraSurface()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Conversations", systemImage: "line.3.horizontal") { composing = false; history = true }.labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44) }
@@ -87,7 +87,7 @@ private struct ChatWorkspaceView: View {
         VStack(spacing: 0) {
             HStack(spacing: 4) {
                 if expanded { Button { browser.humanInteraction(); browser.webView.goBack() } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.disabled(!browser.state.canGoBack || browser.state.busy).accessibilityLabel("Back") }
-                else { Image(systemName: browser.state.privateMode ? "lock.shield" : "globe").foregroundStyle(.teal) }
+                else { Image(systemName: browser.state.privateMode ? "lock.shield" : "globe").foregroundStyle(Color.agoraAccent) }
                 Text(expanded ? (browser.state.title.isEmpty ? browser.state.url?.host ?? "Browser" : browser.state.title) : browser.state.url?.host ?? "Shared browser").font(expanded ? .subheadline.weight(.semibold) : .caption.weight(.medium)).lineLimit(1)
                 Spacer(minLength: 0)
                 if browser.state.busy || agent.running { ProgressView().controlSize(.mini).accessibilityLabel("Agent is working") }
@@ -193,23 +193,24 @@ private struct ChatConversationView: View {
         GeometryReader { geometry in
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 24) {
+                    LazyVStack(alignment: .leading, spacing: 8) {
                         if chat.messages.isEmpty, settings.demoCalendar?.isDemoAccount == true {
                             Text("Demo uses built-in sample responses, not live AI research.")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
-                        ForEach(chat.messages) { message in
+                        ForEach(Array(chat.messages.enumerated()), id: \.element.id) { index, message in
                             ChatMessageView(message: message, approve: { agent.resolveApproval($0) }, retry: { text in
                                 guard !agent.running else { return }
                                 let retryDraft = chat.draft.trimmingCharacters(in: .whitespacesAndNewlines) == text
                                 if agent.send(text, attachments: retryDraft ? chat.attachments : []), retryDraft { chat.draft = ""; chat.attachments = [] }
                             }, openBrowser: { composing.wrappedValue = false; browser.setPresentationFromUser(.expanded) })
+                                .padding(.top, index == 0 || (message.tool != nil && chat.messages[index - 1].tool != nil) ? 0 : 16)
                                 .id(message.id)
                                 .background(GeometryReader { reader in Color.clear.preference(key: ChatVisibleRowKey.self, value: [message.id: reader.frame(in: .named("transcript"))]) })
                         }
-                        if agent.running { Label(agent.approval == nil ? agent.status : "Waiting for you", systemImage: "sparkle").font(.callout).foregroundStyle(.secondary).accessibilityLabel("Agent activity: \(agent.status)") }
-                        if agent.paused { takeover }
-                        Color.clear.frame(height: 1).id(bottomID)
+                        if agent.running { Label(agent.approval == nil ? agent.status : "Waiting for you", systemImage: "sparkle").font(.callout).foregroundStyle(.secondary).accessibilityLabel("Agent activity: \(agent.status)").padding(.top, 16) }
+                        if agent.paused { takeover.padding(.top, 16) }
+                        Color.clear.frame(height: 1).padding(.top, 16).id(bottomID)
                     }.scrollTargetLayout().padding(.horizontal, 20).padding(.top, 24).padding(.bottom, 16).frame(maxWidth: 760).frame(maxWidth: .infinity)
                         .background(GeometryReader { reader in Color.clear.preference(key: ChatBottomKey.self, value: ChatScrollMetrics(origin: reader.frame(in: .named("transcript")).minY, height: reader.size.height)) })
                 }
@@ -259,12 +260,12 @@ private struct ChatConversationView: View {
     private var takeover: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Waiting for you", systemImage: "hand.raised").font(.headline)
-            Text(agent.status == "Waiting for you" ? "Complete the requested step in the browser, then continue. Agora will read the updated page before acting." : agent.status).font(.callout).foregroundStyle(.secondary)
+            Text(agent.status == "Waiting for you" ? "Finish in the browser, then continue." : agent.status).font(.callout).foregroundStyle(.secondary)
             HStack {
                 if browser.state.isOpen { Button("Open Browser") { composing.wrappedValue = false; browser.setPresentationFromUser(.expanded) }.buttonStyle(.bordered) }
                 Button("Continue") { agent.resume() }.buttonStyle(.borderedProminent)
             }.controlSize(.large)
-        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(.teal.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(Color.agoraAccent.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
     }
 }
 private struct ChatBottomKey: PreferenceKey { static var defaultValue = ChatScrollMetrics(); static func reduce(value: inout ChatScrollMetrics, nextValue: () -> ChatScrollMetrics) { value = nextValue() } }

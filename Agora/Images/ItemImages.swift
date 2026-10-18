@@ -236,15 +236,17 @@ struct ItemThumbnail: View {
     let id: UUID
     let name: String
     var category: String? = nil
-    var size: CGFloat = 52
+    var size: CGFloat = 76
     @Environment(\.itemImages) private var store
     var body: some View {
         let ref = ItemImageReference(kind: kind, id: id, name: name, category: category)
         if let store {
             StoredItemThumbnail(store: store, ref: ref, size: size)
         } else {
-            Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary)
-                .frame(width: size, height: size).accessibilityLabel("Exact image unavailable for \(name)")
+            Text("—").font(.title3).foregroundStyle(.secondary)
+                .frame(width: size, height: size)
+                .background(Color.agoraSurface, in: Circle())
+                .accessibilityLabel("Image unavailable for \(name)")
         }
     }
 }
@@ -257,18 +259,15 @@ private struct StoredItemThumbnail: View {
     var body: some View {
         Group {
             if let asset = store.descriptors[ref]?.displayAsset, let image = store.pictures[asset.id] {
-                Image(uiImage: image).resizable().scaledToFit()
+                Image(uiImage: image).resizable().scaledToFit().padding(size * 0.08)
             } else {
-                VStack(spacing: 3) {
-                    Image(systemName: "photo.badge.exclamationmark").font(.system(size: max(16, size / 3)))
-                    if size >= 100 { Text(store.loadMessages[ref] == nil ? (store.descriptors[ref]?.imageLabel ?? "Finding product image") : "Images unavailable")
-                        .font(.caption).multilineTextAlignment(.center) }
-                }.foregroundStyle(.secondary)
+                Text("—").font(.title3).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center).padding(8)
             }
         }
         .frame(width: size, height: size)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(Color.agoraSurface, in: Circle())
+        .clipShape(Circle())
         .accessibilityLabel("\(ref.name): \(store.loadMessages[ref] ?? store.descriptors[ref]?.imageLabel ?? "Exact image unavailable")")
         .task(id: "\(ref)-\(store.context)-\(store.revision)-\(phase == .active)") {
             if phase == .active { await store.observe(ref) }

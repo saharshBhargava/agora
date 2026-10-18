@@ -8,7 +8,7 @@ struct TripsView: View {
     @State private var createdListID: UUID?
 
     var body: some View {
-        List {
+        AgoraList {
             Section {
                 Text("Restock lists update automatically. Calendar trips need your approval.")
                     .foregroundStyle(.secondary)
@@ -54,7 +54,9 @@ struct TripsView: View {
                             if let start = proposal.start, let end = proposal.end {
                                 TripTimeLabel(start: start, end: end, timezone: proposal.timezone)
                             }
-                            Text(proposal.explanation).font(.subheadline).foregroundStyle(.secondary)
+                            DisclosureGroup("Trip details") {
+                                Text(proposal.explanation).font(.subheadline).foregroundStyle(.secondary)
+                            }
                             if let warning = proposal.warning {
                                 Label(warning, systemImage: "exclamationmark.triangle")
                                     .font(.subheadline).foregroundStyle(.orange)
@@ -79,7 +81,7 @@ struct TripsView: View {
 
             Section("Shopping lists") {
                 if store.lists.isEmpty && !store.loading {
-                    Text("Create a list and add what you need, or find shopping times to generate lists from upcoming run-outs.")
+                    Text("No shopping lists yet.")
                         .foregroundStyle(.secondary)
                 }
                 ForEach(store.lists) { list in
@@ -99,10 +101,11 @@ struct TripsView: View {
                 }
             }
         }
-        .navigationTitle("Shopping lists & trips")
+        .agoraSurface()
+        .navigationTitle("Shopping")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("New list", systemImage: "plus") { creatingList = true }
+                Button("New list") { creatingList = true }
                     .disabled(!store.canUse || store.busy || store.loading)
                     .accessibilityIdentifier("lists.create")
             }
@@ -177,11 +180,11 @@ struct TripCreateListSheet: View {
                     }
                     if merchant != nil { Button("Remove store") { merchant = nil } }
                 }
-                Section { Text("Add items after creating your list. You can use it without adding a Calendar trip.").foregroundStyle(.secondary) }
                 if let error { Text(error).foregroundStyle(.red) }
                 if saving { ProgressView("Creating list…") }
             }
             .disabled(saving)
+            .agoraSurface()
             .navigationTitle("New shopping list")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -237,6 +240,7 @@ struct TripAddItemSheet: View {
                 if saving { ProgressView("Adding item…") }
             }
             .disabled(saving)
+            .agoraSurface()
             .navigationTitle("Add item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -286,7 +290,7 @@ private struct TripReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
-            List {
+            AgoraList {
                 Section("Calendar event") {
                     Text(proposal.title).font(.headline)
                     if let start = proposal.start, let end = proposal.end {
@@ -307,6 +311,7 @@ private struct TripReviewSheet: View {
                     Text("Your availability is checked again before saving. No invitations are sent.")
                 }
             }
+            .agoraSurface()
             .navigationTitle("Review trip")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
@@ -362,7 +367,7 @@ private struct TripRecordRow: View {
         .padding(.vertical, 6)
         .sheet(isPresented: $reviewingSavedTrip) {
             NavigationStack {
-                List {
+                AgoraList {
                     Section("Saved Calendar request") {
                         Text(trip.title).font(.headline)
                         if let start = trip.startDate, let end = trip.endDate {
@@ -385,6 +390,7 @@ private struct TripRecordRow: View {
                         Text("Finish checks for this exact event first. If it has not been saved, checks your availability and submits the same saved request. Release only if the slot has passed or Calendar has no matching event.")
                     }
                 }
+                .agoraSurface()
                 .navigationTitle("Review saved trip")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { reviewingSavedTrip = false } } }
@@ -400,16 +406,16 @@ struct TripListView: View {
     @State private var addingItem = false
     private var list: TripList? { store.lists.first { $0.id == listID } }
     var body: some View {
-        List {
+        AgoraList {
             if let list {
                 if let merchant = list.merchant { Text(merchant.label).foregroundStyle(.secondary) }
                 if list.status == "open" {
-                    Button("Add item", systemImage: "plus") { addingItem = true }
+                    Button("Add item") { addingItem = true }
                         .disabled(store.busy || store.loading)
                         .accessibilityIdentifier("lists.addItem")
                 }
                 if list.items.isEmpty {
-                    Text("Your list is empty. Add your first item to get started.").foregroundStyle(.secondary)
+                    Text("No items yet.").foregroundStyle(.secondary)
                 }
                 Section {
                     ForEach(list.items) { item in
@@ -417,7 +423,7 @@ struct TripListView: View {
                             Button {
                                 Task { await store.setChecked(listID: list.id, itemID: item.id, checked: !item.checked) }
                             } label: {
-                                Image(systemName: item.checked ? "checkmark.circle.fill" : "circle").font(.title2)
+                                Image(systemName: item.checked ? "checkmark.circle.fill" : "circle").font(.title2).frame(minWidth: 44, minHeight: 44)
                             }
                             .buttonStyle(.borderless)
                             .disabled(store.busy || list.status != "open")
@@ -436,13 +442,14 @@ struct TripListView: View {
                     }
                 } footer: {
                     Text(list.status == "open"
-                         ? "Checking an item updates this list. Update inventory quantities after bringing purchases home."
+                         ? "Update inventory after bringing purchases home."
                          : "This list is closed.")
                 }
             }
             if let error = store.error { Text(error).foregroundStyle(.red) }
             if let notice = store.notice { Text(notice).foregroundStyle(.secondary) }
         }
+        .agoraSurface()
         .navigationTitle(list?.name ?? "Shopping list")
         .sheet(isPresented: $addingItem) { TripAddItemSheet(store: store, listID: listID) }
         .onChange(of: store.context) { _, _ in addingItem = false }

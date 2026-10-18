@@ -10,12 +10,14 @@ struct CaptionPanel: View {
     @Environment(\.scenePhase) private var scenePhase
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("Generate caption", systemImage: "sparkles").font(.title3.bold())
+            Text("Caption").font(.title3.bold())
             Picker("Style", selection: $controller.style) {
                 ForEach(CaptionStyle.allCases) { style in Text(style.title).tag(style) }
             }.disabled(controller.busy)
-            TextField("Optional instructions, e.g. focus on the clothing", text: $controller.instruction, axis: .vertical)
-                .lineLimit(2...4).textFieldStyle(.roundedBorder).disabled(controller.busy)
+            DisclosureGroup("Instructions") {
+                TextField("Optional instructions", text: $controller.instruction, axis: .vertical)
+                    .lineLimit(2...4).disabled(controller.busy)
+            }
             Text(controller.busy ? controller.modelDescription : settings.featureDescription(.captions))
                 .font(.caption).foregroundStyle(.secondary)
             Text(controller.busy ? controller.mediaDisclosure : settings.mediaDisclosure(for: .captions, kind: item.kind))
@@ -62,7 +64,9 @@ struct CaptionPanel: View {
             if let message = controller.message { Text(message).font(.footnote).foregroundStyle(.secondary) }
             if let notice = controller.cleanupNotice { Text(notice).font(.footnote).foregroundStyle(.secondary) }
         }
-        .padding()
+        .padding(20)
+        .labelStyle(.titleOnly)
+        .tint(Color.agoraAccent)
         .onChange(of: scenePhase) { _, phase in if phase == .background { controller.cancel() } }
         .confirmationDialog("Replace your edited draft with a new caption?", isPresented: $replacing, titleVisibility: .visible) {
             Button("Generate new caption") { generate() }

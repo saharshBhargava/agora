@@ -43,11 +43,6 @@ struct CaptureView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Add items to your inventory").font(.largeTitle.bold())
-                        Text("Scan, review, and save. You choose what gets added.")
-                            .font(.body).foregroundStyle(.secondary)
-                    }
                     scanActions
                     if library.busy {
                         ProgressView("Preparing your scans…").frame(maxWidth: .infinity)
@@ -58,9 +53,10 @@ struct CaptureView: View {
                 .frame(maxWidth: 700, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background(Color.agoraBackground)
+            .agoraSurface()
             .navigationTitle("Capture")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
             .task { await library.load() }
             .fullScreenCover(item: $camera, onDismiss: {
                 cameraDismissed = true
@@ -129,34 +125,23 @@ struct CaptureView: View {
 
     private var scanActions: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("Keep labels visible and include the whole item.", systemImage: "viewfinder")
-                .font(.subheadline).foregroundStyle(.secondary)
             Button { Task { await openCamera(.photo) } } label: {
-                Label("Scan items", systemImage: "camera.viewfinder")
-                    .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
+                Label("Take Image", systemImage: "camera.fill")
+                    .labelStyle(.titleAndIcon)
             }
-            .buttonStyle(.borderedProminent).controlSize(.large)
+            .buttonStyle(AgoraPrimaryButtonStyle())
             .accessibilityIdentifier("capture.photo")
+            Button { Task { await openCamera(.video) } } label: {
+                Label("Take Video", systemImage: "video.fill")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(AgoraPrimaryButtonStyle())
+            .accessibilityIdentifier("capture.video")
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 16) { importActions }
                 VStack(alignment: .leading, spacing: 12) { importActions }
             }
-            Divider()
-            Button { Task { await openCamera(.video) } } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "video").font(.title2)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Scan a shelf").font(.headline)
-                        Text("Record a short video. Pan slowly so labels stay clear.")
-                            .font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
-                }
-                .padding(.vertical, 8).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).accessibilityIdentifier("capture.video")
-            Text("Photos and videos are identified automatically. Review the results before saving. PDFs are kept for viewing only.")
+            Text("Review items before saving. PDFs are view-only.")
                 .font(.footnote).foregroundStyle(.secondary)
         }
         .disabled(disabled)
@@ -184,7 +169,7 @@ struct CaptureView: View {
                 }
             }
             if library.items.isEmpty {
-                Label("Your scans will appear here. You can return to review them anytime.", systemImage: "clock")
+                Label("No scans yet.", systemImage: "clock")
                     .font(.subheadline).foregroundStyle(.secondary).padding(.vertical, 8)
             } else {
                 ForEach(showingAll ? library.items : Array(library.items.prefix(3))) { item in
@@ -216,8 +201,8 @@ struct CaptureView: View {
         requestingPermission = true; needsSettings = false
         let context = inventory.context
         defer { requestingPermission = false }
-        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-            library.error = "This device does not support camera capture. Choose photos or import a file instead."
+        guard CameraPicker.availableCamera(video: mode == .video) != nil else {
+            library.error = CaptureFailure.cameraUnavailable.localizedDescription
             return
         }
         guard await AVCaptureDevice.requestAccess(for: .video) else {
@@ -296,8 +281,8 @@ private struct RecentScanRow: View {
             ZStack {
                 Color.secondary.opacity(0.08)
                 if let thumbnail { Image(uiImage: thumbnail).resizable().scaledToFill() }
-                else { Image(systemName: item.symbol).foregroundStyle(.teal) }
-                if item.kind == .video { Image(systemName: "play.circle.fill").foregroundStyle(.white).shadow(radius: 2) }
+                else { Text(item.kind == .document ? "PDF" : "Scan").font(.caption).foregroundStyle(.secondary) }
+                if item.kind == .video { Text("Video").font(.caption2).padding(4).background(.ultraThinMaterial, in: Capsule()) }
             }
             .frame(width: 64, height: 64).clipped().clipShape(RoundedRectangle(cornerRadius: 12))
             .accessibilityHidden(true)
@@ -357,7 +342,8 @@ private struct MediaPreview: View {
                     }
                 }
             }
-            .navigationTitle(item.title).navigationBarTitleDisplayMode(.inline)
+            .agoraSurface()
+            .navigationTitle(item.title).navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") {

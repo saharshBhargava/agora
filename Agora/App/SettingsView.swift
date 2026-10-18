@@ -6,52 +6,46 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AgoraList {
                 NavigationLink {
                     if workspace.calendar.isDemoAccount {
                         Form { Section("Built-in integrations") {
                             Text("Chat, captions and recognition use sample responses. Calendar events stay inside the sample account. No external API keys are needed.")
                             Text("Sign out and connect your own Google account to configure real providers.").foregroundStyle(.secondary)
-                        } }.navigationTitle("Models")
+                        } }.agoraSurface()
+                        .navigationTitle("Models")
                     } else { ModelSettingsView(settings: settings) }
                 } label: {
-                    settingsRow("Models", detail: "Connections and feature assignments", symbol: "cpu")
+                    settingsRow("Models")
                 }
                 NavigationLink {
                     PreferencesSettingsView(settings: settings, workspace: workspace)
                 } label: {
-                    settingsRow("Preferences", detail: "Browser preferences", symbol: "slider.horizontal.3")
+                    settingsRow("Preferences")
                 }
                 NavigationLink {
                     ConnectedAccountsSettingsView(settings: settings, workspace: workspace)
                 } label: {
-                    settingsRow("Connected accounts", detail: workspace.calendar.isDemoAccount ? "Built-in integrations" : "Google Calendar and Gemini", symbol: "person.crop.circle.badge.checkmark")
+                    settingsRow("Connected accounts")
                 }
                 NavigationLink {
                     AutonomySettingsView()
                 } label: {
-                    settingsRow("Autonomy settings", detail: "How your assistant acts on your behalf", symbol: "hand.raised")
+                    settingsRow("Autonomy settings")
                 }
                 NavigationLink {
                     SpendingLimitsSettingsView()
                 } label: {
-                    settingsRow("Spending limits", detail: "Purchase limits and availability", symbol: "creditcard")
+                    settingsRow("Spending limits")
                 }
             }
+            .agoraSurface()
             .navigationTitle("Settings")
         }
     }
 
-    private func settingsRow(_ title: String, detail: String, symbol: String) -> some View {
-        Label {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
-            }
-            .padding(.vertical, 6)
-        } icon: {
-            Image(systemName: symbol).foregroundStyle(.teal)
-        }
+    private func settingsRow(_ title: String) -> some View {
+        Text(title).padding(.vertical, 12)
     }
 }
 
@@ -65,12 +59,13 @@ private struct PreferencesSettingsView: View {
         Form {
             Section("Browser access") {
                 Label("All website domains allowed", systemImage: "globe")
-                Text("Browse HTTPS websites without adding domains. Redirects to other HTTPS sites are allowed. Local hostnames, IP addresses and URLs containing credentials remain unsupported.").font(.footnote).foregroundStyle(.secondary)
-                Text("Use Private mode before entering sensitive information. Login and payment detection also blocks model observations. Website data persists between chats; chat text is kept only in memory.").font(.footnote).foregroundStyle(.secondary)
+                Text("HTTPS websites are supported. Local addresses and URLs containing credentials are blocked.").font(.footnote).foregroundStyle(.secondary)
+                Text("Private mode hides pages from the model. Website data stays between chats; signing out clears chat history.").font(.footnote).foregroundStyle(.secondary)
                 Button("Clear cookies and website data", role: .destructive) { clearing = true }
                 if !message.isEmpty { Text(message).font(.footnote).foregroundStyle(.secondary) }
             }
         }
+        .agoraSurface()
         .navigationTitle("Preferences")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Clear all browser cookies and website data?", isPresented: $clearing, titleVisibility: .visible) {
@@ -106,7 +101,7 @@ private struct ConnectedAccountsSettingsView: View {
                         try settings.saveKey(key)
                         workspace.agent.stop()
                         key = ""; editingKey = false; keyError = false
-                        keyMessage = "Saved and read back successfully. The field is cleared to keep your key private. You can now return to Chat."
+                        keyMessage = "API key saved."
                     } catch { keyError = true; keyMessage = error.localizedDescription }
                 }.disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("saveApiKey")
@@ -127,6 +122,7 @@ private struct ConnectedAccountsSettingsView: View {
             }
         }
         }
+        .agoraSurface()
         .navigationTitle("Connected accounts")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -137,17 +133,16 @@ private struct AutonomySettingsView: View {
         Form {
             Section("Current behavior") {
                 Label("Ask before acting", systemImage: "hand.raised.fill")
-                Text("Your assistant asks for approval before clicking, typing, submitting forms, or closing the browser. Each approval applies to one action.")
+                Text("Clicks, typing, submissions and closing the browser require approval for each action.")
                     .foregroundStyle(.secondary)
-                Text("Opening pages, reading pages, and scrolling can happen automatically during a task.")
+                Text("Opening, reading and scrolling pages can happen automatically.")
                     .foregroundStyle(.secondary)
             }
             Section("Your control") {
-                Text("Use Stop in Chat to end a task. Interacting with the browser pauses the assistant until you resume it.")
-                Text("Additional autonomy modes are not available yet.")
-                    .foregroundStyle(.secondary)
+                Text("Stop ends a task. Using the browser pauses the assistant.")
             }
         }
+        .agoraSurface()
         .navigationTitle("Autonomy settings")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -167,6 +162,7 @@ private struct SpendingLimitsSettingsView: View {
                 Link("Manage usage in Google AI Studio", destination: URL(string: "https://aistudio.google.com/")!)
             }
         }
+        .agoraSurface()
         .navigationTitle("Spending limits")
         .navigationBarTitleDisplayMode(.inline)
     }

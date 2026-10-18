@@ -40,7 +40,29 @@ struct ChatComposer: View {
             if let error = error ?? dictation.error {
                 HStack(alignment: .top) { Text(error).font(.caption).foregroundStyle(.red); Spacer(); Button("Dismiss") { self.error = nil; dictation.error = nil }.font(.caption).frame(minHeight: 44) }
             }
-            if dictation.recording { Label("Listening · tap the microphone to finish", systemImage: "waveform").font(.caption).foregroundStyle(.teal) }
+            if dictation.recording { Label("Listening · tap the microphone to finish", systemImage: "waveform").font(.caption).foregroundStyle(Color.agoraAccent) }
+            if chat.draft.isEmpty, chat.attachments.isEmpty, !agent.running, !agent.paused, !dictation.recording {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(["What’s running low?", "Show my shopping lists", "Add something to my wishlist", "Plan a shopping trip"], id: \.self) { suggestion in
+                            Button {
+                                chat.draft = suggestion
+                                composing.wrappedValue = true
+                            } label: {
+                                Text(suggestion)
+                                    .font(.subheadline.weight(.medium))
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .padding(.horizontal, 14)
+                                    .frame(minHeight: 44)
+                                    .foregroundStyle(Color.agoraAccent)
+                                    .background(Color.agoraAccent.opacity(0.08), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Fills the message field for you to edit and send")
+                        }
+                    }
+                }
+            }
             HStack(alignment: .bottom, spacing: 0) {
                 Menu {
                     Button("Photo library", systemImage: "photo") { photoPicker = true }
@@ -57,13 +79,13 @@ struct ChatComposer: View {
                         let prefix = chat.draft, id = chat.id
                         Task { await dictation.start { value in guard chat.id == id else { return }; chat.draft = prefix + (prefix.isEmpty ? "" : " ") + value } }
                     }
-                } label: { Image(systemName: dictation.recording ? "mic.fill" : "mic").font(.system(size: 19)).frame(width: 44, height: 44).foregroundStyle(dictation.recording ? .teal : .secondary) }.accessibilityLabel(dictation.recording ? "Stop dictation" : "Dictate message")
+                } label: { Image(systemName: dictation.recording ? "mic.fill" : "mic").font(.system(size: 19)).frame(width: 44, height: 44).foregroundStyle(dictation.recording ? Color.agoraAccent : .secondary) }.accessibilityLabel(dictation.recording ? "Stop dictation" : "Dictate message")
                 if agent.running {
-                    Button { agent.stop(); dictation.stop() } label: { Label("Stop", systemImage: "stop.fill").font(.subheadline.bold()).padding(.horizontal, 12).frame(height: 44).background(.primary, in: Capsule()).foregroundStyle(Color(.systemBackground)) }.accessibilityLabel("Stop response")
+                    Button { agent.stop(); dictation.stop() } label: { Label("Stop", systemImage: "stop.fill").font(.subheadline.bold()).padding(.horizontal, 12).frame(height: 44).background(.primary, in: Capsule()).foregroundStyle(Color.agoraBackground) }.accessibilityLabel("Stop response")
                 } else {
-                    Button { send() } label: { Image(systemName: "arrow.up").font(.system(size: 18, weight: .bold)).frame(width: 32, height: 32).foregroundStyle(.white).background(canSend ? Color.teal : Color.secondary.opacity(0.3), in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle()) }.disabled(!canSend).accessibilityLabel("Send message")
+                    Button { send() } label: { Image(systemName: "arrow.up").font(.system(size: 18, weight: .bold)).frame(width: 32, height: 32).foregroundStyle(.white).background(canSend ? Color.agoraAction : Color.secondary.opacity(0.3), in: Circle()).frame(width: 44, height: 44).contentShape(Rectangle()) }.disabled(!canSend).accessibilityLabel("Send message")
                 }
-            }.padding(.horizontal, 4).padding(.vertical, 2).background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24)).overlay(RoundedRectangle(cornerRadius: 24).stroke(.primary.opacity(0.08)))
+            }.padding(.horizontal, 4).padding(.vertical, 2).background(Color.agoraSurface, in: RoundedRectangle(cornerRadius: 24)).overlay(RoundedRectangle(cornerRadius: 24).stroke(.primary.opacity(0.08)))
             if chat.draft.utf8.count > 15000 {
                 Text("\(chat.draft.utf8.count)/16000").font(.caption2).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -117,7 +139,7 @@ struct ChatHistorySheet: View {
     @State private var name = ""
     var body: some View {
         NavigationStack {
-            List {
+            AgoraList {
                 Button("New chat", systemImage: "square.and.pencil") { agent.newChat(); dismiss() }.padding(.vertical, 8)
                 Section {
                     Toggle("Show archived", isOn: $archived)
@@ -129,6 +151,7 @@ struct ChatHistorySheet: View {
                 Button("Settings", systemImage: "gearshape", action: showSettings)
             }
             .searchable(text: $search, prompt: "Search conversations")
+            .agoraSurface()
             .navigationTitle("Your chats")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .alert("Rename chat", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) { TextField("Title", text: $name); Button("Save") { if !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { renaming?.title = String(name.prefix(100)) }; renaming = nil }; Button("Cancel", role: .cancel) { renaming = nil } }
@@ -148,11 +171,11 @@ private struct ChatHistoryRow: View {
     var body: some View {
         if chat.archived == showArchived && (search.isEmpty || chat.title.localizedCaseInsensitiveContains(search) || chat.messages.contains(where: { $0.text.localizedCaseInsensitiveContains(search) })) {
             Button(action: select) {
-                HStack { VStack(alignment: .leading, spacing: 5) { Text(chat.title).font(.body.weight(.medium)).foregroundStyle(.primary).lineLimit(2); Text(chat.draft.isEmpty ? chat.messages.last(where: { !$0.text.isEmpty })?.text ?? "Start a conversation" : "Draft: \(chat.draft)").font(.caption).foregroundStyle(.secondary).lineLimit(1) }; Spacer(); if selected { Image(systemName: "checkmark").foregroundStyle(.teal) } }.padding(.vertical, 8)
+                HStack { VStack(alignment: .leading, spacing: 5) { Text(chat.title).font(.body.weight(.medium)).foregroundStyle(.primary).lineLimit(2); Text(chat.draft.isEmpty ? chat.messages.last(where: { !$0.text.isEmpty })?.text ?? "Start a conversation" : "Draft: \(chat.draft)").font(.caption).foregroundStyle(.secondary).lineLimit(1) }; Spacer(); if selected { Image(systemName: "checkmark").foregroundStyle(Color.agoraAccent) } }.padding(.vertical, 8)
             }
             .buttonStyle(.plain)
             .contextMenu { Button("Rename", systemImage: "pencil", action: rename); Button(chat.archived ? "Unarchive" : "Archive", systemImage: "archivebox", action: archive); Button("Delete", systemImage: "trash", role: .destructive, action: delete) }
-            .swipeActions { Button("Delete", role: .destructive, action: delete); Button(chat.archived ? "Unarchive" : "Archive", action: archive).tint(.teal) }
+            .swipeActions { Button("Delete", role: .destructive, action: delete); Button(chat.archived ? "Unarchive" : "Archive", action: archive).tint(Color.agoraAccent) }
             .accessibilityAction(named: "Rename", rename).accessibilityAction(named: chat.archived ? "Unarchive" : "Archive", archive).accessibilityAction(named: "Delete", delete)
         }
     }

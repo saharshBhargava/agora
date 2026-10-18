@@ -34,7 +34,7 @@ struct BrowserChatApp: App {
                 .background { WatchRefresh(store: workspace.shopping.watches) }
             }
             .background { ItemImageSessionSync(store: workspace.images, inventory: workspace.inventory) }
-            .tint(.teal)
+            .tint(Color.agoraAccent)
             .sheet(isPresented: Binding(get: { push.openWatchID != nil && workspace.calendar.connected },
                                        set: { if !$0 { push.openWatchID = nil } })) {
                 if let id = push.openWatchID {

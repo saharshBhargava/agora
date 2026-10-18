@@ -1,5 +1,75 @@
 # Current state — mandatory read before resuming work
 
+## Native UI publication validation — October 18, 2026
+
+The pending visual refresh, camera startup fixes, chat suggestion pills, capture action icons/title case
+and compact tool-call spacing are collected together for main on top of `d6a74c7`. All **142 selected
+simulator tests passed**, covering the iOS CI suites plus `ChatInterfaceTests`. The updated Home capture
+was visually reviewed. Log/results: `/tmp/agora-main-ui-validation.log`,
+`/tmp/agora-main-ui-validation.xcresult`. This publishes native source, tests and documentation; an app
+rebuild/distribution is still required. Backend code, migrations and production data are unchanged.
+
+## Compact chat tool calls — local, October 18, 2026
+
+Consecutive tool-call messages use an 8-point gap instead of 24 points. Tool disclosures have reduced
+vertical padding and retain a minimum 44-point label height. Other message transitions retain their
+24-point spacing. All nine existing chat interface simulator tests passed; the standard chat capture
+was visually reviewed. Log/results: `/tmp/agora-chat-spacing.log`, `/tmp/agora-chat-spacing.xcresult`.
+Requires rebuilding the native app.
+
+## Chat suggestion pills — local, October 18, 2026
+
+The chat composer now offers four horizontally scrolling suggestion pills above the message field:
+running-low items, shopping lists, wishlist additions and shopping trips. Labels are five words or fewer.
+Selecting a pill fills and focuses the draft for review. Pills hide whenever the draft contains text,
+attachments are present, dictation is active or the agent is running/paused; they return when idle and empty.
+
+All nine existing `ChatInterfaceTests` passed on the simulator, including the chat render checks.
+Standard, accessibility-size and populated-draft captures were visually reviewed. Log/results:
+`/tmp/agora-chat-pills.log`, `/tmp/agora-chat-pills.xcresult`. Requires rebuilding the native app.
+
+## Video camera startup — local fix, October 18, 2026
+
+Capture now has separate solid **Take Image** and **Take Video** buttons, with import options below.
+These actions use camera/video icons; Home's **Scan Your Items** action uses a viewfinder icon.
+Home and Lists section headers give **See all** the same 20-point inset as the left edge.
+Camera presentation checks the requested media type
+and rear/front capture modes before permissions and again before constructing the native picker. Missing
+capabilities return a normal capture error instead of setting UIKit properties that throw exceptions.
+The picker selects the dedicated photo/video interface through `mediaTypes`, without an additional
+`cameraCaptureMode` transition during startup; video settings apply only to video capture.
+
+The reported failure occurs immediately on tapping video. Camera/microphone purpose strings were already
+bundled. No matching device crash report was available, and the paired iPhone was unavailable, so this
+startup correction is not yet confirmed against the original physical-device crash. Rebuild the app and
+verify opening, recording, retaking, cancelling and accepting a video on the device.
+Simulator validation passed **47 capture, inventory and caption tests**, including unavailable-camera
+handling, bundled camera/microphone purpose strings and temporary-video ownership through review.
+Results: `/tmp/agora-video-fix.log` and `/tmp/agora-video-fix.xcresult`.
+
+## Consistent native UI — locally verified October 18, 2026
+
+The native app now shares Home's cerulean accent, solid primary actions, quiet backgrounds and circular
+item photography across inventory, wishlist/watches, shopping lists, trips, capture/review, chat,
+onboarding and settings. Item rows and detail images are larger; optional fields, filters, history and
+explanations use native disclosures or menus. Repeated help text and decorative boxes/icons were reduced;
+no new icons or gradients were added. Existing actions, model provenance, demo/media disclosures,
+forecast uncertainty, approvals and recovery controls remain available.
+
+`AgoraStyle.swift` supplies shared SwiftUI styles and the asset catalog supplies light/dark accents.
+Home's existing carousel sizing is preserved. Accessibility layouts stack crowded controls; lists have
+a bounded width on wider screens. New isolated `BrandInterfaceTests` render 15 destinations in light,
+dark, accessibility text and wide layouts (60 captures), with fixture-loaded item images, and run in iOS CI.
+Captures require visual review; they are not pixel-diff assertions.
+
+Validation: simulator builds passed, followed by **141 selected simulator tests with zero failures**.
+After final layout refinements, **100 focused tests passed** again. Representative captures were visually
+reviewed across those layouts, plus scan/review and chat/approval screens. Logs/results:
+`/tmp/agora-brand-validation.log`, `/tmp/agora-brand-validation.xcresult`, `/tmp/agora-brand-final.log`,
+`/tmp/agora-brand-final.xcresult`; screenshots are copied to ignored `build/brand-ui/`.
+This is locally verified native source on top of `b6683c9`; it requires rebuilding/distributing the app.
+No backend deployment or production data change is part of this UI work.
+
 ## Automatic background replenishment — deployed October 18, 2026
 
 The worker now creates and maintains store-grouped lists after inventory/forecast updates, at startup,

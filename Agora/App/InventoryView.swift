@@ -30,11 +30,12 @@ struct ListsView: View {
                 .frame(maxWidth: 900, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background(Color.agoraBackground)
+            .agoraSurface()
             .navigationTitle("Lists")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button("New list", systemImage: "plus") { creatingList = true }
+                    Button("New list") { creatingList = true }
                         .disabled(!trips.canUse || trips.busy || trips.loading)
                         .accessibilityIdentifier("lists.create")
                 }
@@ -59,11 +60,10 @@ struct ListsView: View {
             sectionHeader("Inventory", linkLabel: "View inventory", identifier: "lists.inventory") {
                 InventoryListView(store: inventory)
             }
-            message("Out of stock and running low first")
             if inventory.loading && inventory.activeItems.isEmpty {
                 ProgressView("Loading inventory…").padding(.horizontal, 20)
             } else if inventory.activeItems.isEmpty && inventory.error == nil {
-                message("Add your essentials to see what you have and what needs restocking.")
+                message("No inventory yet.")
             } else {
                 ItemCarousel {
                     ForEach(inventory.activeItems.sorted(by: inventory.restockOrder)) { item in
@@ -98,7 +98,7 @@ struct ListsView: View {
             }
             ForEach(TripListStoreGroup.group(trips.lists)) { group in
                 VStack(alignment: .leading, spacing: 16) {
-                    Label(group.name, systemImage: "storefront")
+                    Text(group.name)
                         .font(.headline).foregroundStyle(.secondary)
                         .padding(.horizontal, 20)
                         .accessibilityAddTraits(.isHeader)
@@ -139,7 +139,7 @@ struct ListsView: View {
                                     }
                                 }
                             } else {
-                                message(list.items.isEmpty ? "Open this list to add items." : "Everything is checked off.")
+                                message(list.items.isEmpty ? "No items yet." : "Everything is checked off.")
                             }
                         }
                     }
@@ -160,11 +160,11 @@ struct ListsView: View {
             if shopping.loading && items.isEmpty {
                 ProgressView("Loading items…").padding(.horizontal, 20)
             } else if items.isEmpty && shopping.error == nil {
-                message(suggestions ? "Ideas and essentials to replenish will appear here." : "Save products you want to keep an eye on their prices.")
+                message(suggestions ? "No suggestions right now." : "Your watch list is empty.")
             } else {
                 ItemCarousel {
                     ForEach(items) { item in
-                        ItemCarouselItem(title: item.title, detail: suggestions ? item.rationale : item.targetLabel.map { "Target \($0)" }) { size in
+                        ItemCarouselItem(title: item.title, detail: suggestions ? item.category : item.targetLabel.map { "Target \($0)" }) { size in
                             ItemThumbnail(kind: "wishlist", id: item.id, name: item.title, category: item.category, size: size)
                         }
                     }
@@ -181,13 +181,13 @@ struct ListsView: View {
                 .accessibilityAddTraits(.isHeader)
                 .frame(maxWidth: .infinity, alignment: .leading)
             NavigationLink(destination: destination) {
-                Image(systemName: "chevron.right").font(.subheadline.weight(.semibold))
-                    .frame(width: 44, height: 44).contentShape(Rectangle())
+                Text("See all").font(.subheadline)
+                    .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
             }
             .accessibilityLabel(linkLabel)
             .accessibilityIdentifier(identifier)
         }
-        .padding(.leading, 20).padding(.trailing, 8)
+        .padding(.horizontal, 20)
     }
 
     private func message(_ text: String) -> some View {
@@ -219,7 +219,7 @@ struct InventoryListView: View {
     }
 
     var body: some View {
-        List {
+        AgoraList {
             if store.households.count > 1 {
                 Picker("Household", selection: Binding(get: { store.householdID }, set: { id in
                     if let id { Task { await store.selectHousehold(id) } }
@@ -228,11 +228,13 @@ struct InventoryListView: View {
                 }
             }
             Section {
-                Picker("Location", selection: $locationID) {
-                    Text("All locations").tag(UUID?.none)
-                    ForEach(store.locations) { Text($0.name).tag(Optional($0.id)) }
+                DisclosureGroup("Filter inventory") {
+                    Picker("Location", selection: $locationID) {
+                        Text("All locations").tag(UUID?.none)
+                        ForEach(store.locations) { Text($0.name).tag(Optional($0.id)) }
+                    }
+                    Toggle("Show archived items", isOn: $showArchived)
                 }
-                Toggle("Show archived items", isOn: $showArchived)
             }
             if let error = store.error {
                 Section {
@@ -244,8 +246,8 @@ struct InventoryListView: View {
                 if store.loading && store.items.isEmpty {
                     ProgressView("Loading inventory…")
                 } else if visibleItems.isEmpty && store.error == nil {
-                    ContentUnavailableView(showArchived ? "No archived items" : "No items found", systemImage: "shippingbox",
-                                           description: Text(search.isEmpty && locationID == nil ? "Add an item to start tracking your essentials." : "Try another search or location."))
+                    AgoraEmptyState(title: showArchived ? "No archived items" : "No items found",
+                                    detail: search.isEmpty && locationID == nil ? nil : "Try another search or location.")
                     if !showArchived {
                         Button("Add item") { adding = true }.disabled(store.householdID == nil)
                     }
@@ -264,14 +266,15 @@ struct InventoryListView: View {
             }
         }
         .searchable(text: $search, prompt: "Search inventory")
-        .navigationTitle("Inventory list")
+        .agoraSurface()
+        .navigationTitle("Inventory")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button { managingLocations = true } label: { Label("Locations", systemImage: "square.grid.2x2") }
+                Button { managingLocations = true } label: { Text("Locations") }
                     .disabled(store.householdID == nil)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { adding = true } label: { Label("Add item", systemImage: "plus") }
+                Button { adding = true } label: { Text("Add") }
                     .disabled(store.householdID == nil)
                     .accessibilityIdentifier("inventory.add")
             }
@@ -290,20 +293,17 @@ private struct InventoryRowView: View {
     var forecast: InventoryForecast? = nil
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName, category: item.category)
+            ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName, category: item.category, size: 76)
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.displayName).font(.headline)
+                Text(item.quantityLabel).font(.subheadline).foregroundStyle(.secondary)
                 if let location { Text(location).font(.caption).foregroundStyle(.secondary) }
-            }
-            Spacer(minLength: 0)
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(item.quantityLabel).font(.subheadline)
                 if item.status == "archived" { Text("Archived").font(.caption).foregroundStyle(.secondary) }
                 else if item.quantity == 0 { Text("Out of stock").font(.caption).foregroundStyle(.red) }
                 else if let forecast, forecast.runsOutSoon() { Text(forecast.summary()).font(.caption).foregroundStyle(.orange) }
                 else if item.isRunningLow { Text("Running low").font(.caption).foregroundStyle(.orange) }
-            }.multilineTextAlignment(.trailing)
-        }.padding(.vertical, 4)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(.vertical, 8)
     }
 }
 
@@ -329,75 +329,88 @@ struct InventoryDetailView: View {
     }
 
     var body: some View {
-        List {
+        AgoraList {
             if let item {
                 Section {
-                    InventoryRowView(item: item, location: store.locations.first { $0.id == item.locationId }?.name)
-                    if let category = item.category { LabeledContent("Category", value: category) }
-                    if let level = item.parLevel { LabeledContent("Restock below", value: "\(level.formatted()) \(item.unit)") }
-                    if let date = item.observedAt {
-                        LabeledContent("Last observed") { Text(date, format: .dateTime.month().day().hour().minute()) }
-                    }
-                    if let source = item.source { LabeledContent("Source", value: source.capitalized) }
+                    VStack(spacing: 16) {
+                        ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName,
+                                      category: item.category, size: 180)
+                        Text(item.displayName).font(.title2.weight(.semibold)).multilineTextAlignment(.center)
+                        Text(item.quantityLabel).foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity).padding(.vertical, 16)
                     Button("Update quantity") { changingQuantity = true }
                         .accessibilityIdentifier("inventory.updateQuantity")
+                    DisclosureGroup("Item details") {
+                        if let category = item.category { LabeledContent("Category", value: category) }
+                        if let level = item.parLevel { LabeledContent("Restock below", value: "\(level.formatted()) \(item.unit)") }
+                        if let date = item.observedAt {
+                            LabeledContent("Last observed") { Text(date, format: .dateTime.month().day().hour().minute()) }
+                        }
+                        if let source = item.source { LabeledContent("Source", value: source.capitalized) }
+                    }
                 }
                 Section("Run-out prediction") {
                     if let forecast = currentForecast {
                         Text(forecast.summary()).font(.headline)
                         Text(forecast.evidenceLabel).font(.caption).foregroundStyle(.secondary)
-                        if let date = forecast.runoutAt {
-                            LabeledContent("Estimated run-out") { Text(date, format: .dateTime.month().day()) }
-                        }
-                        if let low = forecast.runoutLo, let high = forecast.runoutHi, low < high {
-                            LabeledContent("Estimated range") {
-                                Text("\(low.formatted(date: .abbreviated, time: .omitted)) – \(high.formatted(date: .abbreviated, time: .omitted))")
+                        DisclosureGroup("Prediction details") {
+                            if let date = forecast.runoutAt {
+                                LabeledContent("Estimated run-out") { Text(date, format: .dateTime.month().day()) }
                             }
+                            if let low = forecast.runoutLo, let high = forecast.runoutHi, low < high {
+                                LabeledContent("Estimated range") {
+                                    Text("\(low.formatted(date: .abbreviated, time: .omitted)) – \(high.formatted(date: .abbreviated, time: .omitted))")
+                                }
+                            }
+                            if let rate = forecast.ratePerDay {
+                                LabeledContent("Estimated daily use", value: "\(rate.formatted(.number.precision(.fractionLength(0...3)))) \(item.unit)/day")
+                            }
+                            if let remaining = forecast.qtyNow {
+                                LabeledContent("Estimated remaining", value: "\(remaining.formatted(.number.precision(.fractionLength(0...2)))) \(item.unit)")
+                            }
+                            Text(forecast.explanation).font(.subheadline)
+                            Text("\(forecast.nObs) readings across \(forecast.spanDays.formatted(.number.precision(.fractionLength(0...1)))) days. Estimates account for recorded restocks; they do not change your recorded quantity.")
+                                .font(.caption).foregroundStyle(.secondary)
                         }
-                        if let rate = forecast.ratePerDay {
-                            LabeledContent("Estimated daily use", value: "\(rate.formatted(.number.precision(.fractionLength(0...3)))) \(item.unit)/day")
-                        }
-                        if let remaining = forecast.qtyNow {
-                            LabeledContent("Estimated remaining", value: "\(remaining.formatted(.number.precision(.fractionLength(0...2)))) \(item.unit)")
-                        }
-                        Text(forecast.explanation).font(.subheadline)
-                        Text("\(forecast.nObs) readings across \(forecast.spanDays.formatted(.number.precision(.fractionLength(0...1)))) days. Estimates account for recorded restocks; they do not change your recorded quantity.")
-                            .font(.caption).foregroundStyle(.secondary)
                     } else if loading {
                         ProgressView("Loading prediction…")
                     } else {
-                        Text(error == nil ? "A current prediction isn’t available yet. Scan this item or update its quantity over time to learn your consumption." : "Couldn’t load the prediction. Pull to refresh.")
+                        Text(error == nil ? "Not enough recent observations for a prediction." : "Couldn’t load the prediction. Pull to refresh.")
                             .foregroundStyle(.secondary)
                     }
                 }
-                Section("Purchase information") {
-                    if let merchant = item.lastPurchasedFrom { LabeledContent("Last purchased from", value: merchant.label) }
-                    if let date = item.lastPurchasedOn { LabeledContent("Last purchased on", value: date) }
-                    if let id = item.preferredMerchantId { PreferredMerchantLabel(store: store, id: id) }
-                    else { Text("No preferred store").foregroundStyle(.secondary) }
+                Section {
+                    DisclosureGroup("Purchase information") {
+                        if let merchant = item.lastPurchasedFrom { LabeledContent("Last purchased from", value: merchant.label) }
+                        if let date = item.lastPurchasedOn { LabeledContent("Last purchased on", value: date) }
+                        if let id = item.preferredMerchantId { PreferredMerchantLabel(store: store, id: id) }
+                        else { Text("No preferred store").foregroundStyle(.secondary) }
+                    }
                 }
-                Section("Quantity history") {
-                    Picker("Period", selection: $days) {
-                        Text("7 days").tag(7); Text("30 days").tag(30); Text("90 days").tag(90)
-                    }.pickerStyle(.segmented)
-                    if loading { ProgressView("Loading history…") }
-                    if let detail, detail.daily.contains(where: { $0.quantity != nil }) {
-                        Chart(detail.daily) { point in
-                            if let quantity = point.quantity {
-                                BarMark(x: .value("Date", point.day, unit: .day), y: .value("Quantity", quantity))
-                                    .foregroundStyle(.teal)
+                Section {
+                    DisclosureGroup("Quantity history") {
+                        Picker("Period", selection: $days) {
+                            Text("7 days").tag(7); Text("30 days").tag(30); Text("90 days").tag(90)
+                        }.pickerStyle(.segmented)
+                        if loading { ProgressView("Loading history…") }
+                        if let detail, detail.daily.contains(where: { $0.quantity != nil }) {
+                            Chart(detail.daily) { point in
+                                if let quantity = point.quantity {
+                                    BarMark(x: .value("Date", point.day, unit: .day), y: .value("Quantity", quantity))
+                                        .foregroundStyle(Color.agoraAccent)
+                                }
                             }
-                        }
-                        .chartXScale(domain: (detail.daily.first?.day ?? Date())...(detail.daily.last?.day ?? Date()).addingTimeInterval(86_400))
-                        .chartXAxis {
-                            AxisMarks(values: .stride(by: .day, count: days == 7 ? 1 : days == 30 ? 7 : 30)) {
-                                AxisValueLabel(format: .dateTime.month().day())
+                            .chartXScale(domain: (detail.daily.first?.day ?? Date())...(detail.daily.last?.day ?? Date()).addingTimeInterval(86_400))
+                            .chartXAxis {
+                                AxisMarks(values: .stride(by: .day, count: days == 7 ? 1 : days == 30 ? 7 : 30)) {
+                                    AxisValueLabel(format: .dateTime.month().day())
+                                }
                             }
-                        }
-                        .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
-                        .frame(height: 180)
-                        .accessibilityLabel("Daily quantity in \(item.unit)")
-                    } else if !loading && error == nil { Text("No quantity history yet.").foregroundStyle(.secondary) }
+                            .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
+                            .frame(height: 180)
+                            .accessibilityLabel("Daily quantity in \(item.unit)")
+                        } else if !loading && error == nil { Text("No quantity history yet.").foregroundStyle(.secondary) }
+                    }
                 }
                 if let error {
                     Section {
@@ -406,24 +419,28 @@ struct InventoryDetailView: View {
                     }
                 }
                 if let detail {
-                    Section("Recent observations") {
-                        if detail.observations.isEmpty { Text("No observations yet.").foregroundStyle(.secondary) }
-                        ForEach(Array(detail.observations.enumerated()), id: \.offset) { _, observation in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("\(observation.quantity.formatted()) \(item.unit) · \(observation.source.capitalized)")
-                                Text(observation.time, format: .dateTime.month().day().year().hour().minute())
-                                    .font(.caption).foregroundStyle(.secondary)
+                    Section {
+                        DisclosureGroup("Recent observations") {
+                            if detail.observations.isEmpty { Text("No observations yet.").foregroundStyle(.secondary) }
+                            ForEach(Array(detail.observations.enumerated()), id: \.offset) { _, observation in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("\(observation.quantity.formatted()) \(item.unit) · \(observation.source.capitalized)")
+                                    Text(observation.time, format: .dateTime.month().day().year().hour().minute())
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
                             }
                         }
                     }
-                    Section("Purchase history") {
-                        if detail.purchaseHistory.isEmpty { Text("No purchases recorded yet.").foregroundStyle(.secondary) }
-                        ForEach(detail.purchaseHistory) { purchase in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(purchase.merchant?.label ?? "Store not recorded")
-                                Text("\(purchase.quantity.formatted()) \(item.unit)").font(.subheadline)
-                                if let date = purchase.purchasedOn { Text(date).font(.caption).foregroundStyle(.secondary) }
-                                else { Text(purchase.observedAt, style: .date).font(.caption).foregroundStyle(.secondary) }
+                    Section {
+                        DisclosureGroup("Purchase history") {
+                            if detail.purchaseHistory.isEmpty { Text("No purchases recorded yet.").foregroundStyle(.secondary) }
+                            ForEach(detail.purchaseHistory) { purchase in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(purchase.merchant?.label ?? "Store not recorded")
+                                    Text("\(purchase.quantity.formatted()) \(item.unit)").font(.subheadline)
+                                    if let date = purchase.purchasedOn { Text(date).font(.caption).foregroundStyle(.secondary) }
+                                    else { Text(purchase.observedAt, style: .date).font(.caption).foregroundStyle(.secondary) }
+                                }
                             }
                         }
                     }
@@ -433,8 +450,9 @@ struct InventoryDetailView: View {
                         confirmingArchive = true
                     }.disabled(saving)
                 } footer: { Text("Archived items keep their history and can be restored from Inventory.") }
-            } else { ContentUnavailableView("Item unavailable", systemImage: "shippingbox") }
+            } else { AgoraEmptyState(title: "Item unavailable") }
         }
+        .agoraSurface()
         .navigationTitle(item?.displayName ?? "Item")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { Button("Edit") { editing = true }.disabled(item == nil || saving) }

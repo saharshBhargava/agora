@@ -4,6 +4,17 @@ Verified state: [current-state.md](current-state.md). Operations/recovery: [depl
 Deployment recreation: [SETUP.md](../SETUP.md). API contracts: [api/](api/).
 Pending UI work: [frontend-requests.md](frontend-requests.md).
 
+## Native visual conventions
+
+The October 18 UI pass uses `Agora/App/AgoraStyle.swift` and the `AccentColor` asset for Home's cerulean
+palette, adaptive backgrounds and solid primary actions. Use shared `AgoraList` for browsing collections,
+native forms for editing, and `ItemThumbnail` for circular item imagery. Keep item names, images and
+quantities prominent; move optional fields, history and long explanations into disclosures or menus.
+Avoid decorative icons, gradients and repeated explanatory cards. Preserve actionable errors, approvals,
+model provenance and truthful demo disclosures. Check light/dark appearance, large text and wide layouts
+when adding destinations; `BrandInterfaceTests` provides isolated render fixtures. See current-state for
+the validation record and source/distribution status.
+
 ## Current deployment record
 
 As of October 17, 2026, Render is **Live** at `https://agora-api-yq3m.onrender.com`, backed by Tiger with

@@ -33,8 +33,6 @@ struct ModelSettingsView: View {
                         }
                     }
                 }
-                Text("Each feature uses its assignment, or the default model when set to Use default.")
-                    .font(.footnote).foregroundStyle(.secondary)
             }
 
             Section {
@@ -57,7 +55,7 @@ struct ModelSettingsView: View {
             } header: {
                 Text("Connections")
             } footer: {
-                Text("Gemini uses Google’s API. OpenAI-compatible connections use the endpoint you enter; HTTP is limited to local network addresses. Reassign the default and any listed features before deleting an assigned connection.")
+                Text("Credentials stay in Keychain. Reassign features before deleting a connection.")
             }
 
             Section {
@@ -78,9 +76,10 @@ struct ModelSettingsView: View {
             } header: {
                 Text("Model profiles")
             } footer: {
-                Text("A profile combines a connection, model identifier, and declared capabilities. Reassign the default and any listed features before deleting an assigned profile. Capability probes send harmless requests; they do not guarantee behavior on every prompt.")
+                Text("Profiles select a model and its capabilities. Reassign features before deleting a profile.")
             }
         }
+        .agoraSurface()
         .navigationTitle("Models")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $addingConnection) {
@@ -108,15 +107,13 @@ struct ModelSettingsView: View {
 
     private func connectionRow(_ connection: ModelConnection) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: connection.provider == .gemini ? "sparkles" : "server.rack")
-                .foregroundStyle(.teal).frame(width: 24)
             VStack(alignment: .leading, spacing: 3) {
                 Text(connection.name).foregroundStyle(.primary)
                 Text(connection.provider.title + (connection.endpoint.isEmpty ? "" : " · \(connection.endpoint)"))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 let labels = connectionAssignmentLabels(connection)
                 if !labels.isEmpty {
-                    Text("In use: \(labels.joined(separator: ", ")) · Reassign before deleting")
+                    Text("Used by \(labels.joined(separator: ", "))")
                         .font(.caption2).foregroundStyle(.orange)
                 }
             }
@@ -131,14 +128,14 @@ struct ModelSettingsView: View {
             HStack {
                 Text(profile.name).foregroundStyle(.primary)
                 if profile.id == configuration.defaultProfileID {
-                    Text("DEFAULT").font(.caption2.bold()).foregroundStyle(.teal)
+                    Text("DEFAULT").font(.caption2.bold()).foregroundStyle(Color.agoraAccent)
                 }
             }
             Text(profile.label(in: configuration)).font(.caption).foregroundStyle(.secondary)
             Text(profile.capabilities.summary).font(.caption2).foregroundStyle(.tertiary)
             let labels = assignmentLabels(for: profile)
             if !labels.isEmpty {
-                Text("In use: \(labels.joined(separator: ", ")) · Reassign before deleting")
+                Text("Used by \(labels.joined(separator: ", "))")
                     .font(.caption2).foregroundStyle(.orange)
             }
         }
@@ -273,6 +270,7 @@ private struct ModelConnectionEditor: View {
                     }
                 }
             }
+            .agoraSurface()
             .navigationTitle(existing == nil ? "Add connection" : "Edit connection")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -390,7 +388,7 @@ private struct ModelProfileEditor: View {
                             ForEach(models, id: \.self) { Text($0).tag($0) }
                         }
                     }
-                    Text("Model listing checks endpoint access. It does not establish tool, image, structured output, or streaming support.")
+                    Text("Model listing verifies access, not capabilities.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
 
@@ -405,7 +403,7 @@ private struct ModelProfileEditor: View {
                         Text("Videos are sent as sampled image frames. Audio is not analyzed by this connection.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
-                    Text("These switches describe what the selected model is expected to support. Use the probes below to check actual requests; probe results do not change these declarations.")
+                    Text("Declared capabilities. Tests below verify requests without changing these switches.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
 
@@ -426,6 +424,7 @@ private struct ModelProfileEditor: View {
                     if let message { Text(message).font(.footnote).foregroundStyle(error ? Color.red : Color.secondary) }
                 }
             }
+            .agoraSurface()
             .navigationTitle(existing == nil ? "Add model profile" : "Edit model profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

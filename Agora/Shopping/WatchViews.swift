@@ -3,7 +3,7 @@ import SwiftUI
 struct WatchListView: View {
     @ObservedObject var store: WatchStore
     var body: some View {
-        List {
+        AgoraList {
             if let error = store.error { Section { Text(error).foregroundStyle(.red) } }
             if let notice = store.notice { Section { Text(notice).foregroundStyle(.secondary) } }
             if store.discoveryUnavailable {
@@ -11,7 +11,7 @@ struct WatchListView: View {
                     Text(store.discoveryExplanation).font(.caption).foregroundStyle(.secondary) }
             }
             if store.watches.isEmpty && !store.loading && store.hasLoadedCapabilities {
-                ContentUnavailableView("Watch for the right offer", systemImage: "binoculars", description: Text("Add an item to your wishlist to start searching for current prices automatically."))
+                AgoraEmptyState(title: "No price watches yet", detail: "Add an item to your wishlist.")
             }
             ForEach(store.watches) { watch in
                 NavigationLink { WatchDetailView(store: store, watchID: watch.id) } label: {
@@ -22,7 +22,8 @@ struct WatchListView: View {
                     }.padding(.vertical, 4)
                 }
             }
-        }.navigationTitle("Watch list")
+        }.agoraSurface()
+        .navigationTitle("Watch list")
             .overlay { if store.loading && store.watches.isEmpty { ProgressView() } }
             .task(id: store.context) { await store.refresh() }.refreshable { await store.refresh() }
             .navigationDestination(item: $store.openWatchID) { id in WatchDetailView(store: store, watchID: id) }
@@ -37,10 +38,24 @@ struct WatchDetailView: View {
     var body: some View {
         Group {
             if let watch = store.watches.first(where: { $0.id == watchID }) {
-                List {
+                AgoraList {
+                    Section {
+                        VStack(spacing: 12) {
+                            ItemThumbnail(kind: "wishlist", id: watch.wishlistItemId, name: watch.title, size: 180)
+                            Text(watch.title).font(.title2.weight(.semibold)).multilineTextAlignment(.center)
+                            if let target = watch.criteria.targetPriceCents {
+                                Text("Target \(WishlistItem.money(target))").foregroundStyle(.secondary)
+                            }
+                        }.frame(maxWidth: .infinity).padding(.vertical, 16)
+                        if let disclosure = watch.simulationDisclosure { Text(disclosure).font(.caption).foregroundStyle(.secondary) }
+                        Text(store.browserFallbackStatus[watch.id] ?? watch.resultLabel)
+                            .font(.subheadline).foregroundStyle(watch.lastResult == "failed" ? .orange : .secondary)
+                        if let error = store.error { Text(error).foregroundStyle(.red) }
+                        if let notice = store.notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
+                    }
                     if !watch.browserReviewURLs.isEmpty {
                         Section("Needs browser review") {
-                            Text("These pages need you to review a sign-in, product variant or cart. Continue yourself in the shared browser. An offer still needs verification, and purchases require your decision.")
+                            Text("Review the sign-in, variant or cart in your browser. Offers are unverified; purchases require your decision.")
                                 .font(.caption).foregroundStyle(.secondary)
                             ForEach(watch.browserReviewURLs, id: \.self) { url in
                                 Button("Review \(url.host ?? "retailer")") {
@@ -49,41 +64,13 @@ struct WatchDetailView: View {
                             }
                         }
                     }
-                    Section {
-                        if let disclosure = watch.simulationDisclosure { Text(disclosure).font(.caption).foregroundStyle(.secondary) }
-                        Text(store.browserFallbackStatus[watch.id] ?? watch.resultLabel).foregroundStyle(watch.lastResult == "failed" ? .orange : .secondary)
-                        if !watch.rejectionLabels.isEmpty {
-                            DisclosureGroup("Why offers were excluded") {
-                                ForEach(Array(watch.rejectionLabels.enumerated()), id: \.offset) { _, reason in Text(reason).font(.caption).foregroundStyle(.secondary) }
-                            }
-                        }
-                        LabeledContent("Status", value: watch.status.capitalized)
-                        if let last = watch.lastSuccessfulAt { LabeledContent("Last successful check", value: last.formatted(date: .abbreviated, time: .shortened)) }
-                        else if let price = watch.currentPrices.first {
-                            LabeledContent("Latest price found", value: price.observedAt.formatted(date: .abbreviated, time: .shortened))
-                        } else { Text("No successful check yet.").font(.caption).foregroundStyle(.secondary) }
-                        if let last = watch.lastCheckedAt { LabeledContent("Last attempt", value: last.formatted(date: .abbreviated, time: .shortened)) }
-                        if let next = watch.nextCheckAt, watch.status == "active" { LabeledContent("Next check", value: next.formatted(date: .abbreviated, time: .shortened)) }
-                        if let error = store.error { Text(error).foregroundStyle(.red) }
-                        if let notice = store.notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
-                        Button("Check now") { Task { await store.checkNow(watch) } }
-                            .disabled(store.busy || !watch.searchAvailable || watch.status != "active")
-                        if ["active", "paused"].contains(watch.status) {
-                            Button(watch.status == "paused" ? "Resume watch" : "Pause watch") {
-                                Task { await store.setPaused(watch, paused: watch.status == "active") }
-                            }.disabled(store.busy)
-                        }
-                        Button("Edit criteria and alerts") { editing = true }.disabled(store.busy)
-                    }
                     if !watch.currentPrices.isEmpty {
                         Section("Current retailer prices") {
                             ForEach(watch.currentPrices) { price in
                                 VStack(alignment: .leading, spacing: 5) {
-                                    HStack {
-                                        ItemThumbnail(kind: "wishlist", id: watch.wishlistItemId, name: watch.title)
-                                        Text(price.title).font(.headline)
-                                    }
-                                    Text("\(WishlistItem.money(price.unitPriceCents)) at \(price.merchant)")
+                                    Text(price.merchant).font(.headline)
+                                    Text(WishlistItem.money(price.unitPriceCents)).font(.title3.weight(.semibold))
+                                    if price.title != watch.title { Text(price.title).font(.caption).foregroundStyle(.secondary) }
                                     Text(price.comparison(target: watch.criteria.targetPriceCents)).font(.subheadline)
                                     if let note = price.verificationNote { Text(note).font(.caption).foregroundStyle(.orange) }
                                     else if !["confirmed_criteria_met", "above_target", "target_not_set"].contains(price.reason) {
@@ -95,47 +82,78 @@ struct WatchDetailView: View {
                             }
                         }
                     }
-                    Section("Offers meeting all requirements · \(watch.currentOffers.count)") {
-                        if watch.currentOffers.isEmpty { Text(watch.lastResult == "failed" && watch.currentPrices.isEmpty ? "Offers could not be checked. Try again later." : "No verified offer meets all your requirements yet.").foregroundStyle(.secondary) }
+                    Section("Verified offers · \(watch.currentOffers.count)") {
+                        if watch.currentOffers.isEmpty { Text(watch.lastResult == "failed" && watch.currentPrices.isEmpty ? "Offers could not be checked. Try again later." : "No matching offers yet.").foregroundStyle(.secondary) }
                         ForEach(watch.currentOffers) { offer in WatchOfferRow(offer: offer, wishlistItemID: watch.wishlistItemId) }
                     }
                     if !watch.historicalOffers.isEmpty {
-                        Section("Previous offers · no longer current") {
-                            ForEach(watch.historicalOffers) { offer in WatchOfferRow(offer: offer, wishlistItemID: watch.wishlistItemId, historical: true) }
+                        Section {
+                            DisclosureGroup("Previous offers") {
+                                ForEach(watch.historicalOffers) { offer in WatchOfferRow(offer: offer, wishlistItemID: watch.wishlistItemId, historical: true) }
+                            }
                         }
                     }
-                    Section("Confirmed criteria") { WatchCriteriaSummary(criteria: watch.criteria) }
-                    Section("Alerts") {
-                        if let subscription = watch.subscription {
-                            LabeledContent("Push alerts requested", value: subscription.pushEnabled ? "Yes" : "No")
-                            Text(push.permissionStatus).font(.caption).foregroundStyle(.secondary)
-                            LabeledContent("Daily maximum", value: "\(subscription.dailyCap)")
-                            LabeledContent("Minimum interval", value: "\(subscription.cooldownHours) hours")
-                            if let start = subscription.quietStartHour, let end = subscription.quietEndHour {
-                                LabeledContent("Quiet hours", value: "\(start):00–\(end):00")
+                    Section {
+                        DisclosureGroup("Watch activity") {
+                            if !watch.rejectionLabels.isEmpty {
+                                DisclosureGroup("Why offers were excluded") {
+                                    ForEach(Array(watch.rejectionLabels.enumerated()), id: \.offset) { _, reason in Text(reason).font(.caption).foregroundStyle(.secondary) }
+                                }
                             }
-                            Text(subscription.timezone).font(.caption).foregroundStyle(.secondary)
-                        } else {
-                            Text("You have not subscribed to this household watch. Edit criteria and alerts to subscribe.").font(.caption)
+                            LabeledContent("Status", value: watch.status.capitalized)
+                            if let last = watch.lastSuccessfulAt { LabeledContent("Last successful check", value: last.formatted(date: .abbreviated, time: .shortened)) }
+                            else if let price = watch.currentPrices.first {
+                                LabeledContent("Latest price found", value: price.observedAt.formatted(date: .abbreviated, time: .shortened))
+                            } else { Text("No successful check yet.").font(.caption).foregroundStyle(.secondary) }
+                            if let last = watch.lastCheckedAt { LabeledContent("Last attempt", value: last.formatted(date: .abbreviated, time: .shortened)) }
+                            if let next = watch.nextCheckAt, watch.status == "active" { LabeledContent("Next check", value: next.formatted(date: .abbreviated, time: .shortened)) }
                         }
-                        Text("Matched offers are saved in your inbox even when push permission is off.").font(.caption).foregroundStyle(.secondary)
+                        Button("Check now") { Task { await store.checkNow(watch) } }
+                            .disabled(store.busy || !watch.searchAvailable || watch.status != "active")
+                        if ["active", "paused"].contains(watch.status) {
+                            Button(watch.status == "paused" ? "Resume watch" : "Pause watch") {
+                                Task { await store.setPaused(watch, paused: watch.status == "active") }
+                            }.disabled(store.busy)
+                        }
+                    }
+                    Section { DisclosureGroup("Criteria") { WatchCriteriaSummary(criteria: watch.criteria) } }
+                    Section {
+                        DisclosureGroup("Alerts") {
+                            if let subscription = watch.subscription {
+                                LabeledContent("Push alerts requested", value: subscription.pushEnabled ? "Yes" : "No")
+                                Text(push.permissionStatus).font(.caption).foregroundStyle(.secondary)
+                                LabeledContent("Daily maximum", value: "\(subscription.dailyCap)")
+                                LabeledContent("Minimum interval", value: "\(subscription.cooldownHours) hours")
+                                if let start = subscription.quietStartHour, let end = subscription.quietEndHour {
+                                    LabeledContent("Quiet hours", value: "\(start):00–\(end):00")
+                                }
+                                Text(subscription.timezone).font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                Text("You have not subscribed to this household watch. Edit criteria and alerts to subscribe.").font(.caption)
+                            }
+                            Text("Offers stay in your inbox when push alerts are off.").font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     if !watch.runs.isEmpty {
-                        Section("Recent checks") {
-                            ForEach(watch.runs) { run in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(run.status.capitalized)
-                                    Text(run.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
-                                    if run.status == "succeeded" { Text("\(run.offerCount) offers checked · \(run.matchCount) met your criteria").font(.caption) }
-                                    if run.status == "failed" { Text("Check failed. No conclusion about available offers.").font(.caption).foregroundStyle(.orange) }
+                        Section {
+                            DisclosureGroup("Recent checks") {
+                                ForEach(watch.runs) { run in
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(run.status.capitalized)
+                                        Text(run.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+                                        if run.status == "succeeded" { Text("\(run.offerCount) offers checked · \(run.matchCount) met your criteria").font(.caption) }
+                                        if run.status == "failed" { Text("Check failed. No conclusion about available offers.").font(.caption).foregroundStyle(.orange) }
+                                    }
                                 }
                             }
                         }
                     }
-                }.navigationTitle(watch.title).navigationBarTitleDisplayMode(.inline)
+                }.agoraSurface()
+                .navigationTitle(watch.title).navigationBarTitleDisplayMode(.inline)
+                    .toolbar { Button("Edit") { editing = true }.disabled(store.busy) }
                     .sheet(isPresented: $editing) { WatchEditor(store: store, itemID: watch.wishlistItemId, watch: watch) }
             } else {
-                ContentUnavailableView("Watch unavailable", systemImage: "binoculars", description: Text(store.error ?? "Refresh to load this watch for your current household."))
+                AgoraEmptyState(title: "Watch unavailable", detail: store.error ?? "Pull to refresh.").padding(20)
             }
         }.task(id: "\(store.context)-\(watchID)") { await store.detail(watchID) }
             .refreshable { await store.detail(watchID) }
@@ -166,7 +184,7 @@ private struct WatchOfferRow: View {
             Text(offer.reason).font(.caption)
             if !offer.evidence.isEmpty { DisclosureGroup("Source evidence") { ForEach(Array(offer.evidence.enumerated()), id: \.offset) { _, value in Text(value).font(.caption) } } }
             if let url = offer.safeURL { Link("View at \(offer.merchant)", destination: url) }
-            Text("Price and availability can change. Confirm the variant, full cost and conditions at the retailer.").font(.caption).foregroundStyle(.secondary)
+            Text("Confirm the variant and final total at the retailer.").font(.caption).foregroundStyle(.secondary)
         }.padding(.vertical, 5)
     }
 }
@@ -208,7 +226,8 @@ struct WatchEditor: View {
             Form {
                 if review { reviewSections } else { editSections }
                 if let error { Section { Text(error).foregroundStyle(.red) } }
-            }.navigationTitle(review ? "Review watch settings" : "Watch settings")
+            }.agoraSurface()
+            .navigationTitle(review ? "Review watch settings" : "Watch settings")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button(review ? "Back" : "Cancel") { if review { review = false; requestKey = UUID().uuidString } else { dismiss() } }.disabled(saving) }
                     ToolbarItem(placement: .confirmationAction) {
@@ -229,15 +248,17 @@ struct WatchEditor: View {
             TextField("Brand, model, size and variant", text: $draft.query, axis: .vertical)
             TextField("Product link (optional)", text: $draft.productURL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
             if store.discoveryUnavailable { Text(store.discoveryExplanation).font(.caption).foregroundStyle(.secondary) }
-            VStack(alignment: .leading) {
-                Text("Must include").font(.caption).foregroundStyle(.secondary)
-                TextField("Model, size, color…", text: $draft.requiredTerms, axis: .vertical)
+            DisclosureGroup("Product matching") {
+                VStack(alignment: .leading) {
+                    Text("Must include").font(.caption).foregroundStyle(.secondary)
+                    TextField("Model, size, color…", text: $draft.requiredTerms, axis: .vertical)
+                }
+                VStack(alignment: .leading) {
+                    Text("Must exclude").font(.caption).foregroundStyle(.secondary)
+                    TextField("Mini, bundle, compatible…", text: $draft.excludedTerms, axis: .vertical)
+                }
+                Text("Separate terms with commas.").font(.caption).foregroundStyle(.secondary)
             }
-            VStack(alignment: .leading) {
-                Text("Must exclude").font(.caption).foregroundStyle(.secondary)
-                TextField("Mini, bundle, compatible…", text: $draft.excludedTerms, axis: .vertical)
-            }
-            Text("Be specific about brand, model, size, color and pack count to avoid a different variant. Separate required and excluded terms with commas.").font(.caption).foregroundStyle(.secondary)
             Stepper("Quantity: \(draft.quantity)", value: $draft.quantity, in: 1...99)
         }
         Section("Price and availability") {
@@ -250,10 +271,10 @@ struct WatchEditor: View {
                 Text("Maximum total · USD (optional)").font(.caption).foregroundStyle(.secondary)
                 TextField("No total limit", text: $draft.maxTotal).keyboardType(.decimalPad)
             }
-            Text("A total limit includes the requested quantity, shipping, tax and fees. Unknown full costs cannot satisfy this limit.").font(.caption).foregroundStyle(.secondary)
+            Text("Includes shipping, tax and fees. Unknown totals do not qualify.").font(.caption).foregroundStyle(.secondary)
             Picker("Fulfillment", selection: $draft.fulfillment) { Text("Delivery").tag("delivery"); Text("Pickup").tag("pickup") }
             TextField("Delivery region or pickup store", text: $draft.location)
-            Text("Use a merchant-supported region such as US for delivery; an exact store or postcode for pickup. Availability must be verified for this location.").font(.caption).foregroundStyle(.secondary)
+            Text("Delivery region, or store/postcode for pickup.").font(.caption).foregroundStyle(.secondary)
             TextField("Retailers: retailer.com (optional)", text: $draft.allowedDomains).textInputAutocapitalization(.never).autocorrectionDisabled()
             Picker("Condition", selection: $draft.condition) { Text("New").tag("new"); Text("Used").tag("used"); Text("Refurbished").tag("refurbished") }
             Toggle("Allow membership-only offers", isOn: $draft.allowMembership)
@@ -317,24 +338,26 @@ struct WatchEditor: View {
 struct WatchInboxView: View {
     @ObservedObject var store: WatchStore
     var body: some View {
-        List {
+        AgoraList {
             if let error = store.error { Section { Text(error).foregroundStyle(.red) } }
             if store.notifications.isEmpty {
-                ContentUnavailableView("Your offer inbox", systemImage: "tray", description: Text("Verified matches appear here, including when push notifications are off."))
+                AgoraEmptyState(title: "No offers yet", detail: "Verified matches will appear here.")
             }
             ForEach(store.notifications) { notification in
                 NavigationLink {
                     if let watchID = notification.watchId { WatchDetailView(store: store, watchID: watchID) }
-                    else { Text(notification.body).padding().navigationTitle(notification.title) }
+                    else { Text(notification.body).padding().agoraSurface()
+                    .navigationTitle(notification.title) }
                 } label: {
                     VStack(alignment: .leading, spacing: 5) {
-                        HStack { if notification.readAt == nil { Image(systemName: "circle.fill").font(.caption2).foregroundStyle(.blue).accessibilityLabel("Unread") }; Text(notification.title).font(.headline) }
+                        HStack { if notification.readAt == nil { Image(systemName: "circle.fill").font(.caption2).foregroundStyle(Color.agoraAccent).accessibilityLabel("Unread") }; Text(notification.title).font(.headline) }
                         Text(notification.body).font(.subheadline)
                         Text(notification.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
                     }.padding(.vertical, 4)
                 }.simultaneousGesture(TapGesture().onEnded { Task { await store.markRead(notification) } })
             }
-        }.navigationTitle("Offer inbox").task(id: store.context) { await store.refreshInbox() }
+        }.agoraSurface()
+        .navigationTitle("Offer inbox").task(id: store.context) { await store.refreshInbox() }
             .refreshable { await store.refreshInbox() }
     }
 }

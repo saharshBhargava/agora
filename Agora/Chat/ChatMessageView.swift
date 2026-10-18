@@ -46,14 +46,14 @@ struct ChatMarkdown: View, Equatable {
                 case .paragraph: inline(block.text).lineSpacing(4)
                 case .heading(let level): inline(block.text).font(level == 1 ? .title2.bold() : level == 2 ? .title3.bold() : .headline).accessibilityAddTraits(.isHeader).padding(.top, 4)
                 case .quote:
-                    HStack(alignment: .top, spacing: 12) { RoundedRectangle(cornerRadius: 2).fill(.teal.opacity(0.5)).frame(width: 3); inline(block.text).foregroundStyle(.secondary) }.fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .top, spacing: 12) { RoundedRectangle(cornerRadius: 2).fill(Color.agoraAccent.opacity(0.5)).frame(width: 3); inline(block.text).foregroundStyle(.secondary) }.fixedSize(horizontal: false, vertical: true)
                 case .list(let marker): HStack(alignment: .top, spacing: 10) { Text(marker).foregroundStyle(.secondary); inline(block.text).frame(maxWidth: .infinity, alignment: .leading) }
                 case .code(let language):
                     VStack(alignment: .leading, spacing: 0) {
                         HStack { Text(language.isEmpty ? "Code" : language).font(.caption.weight(.medium)); Spacer(); ChatCopyButton(text: block.text, label: "Copy code") }.padding(.horizontal, 12)
                         Divider()
                         ScrollView(.horizontal) { Text(block.text).font(.callout.monospaced()).textSelection(.enabled).padding(12) }
-                    }.background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14)).overlay(RoundedRectangle(cornerRadius: 14).stroke(.primary.opacity(0.08)))
+                    }.background(Color.agoraSurface, in: RoundedRectangle(cornerRadius: 14)).overlay(RoundedRectangle(cornerRadius: 14).stroke(.primary.opacity(0.08)))
                 case .table:
                     ScrollView(.horizontal) {
                         Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
@@ -64,7 +64,7 @@ struct ChatMarkdown: View, Equatable {
                                 if row == 0 { Divider().gridCellUnsizedAxes(.horizontal) }
                             }
                         }.padding(14)
-                    }.background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                    }.background(Color.agoraSurface, in: RoundedRectangle(cornerRadius: 14))
                 }
             }
         }.frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
@@ -111,7 +111,7 @@ struct ChatMessageView: View {
             if message.role == "user" { Spacer(minLength: 42) }
             VStack(alignment: .leading, spacing: 8) {
                 if message.role != "user" {
-                    Label("Agora", systemImage: "sparkle").font(.subheadline.weight(.semibold)).foregroundStyle(.teal).padding(.bottom, 2)
+                    Text("Agora").font(.subheadline.weight(.semibold)).foregroundStyle(Color.agoraAccent).padding(.bottom, 2)
                 }
                 if !message.attachments.isEmpty {
                     ForEach(message.attachments) { attachment in
@@ -127,7 +127,7 @@ struct ChatMessageView: View {
                 else if message.role != "user" { ChatCopyButton(text: message.text) }
             }
             .padding(message.role == "user" ? 14 : 0)
-            .background(message.role == "user" ? Color(.secondarySystemBackground) : .clear, in: RoundedRectangle(cornerRadius: 20))
+            .background(message.role == "user" ? Color.agoraSurface : .clear, in: RoundedRectangle(cornerRadius: 20))
             .contextMenu { Button("Copy message", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.text } }
             if message.role != "user" { Spacer(minLength: 0) }
         }
@@ -143,12 +143,12 @@ struct ChatMessageView: View {
                 if tool.status == .running { ProgressView().controlSize(.small) }
                 else { Image(systemName: tool.status == .complete ? "checkmark.circle" : tool.status == .failed ? "exclamationmark.circle" : "stop.circle").foregroundStyle(tool.status == .failed ? .orange : .secondary) }
                 VStack(alignment: .leading, spacing: 3) { Text(tool.name).font(.subheadline.weight(.medium)).foregroundStyle(Color.primary); Text(tool.status.rawValue).font(.caption).foregroundStyle(.secondary) }
-            }.padding(.vertical, 4)
-        }.padding(12).background(Color(.secondarySystemBackground).opacity(0.65), in: RoundedRectangle(cornerRadius: 14))
+            }.frame(minHeight: 44)
+        }.padding(.horizontal, 12).padding(.vertical, 2)
     }
     private func approvalView(_ record: ChatApprovalRecord) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(record.status.rawValue, systemImage: record.status == .pending ? "hand.raised" : record.status == .approved ? "checkmark.seal" : "xmark.seal").font(.caption.bold()).foregroundStyle(record.status == .pending ? .orange : record.status == .approved ? .teal : .secondary)
+            Label(record.status.rawValue, systemImage: record.status == .pending ? "hand.raised" : record.status == .approved ? "checkmark.seal" : "xmark.seal").font(.caption.bold()).foregroundStyle(record.status == .pending ? .orange : record.status == .approved ? Color.agoraAccent : .secondary)
             Text(record.title).font(.headline)
             Text(record.detail).font(.callout).textSelection(.enabled)
             if record.status == .pending {
@@ -157,7 +157,7 @@ struct ChatMessageView: View {
                     VStack(alignment: .leading) { approvalButtons }
                 }
             }
-        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).stroke(record.status == .pending ? Color.orange.opacity(0.5) : Color.secondary.opacity(0.2)))
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(Color.agoraSurface, in: RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).stroke(record.status == .pending ? Color.orange.opacity(0.5) : Color.secondary.opacity(0.2)))
     }
     @ViewBuilder private var approvalButtons: some View {
         Button("Approve") { approve(true) }.buttonStyle(.borderedProminent).controlSize(.large)
@@ -169,7 +169,7 @@ struct ChatMessageView: View {
             Label("Needs attention", systemImage: "exclamationmark.circle").font(.subheadline.bold()).foregroundStyle(.orange)
             Text(ChatDisplayText.notice(message.text)).font(.callout).textSelection(.enabled)
             if let text = message.retryText { Button("Retry", systemImage: "arrow.clockwise") { retry(text) }.frame(minHeight: 44) }
-        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

@@ -25,8 +25,9 @@ struct InventoryEditor: View {
                 Section("Item") {
                     TextField("Name", text: $draft.name).accessibilityIdentifier("inventory.name")
                     if original == nil {
-                        TextField("Category (optional)", text: $draft.category)
-                        TextField("Unit, e.g. cartons", text: $draft.unit)
+                        LabeledContent("Unit") {
+                            TextField("e.g. cartons", text: $draft.unit).multilineTextAlignment(.trailing)
+                        }
                         LabeledContent("Quantity") {
                             TextField("Unknown", text: $draft.quantity).keyboardType(.decimalPad)
                                 .multilineTextAlignment(.trailing)
@@ -35,29 +36,33 @@ struct InventoryEditor: View {
                     }
                 }
                 Section {
-                    Picker("Location", selection: $draft.locationID) {
-                        Text("No location").tag(UUID?.none)
-                        ForEach(store.locations) { Text($0.name).tag(Optional($0.id)) }
+                    DisclosureGroup("Tracking & storage") {
+                        if original == nil { TextField("Category (optional)", text: $draft.category) }
+                        Picker("Location", selection: $draft.locationID) {
+                            Text("No location").tag(UUID?.none)
+                            ForEach(store.locations) { Text($0.name).tag(Optional($0.id)) }
+                        }
+                        LabeledContent("Restock below") {
+                            TextField("Not set", text: $draft.restockLevel).keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
+                                .accessibilityIdentifier("inventory.restockLevel")
+                        }
                     }
-                    LabeledContent("Restock below") {
-                        TextField("Not set", text: $draft.restockLevel).keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                            .accessibilityIdentifier("inventory.restockLevel")
-                    }
-                } header: { Text("Tracking") } footer: {
-                    Text("An empty restock level turns off low-stock tracking. Quantities use \(draft.unit).")
                 }
-                Section("Preferred store") {
-                    Button { choosingMerchant = true } label: {
-                        LabeledContent("Store", value: merchantLabel ?? (draft.merchantID == nil ? "None" : "Choose store"))
-                    }
-                    if draft.merchantID != nil {
-                        Button("Clear preferred store", role: .destructive) { draft.merchantID = nil; merchantLabel = nil }
+                Section {
+                    DisclosureGroup("Preferred store") {
+                        Button { choosingMerchant = true } label: {
+                            LabeledContent("Store", value: merchantLabel ?? (draft.merchantID == nil ? "None" : "Choose store"))
+                        }
+                        if draft.merchantID != nil {
+                            Button("Clear preferred store", role: .destructive) { draft.merchantID = nil; merchantLabel = nil }
+                        }
                     }
                 }
                 if let error { Section { Text(error).foregroundStyle(.red) } }
             }
             .disabled(saving)
+            .agoraSurface()
             .navigationTitle(original == nil ? "Add item" : "Edit item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -114,11 +119,12 @@ struct InventoryQuantityEditor: View {
                     TextField("Quantity in \(item.unit)", text: $quantity).keyboardType(.decimalPad)
                         .accessibilityIdentifier("inventory.quantity")
                 } header: { Text(item.displayName) } footer: {
-                    Text("Enter the total amount you have now. This records a new observation and keeps the previous history.")
+                    Text("Total on hand, in \(item.unit).")
                 }
                 if let error { Text(error).foregroundStyle(.red) }
             }
             .disabled(saving)
+            .agoraSurface()
             .navigationTitle("Update quantity")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -178,6 +184,7 @@ struct InventoryLocationsView: View {
                 }.disabled(saving)
                 if let error { Text(error).foregroundStyle(.red) }
             }
+            .agoraSurface()
             .navigationTitle("Storage locations")
             .toolbar { Button("Done") { dismiss() }.disabled(saving) }
             .interactiveDismissDisabled(saving)
@@ -199,7 +206,7 @@ struct InventoryMerchantPicker: View {
     private var name: String { search.trimmingCharacters(in: .whitespacesAndNewlines) }
     var body: some View {
         NavigationStack {
-            List {
+            AgoraList {
                 if loading { ProgressView("Finding stores…") }
                 ForEach(merchants) { merchant in
                     Button(merchant.label) { selected(merchant); dismiss() }
@@ -225,6 +232,7 @@ struct InventoryMerchantPicker: View {
             }
             .disabled(saving)
             .searchable(text: $search, prompt: "Store name")
+            .agoraSurface()
             .navigationTitle(title)
             .toolbar { Button("Cancel") { dismiss() }.disabled(saving) }
             .interactiveDismissDisabled(saving)

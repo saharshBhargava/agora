@@ -59,6 +59,7 @@
 		7ADD93AC1DAA8FBDB5B01A83 /* GeminiCaptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84712908608539A298B3D679 /* GeminiCaptionService.swift */; };
 		7D5BFDED3EAB83DAF848C59C /* TripStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 572772A3A39FCFF81E12CE7D /* TripStore.swift */; };
 		7E74D785404CE20E82B14692 /* ModelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EFB306656DA7F8B908FD7AD /* ModelProvider.swift */; };
+		7FA97EAAC9866B92FFAF21A5 /* BrandInterfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2949351ABCC4E999C33CB41 /* BrandInterfaceTests.swift */; };
 		829771E2C30B7236F5C5D14A /* ModelConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C7DA23DEE420545EF43C5C /* ModelConfiguration.swift */; };
 		8302AFD8D8B81A92CBEAD235 /* browser-fixture.html in Resources */ = {isa = PBXBuildFile; fileRef = 1EBB9EED3AC87495774DB9C3 /* browser-fixture.html */; };
 		8432C3CF2BA964919467BE02 /* CaptionPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F1BC7A4AD07422B58B4CBD /* CaptionPanel.swift */; };
@@ -85,6 +86,7 @@
 		C2C9603958A6C856007BFACB /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E95A5738AAF7E09F32FD585 /* CaptureView.swift */; };
 		C718C0E542C198C5DBCE1B54 /* ModelFeatureServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 711DD183AEA547CB33F67FD6 /* ModelFeatureServices.swift */; };
 		C775D3D4251857255C2703D3 /* ModelSettingsRenderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CF3149A4CB4BCCE1990A802 /* ModelSettingsRenderTests.swift */; };
+		CC12C08139C75835D6EB1C56 /* AgoraStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4BECED1E9EBE11194B0386A /* AgoraStyle.swift */; };
 		D03A7F0139733750A21E1B8B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 925DF290158B6070465CC038 /* SettingsView.swift */; };
 		D36C7420907A1586CCFC20AB /* OpenAICompatibleClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FC5DA7691A7DDF469D7A3E /* OpenAICompatibleClient.swift */; };
 		D644F849E402F92D37C9999D /* ShoppingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AE1F09B0FEBB701A047564A /* ShoppingStore.swift */; };
@@ -167,6 +169,7 @@
 		9EF0CCE8E37C05F53DC86690 /* LocalModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LocalModelTests.swift; path = AgoraTests/LocalModelTests.swift; sourceTree = "<group>"; };
 		9FCB296ECB295212A8B566B1 /* GeminiModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GeminiModelTests.swift; path = AgoraTests/GeminiModelTests.swift; sourceTree = "<group>"; };
 		9FF49A96C7B4AEDECABDF7D2 /* WatchBrowserRunner.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchBrowserRunner.swift; path = Agora/Shopping/WatchBrowserRunner.swift; sourceTree = "<group>"; };
+		A4BECED1E9EBE11194B0386A /* AgoraStyle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgoraStyle.swift; path = Agora/App/AgoraStyle.swift; sourceTree = "<group>"; };
 		A910D2A694D670DFE0DCB5D7 /* HomeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HomeView.swift; path = Agora/App/HomeView.swift; sourceTree = "<group>"; };
 		AE3AF07D1DFFE2907C7142C6 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = assets/Assets.xcassets; sourceTree = "<group>"; };
 		AFB5E3DC159E6C5ABA2617F4 /* Agora.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Agora.xcconfig; path = Config/Agora.xcconfig; sourceTree = "<group>"; };
@@ -179,6 +182,7 @@
 		C756E67C76E98E332D7BF3CB /* ChatMessageView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatMessageView.swift; path = Agora/Chat/ChatMessageView.swift; sourceTree = "<group>"; };
 		C9B0D186D871585E3F767A40 /* WatchStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchStore.swift; path = Agora/Shopping/WatchStore.swift; sourceTree = "<group>"; };
 		CE26387FFF3222EE2FA489BA /* TripsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripsView.swift; path = Agora/Trips/TripsView.swift; sourceTree = "<group>"; };
+		D2949351ABCC4E999C33CB41 /* BrandInterfaceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrandInterfaceTests.swift; path = AgoraTests/BrandInterfaceTests.swift; sourceTree = "<group>"; };
 		D321B867CDD7DD8E49E0ED43 /* InventoryForms.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryForms.swift; path = Agora/Inventory/InventoryForms.swift; sourceTree = "<group>"; };
 		D63E8A1F4D704E4944DE1118 /* CalendarOnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarOnboardingView.swift; path = Agora/Calendar/CalendarOnboardingView.swift; sourceTree = "<group>"; };
 		E0042D6D266AEBF2AF1B8863 /* TripModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripModels.swift; path = Agora/Trips/TripModels.swift; sourceTree = "<group>"; };
@@ -301,6 +305,8 @@
 				9C15CD7A38B9673A65DC0286 /* ItemImageLiveTests.swift */,
 				9FF49A96C7B4AEDECABDF7D2 /* WatchBrowserRunner.swift */,
 				5A6FAF82A65C72ED7BED14AD /* WatchBrowserTests.swift */,
+				A4BECED1E9EBE11194B0386A /* AgoraStyle.swift */,
+				D2949351ABCC4E999C33CB41 /* BrandInterfaceTests.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -451,6 +457,7 @@
 				091D1E08DB1CB668AE5E402D /* ChatInterfaceTests.swift in Sources */,
 				AB7F60BB2CE13D2FA7F8D8E3 /* ItemImageLiveTests.swift in Sources */,
 				48C414DF45738B50BBA969B5 /* WatchBrowserTests.swift in Sources */,
+				7FA97EAAC9866B92FFAF21A5 /* BrandInterfaceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -518,6 +525,7 @@
 				BD33603300C142060841601F /* ChatAttachments.swift in Sources */,
 				776B4A452393340B1E992399 /* ChatComposer.swift in Sources */,
 				50B416D6F03563D61FE0551B /* WatchBrowserRunner.swift in Sources */,
+				CC12C08139C75835D6EB1C56 /* AgoraStyle.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

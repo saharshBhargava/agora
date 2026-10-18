@@ -9,11 +9,9 @@ struct CalendarOnboardingView: View {
         NavigationStack {
             ScrollView { VStack(alignment: .leading, spacing: 20) {
                 Spacer()
-                Image(systemName: "calendar.badge.plus").font(.system(size: 54)).foregroundStyle(.teal)
+                Image("AgoraWordmark").resizable().scaledToFit().frame(width: 160, height: 64).accessibilityLabel("Agora")
                 Text("Make time for\nwhat you need.").font(.largeTitle.bold())
-                Text("Use the sample account to explore Agora, or connect your Google account.")
-                    .font(.title3).foregroundStyle(.secondary)
-                Text("Demo sign-in uses built-in Calendar, chat and recognition responses. No Google account or provider API keys are required.")
+                Text("Demo uses sample responses and a private Calendar. No provider keys required.")
                     .font(.footnote).foregroundStyle(.secondary)
                 if let message = calendar.message { Text(message).font(.callout).foregroundStyle(.secondary).accessibilityIdentifier("calendarConnectionMessage") }
                 if let email = calendar.email { Text(email).font(.callout) }
@@ -30,12 +28,12 @@ struct CalendarOnboardingView: View {
                     password = ""
                     Task { await calendar.connectDemo(handle: handle.trimmingCharacters(in: .whitespacesAndNewlines), password: submittedPassword) }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AgoraPrimaryButtonStyle())
                 .disabled(calendar.connecting || password.isEmpty || handle.isEmpty)
                 .accessibilityIdentifier("signInDemo")
                 Divider()
-                Text("Or use Google (optional)").font(.headline)
-                Text("Your own account uses your real Calendar and configured model providers.")
+                Text("Your own account").font(.headline)
+                Text("Connect your Google Calendar and model providers.")
                     .font(.footnote).foregroundStyle(.secondary)
                 GoogleSignInButton {
                     Task { await calendar.connect() }
@@ -51,7 +49,8 @@ struct CalendarOnboardingView: View {
                 }
                 Spacer()
             }
-            .padding(28) }
+            .padding(28).frame(maxWidth: 560).frame(maxWidth: .infinity) }
+            .agoraSurface()
             .navigationTitle("Welcome to Agora")
             .navigationBarTitleDisplayMode(.inline)
         }

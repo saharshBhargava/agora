@@ -35,6 +35,7 @@ jobs:
             -only-testing:AgoraTests/CalendarAuthTests \
             -only-testing:AgoraTests/CalendarToolTests \
             -only-testing:AgoraTests/CalendarAgentTests \
+            -only-testing:AgoraTests/BrandInterfaceTests \
             -only-testing:AgoraTests/CaptureTests \
             -only-testing:AgoraTests/InventoryTests \
             -only-testing:AgoraTests/ShoppingTests \

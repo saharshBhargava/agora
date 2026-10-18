@@ -49,6 +49,7 @@ struct RecognitionView: View {
                     reviewForm
                 }
             }
+            .agoraSurface()
             .navigationTitle(controller.completed ? "Inventory saved" : "Review scan")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -118,9 +119,6 @@ struct RecognitionView: View {
                         if controller.busy {
                             ProgressView(controller.saving ? "Adding to inventory…" : controller.progress == .generating ? "Identifying items…" : controller.progress.title)
                                 .accessibilityIdentifier("recognition.progress")
-                        } else if !controller.drafts.isEmpty {
-                            Text("Check names and quantities. Uncheck anything you don't want to save.")
-                                .font(.subheadline).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -128,7 +126,6 @@ struct RecognitionView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(controller.modelDescription.isEmpty ? settings.featureDescription(.inventory) : controller.modelDescription)
                     Text(controller.busy ? controller.mediaDisclosure : settings.mediaDisclosure(for: .inventory, kind: item.kind))
-                    Text("Only confirmed item details go to inventory.")
                 }
             }
             // Keep this field mounted while recognition finishes, preserving keyboard focus.
@@ -192,7 +189,7 @@ struct RecognitionView: View {
                 Text(controller.saving ? "Saving…" : controller.locked ? "Check save status" : "Add \(controller.selectedCount) \(controller.selectedCount == 1 ? "item" : "items") to inventory")
                     .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
             }
-            .buttonStyle(.borderedProminent).controlSize(.large)
+            .buttonStyle(AgoraPrimaryButtonStyle())
             .disabled(controller.busy || store.householdID == nil || (!controller.locked && controller.selectedCount == 0))
             .accessibilityIdentifier("recognition.save")
         }
@@ -202,25 +199,19 @@ struct RecognitionView: View {
     private var successView: some View {
         ScrollView {
             VStack(spacing: 24) {
-                Image(systemName: "checkmark.circle.fill").font(.system(size: 64)).foregroundStyle(.teal)
-                    .accessibilityHidden(true)
                 VStack(spacing: 8) {
                     Text("Inventory updated").font(.title.bold())
                     Text("\(controller.submission?.items.count ?? 0) \(controller.submission?.items.count == 1 ? "item" : "items") saved to your inventory.")
                         .foregroundStyle(.secondary)
-                    Text(controller.submission?.items.contains(where: { $0.inventoryItemID != nil }) == true
-                         ? "Existing items now use the quantities you confirmed."
-                         : "Your items are ready in Lists.")
-                        .font(.subheadline).foregroundStyle(.secondary)
                 }.multilineTextAlignment(.center)
                 VStack(spacing: 12) {
                     if let onNextScan {
                         Button("Review next scan", action: onNextScan)
-                            .buttonStyle(.borderedProminent).controlSize(.large)
+                            .buttonStyle(AgoraPrimaryButtonStyle())
                     }
                     NavigationLink { InventoryListView(store: store) } label: {
                         Text("View inventory").frame(maxWidth: .infinity)
-                    }.buttonStyle(.borderedProminent).controlSize(.large)
+                    }.buttonStyle(AgoraPrimaryButtonStyle())
                         .accessibilityIdentifier("recognition.viewInventory")
                     if onNextScan == nil, let onScanMore {
                         Button("Scan more", systemImage: "camera.viewfinder", action: onScanMore)

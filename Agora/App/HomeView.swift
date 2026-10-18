@@ -5,6 +5,7 @@ enum AppTab: Hashable {
 }
 
 struct HomeView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Binding var selectedTab: AppTab
     @ObservedObject var store: InventoryStore
     @ObservedObject var shopping: ShoppingStore
@@ -33,7 +34,7 @@ struct HomeView: View {
                 .frame(maxWidth: 900, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .agoraSurface()
             .safeAreaInset(edge: .top, spacing: 0) { topBar }
             .toolbar(.hidden, for: .navigationBar)
             .refreshable { await store.refreshWithForecasts(); await shopping.refresh(); await trips.refresh() }
@@ -41,7 +42,10 @@ struct HomeView: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 8) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 8))
+        return layout {
             Image("AgoraWordmark")
                 .resizable()
                 .scaledToFit()
@@ -49,36 +53,36 @@ struct HomeView: View {
                 .accessibilityLabel("Agora")
                 .accessibilityAddTraits(.isHeader)
 
-            Spacer(minLength: 16)
+            HStack(spacing: 20) {
+                NavigationLink { tripsDestination } label: {
+                    Text("Trips")
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Calendar")
+                .accessibilityHint("View and plan shopping trips")
+                .accessibilityIdentifier("homeCalendar")
 
-            NavigationLink { tripsDestination } label: {
-                Image(systemName: "calendar")
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .accessibilityLabel("Calendar")
-            .accessibilityHint("View and plan shopping trips")
-            .accessibilityIdentifier("homeCalendar")
-
-            NavigationLink {
-                WatchInboxView(store: shopping.watches)
-                    .toolbar(.visible, for: .navigationBar)
-            } label: {
-                Image(systemName: "bell")
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .accessibilityLabel("Notifications")
-            .accessibilityIdentifier("homeNotifications")
+                NavigationLink {
+                    WatchInboxView(store: shopping.watches)
+                        .toolbar(.visible, for: .navigationBar)
+                } label: {
+                    Text("Inbox")
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Notifications")
+                .accessibilityIdentifier("homeNotifications")
+            }.frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .font(.system(size: 21, weight: .regular))
+        .font(.subheadline.weight(.medium))
         .foregroundStyle(.primary)
         .buttonStyle(.plain)
         .padding(.horizontal, 20)
         .padding(.vertical, 5)
         .frame(maxWidth: 900)
         .frame(maxWidth: .infinity)
-        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea(edges: .top))
+        .background(Color.agoraBackground.ignoresSafeArea(edges: .top))
     }
 
     private var tripsDestination: some View {
@@ -91,19 +95,17 @@ struct HomeView: View {
             selectedTab = .capture
         } label: {
             HStack(spacing: 16) {
-                Text("Scan your items")
+                Label("Scan Your Items", systemImage: "viewfinder")
+                    .labelStyle(.titleAndIcon)
                     .font(.headline)
                 Spacer(minLength: 0)
-                Image(systemName: "camera.viewfinder")
-                    .font(.title2.weight(.medium))
-                    .accessibilityHidden(true)
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                Color(red: 0.0, green: 0.36, blue: 0.49),
+                Color.agoraAction,
                 in: RoundedRectangle(cornerRadius: 16)
             )
             .contentShape(RoundedRectangle(cornerRadius: 16))
@@ -121,7 +123,7 @@ struct HomeView: View {
             if shopping.loading && shopping.active.isEmpty {
                 ProgressView("Loading wishlist…").padding(.horizontal, 20)
             } else if shopping.active.isEmpty {
-                sectionMessage("Save something you want and set a target price.")
+                sectionMessage("Your wishlist is empty.")
             } else {
                 ItemCarousel {
                     ForEach(shopping.active) { item in
@@ -145,11 +147,11 @@ struct HomeView: View {
             if shopping.loading && shopping.suggestions.isEmpty {
                 ProgressView("Loading suggestions…").padding(.horizontal, 20)
             } else if shopping.suggestions.isEmpty {
-                sectionMessage("Review replenishment suggestions or find ideas based on your inventory.")
+                sectionMessage("No suggestions right now.")
             } else {
                 ItemCarousel {
                     ForEach(shopping.suggestions) { item in
-                        ItemCarouselItem(title: item.title, detail: item.rationale) { size in
+                        ItemCarouselItem(title: item.title, detail: item.category) { size in
                             ItemThumbnail(kind: "wishlist", id: item.id, name: item.title,
                                           category: item.category, size: size)
                         }
@@ -183,12 +185,12 @@ struct HomeView: View {
                                         Text(date, format: .dateTime.day())
                                             .font(.title.weight(.semibold))
                                     } else {
-                                        Image(systemName: "calendar").font(.title)
+                                        Text("Trip").font(.headline)
                                     }
                                 }
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(Color.agoraAccent)
                                 .frame(width: size, height: size)
-                                .background(Color.blue.opacity(0.08))
+                                .background(Color.agoraAccent.opacity(0.08))
                             }
                         }
                         .buttonStyle(.plain)
@@ -197,7 +199,7 @@ struct HomeView: View {
             } else if trips.loading {
                 ProgressView("Loading trips…").padding(.horizontal, 20)
             } else {
-                sectionMessage("Plan a shopping trip from your lists.")
+                sectionMessage("No upcoming trips.")
             }
             if trips.trips.contains(where: { $0.isUncertain }) {
                 Label("A trip needs its Calendar status checked.", systemImage: "exclamationmark.circle")
@@ -213,7 +215,6 @@ struct HomeView: View {
                 InventoryListView(store: store)
                     .toolbar(.visible, for: .navigationBar)
             }
-            sectionMessage("Predicted to run out within 7 days, out of stock, or below your restock level.")
             if loading && inventory.isEmpty && inventoryError == nil {
                 ProgressView("Checking your inventory…").padding(.horizontal, 20)
             } else if let inventoryError {
@@ -221,10 +222,10 @@ struct HomeView: View {
                 Button("Try again") { Task { await store.refreshWithForecasts() } }
                     .disabled(loading).padding(.horizontal, 20)
             } else if inventory.isEmpty {
-                sectionMessage("Add items and scan them over time to predict when you’ll need more.")
+                sectionMessage("No inventory yet.")
             } else if lowItems.isEmpty {
                 if store.forecastsLoading { ProgressView("Checking consumption…").padding(.horizontal, 20) }
-                else { sectionMessage("No upcoming run-outs found. Keep quantities up to date to improve predictions.") }
+                else { sectionMessage("Nothing running low.") }
             } else {
                 ItemCarousel {
                     ForEach(lowItems) { item in
@@ -260,16 +261,15 @@ struct HomeView: View {
                 .accessibilityAddTraits(.isHeader)
                 .frame(maxWidth: .infinity, alignment: .leading)
             NavigationLink(destination: destination) {
-                Image(systemName: "chevron.right")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(width: 44, height: 44)
+                Text("See all")
+                    .font(.subheadline)
+                    .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
             }
             .accessibilityLabel(linkLabel)
             .accessibilityIdentifier(identifier)
         }
-        .padding(.leading, 20)
-        .padding(.trailing, 8)
+        .padding(.horizontal, 20)
     }
 
     private func sectionMessage(_ message: String) -> some View {
@@ -309,7 +309,7 @@ struct ItemCarouselItem<Artwork: View>: View {
         VStack(spacing: 10) {
             artwork(imageSize)
                 .frame(width: imageSize, height: imageSize)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: Circle())
+                .background(Color.agoraSurface, in: Circle())
                 .clipShape(Circle())
                 .contentShape(Circle())
             VStack(spacing: 4) {

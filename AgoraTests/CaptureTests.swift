@@ -57,6 +57,38 @@ final class CaptureTests: XCTestCase {
         XCTAssertFalse((Bundle.main.object(forInfoDictionaryKey: "NSCameraUsageDescription") as? String ?? "").isEmpty)
         XCTAssertFalse((Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") as? String ?? "").isEmpty)
     }
+
+    func testUnavailableCameraReturnsAnErrorWithoutConfiguringAnImagePicker() async throws {
+        for video in [false, true] {
+            guard CameraPicker.availableCamera(video: video) == nil else { continue }
+            let completed = expectation(description: "Unavailable camera reports an error")
+            let picker = CameraPicker(video: video) { result in
+                guard case .failure(let error) = result else { XCTFail("Expected camera error"); completed.fulfill(); return }
+                XCTAssertEqual(error.localizedDescription, CaptureFailure.cameraUnavailable.localizedDescription)
+                completed.fulfill()
+            }
+            let controller = picker.makeController(coordinator: picker.makeCoordinator())
+            XCTAssertFalse(controller is UIImagePickerController, "Do not set unavailable camera properties: UIKit throws an exception")
+            await fulfillment(of: [completed], timeout: 2)
+        }
+    }
+
+    func testCameraVideoResultCopiesTemporaryFileBeforeReview() throws {
+        let root = try fixtureDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("capture.mov")
+        // This tests ownership of picker bytes, not video decoding.
+        let bytes = Data("camera-result-fixture".utf8)
+        try bytes.write(to: source)
+        var result: Result<(URL, CaptureItem.Kind)?, Error>?
+        let coordinator = CameraPicker.Coordinator { result = $0 }
+        coordinator.imagePickerController(UIImagePickerController(), didFinishPickingMediaWithInfo: [.mediaURL: source])
+        let (file, kind) = try XCTUnwrap(try XCTUnwrap(result).get())
+        defer { try? FileManager.default.removeItem(at: file) }
+        XCTAssertEqual(kind, .video)
+        XCTAssertNotEqual(file, source)
+        try FileManager.default.removeItem(at: source)
+        XCTAssertEqual(try Data(contentsOf: file), bytes)
+    }
 }
 
 
