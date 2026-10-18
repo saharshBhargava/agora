@@ -345,6 +345,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         hint: typeof req.body.hint === 'string' ? req.body.hint.slice(0, 200) : undefined,
         removeOnFail: true,
       });
+      if (res.error === 'no item') return reply.code(422).send({ error: 'no item' });
       if (res.error === 'identify failed') return reply.code(502).send({ error: 'identify failed' });
       const chip = res.chipId ? store.get(run.id)?.chips.find((c) => c.id === res.chipId) : undefined;
       return chip ?? fail(reply, 'cart closed');

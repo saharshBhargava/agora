@@ -18,7 +18,8 @@ export type PipelineDeps = {
   toShopper?: (runId: string, msg: ServerMsg) => void;
 };
 
-export type IdentifyResult = { chipId: string | null; error?: 'cart closed' | 'identify failed' };
+/** `no item`: the model looked and saw nothing nameable (don't retry); `identify failed`: a temporary error (retry). */
+export type IdentifyResult = { chipId: string | null; error?: 'cart closed' | 'identify failed' | 'no item' };
 
 /** Crops `region` out of a JPEG frame (clamped to the frame) and returns a JPEG data URL, or null if it cannot. */
 export async function cropDataUrl(frameBase64: string, region: Box): Promise<string | null> {
@@ -99,13 +100,12 @@ async function identifyLive(
     const wishNames = others.filter((c) => c.state === 'wish').map((c) => c.name);
     found = await vision.identify(frameBase64, opts.hint, region ?? undefined, { runId, cartNames, wishNames });
   } catch (e) {
-    // "Nothing there" (empty counter, a hand, a merged blob) never leaves an "Identifying…" row behind;
-    // other failures (network, rate limits) keep the row so a tap can retry it.
-    // A failed identification never leaves a row behind: the chip is dropped at once and the camera
-    // (or a tap) simply tries again. Clients only show chips once they are named and priced.
-    void e;
+    // A failed identification never leaves a row behind: the chip is dropped at once. "Nothing there"
+    // (empty counter, a hand, a merged blob) is reported apart from temporary errors so the camera
+    // retries only the latter.
     store.update(runId, (r) => ({ ...r, chips: r.chips.filter((c) => c.id !== id) }));
-    return { chipId: null, error: 'identify failed' };
+    const nothing = e instanceof Error && e.message.includes('no clear item');
+    return { chipId: null, error: nothing ? 'no item' : 'identify failed' };
   }
   if (process.env.MERGE_DUPLICATES === '1') {
     const cur = store.get(runId);

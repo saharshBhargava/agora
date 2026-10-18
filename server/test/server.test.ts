@@ -174,6 +174,17 @@ describe('dibs server', () => {
     expect(payments.calls.length).toBe(calls);
   });
 
+  it('POST /chips answers 422 for nothing there and 502 for a temporary failure', async () => {
+    for (const [message, status] of [['identify: no clear item', 422], ['down', 502]] as const) {
+      await app.close();
+      await start({ vision: { identify: async () => { throw new Error(message); }, readReceipt: async () => [] } });
+      const { runId } = await setup();
+      const r = await post(`/api/runs/${runId}/chips`, { imageBase64: '' });
+      expect(r.status).toBe(status);
+      expect((await getRun(runId)).chips).toEqual([]);
+    }
+  });
+
   it('back cancels the lock timer', async () => {
     const { runId, shopperId } = await setup();
     await post(`/api/runs/${runId}/checkout`, { personId: shopperId });
