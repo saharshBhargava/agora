@@ -174,8 +174,9 @@ configuration is separate from these direct app requests.
 2. For a local model, start your server with a loaded model, then choose **Add connection**, select
    **Local OpenAI-compatible**, enter a name and its base URL (for example `http://192.168.1.20:1234/v1`),
    and save. Reopen the connection to save an optional server key and choose **Test connection and load models**.
-   Simulator `localhost` reaches your Mac; a physical iPhone needs the Mac's LAN address and a server listening
-   on that interface. Plain HTTP is accepted for local addresses; use HTTPS for remote servers.
+   Simulator `localhost` reaches your Mac; a physical iPhone needs the Mac's LAN IP (for example `192.168.x.x`)
+   and a server listening on that interface. Plain HTTP is accepted only for private/loopback destinations
+   (hostnames are resolved and checked); use HTTPS for remote servers. Prefer typing the LAN IP on a phone.
 3. Choose **Add model profile**, select that connection, and enter its exact model identifier or use
    **Load available models**. Enable the capabilities your model/server supports. Chat requires tool calling;
    photo captions require images; inventory also requires structured output. Streaming is optional. Local video input
