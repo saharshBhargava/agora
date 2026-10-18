@@ -493,6 +493,11 @@ See [the contract](api/item-images.md) and [current deployment state](current-st
 eight focused simulator tests, including the alternatives-only main-thumbnail regression; rebuilding the
 app is required to distribute these client changes.
 
+Existing-inventory recovery now repairs missing bindings, retries expired empty results, and revisits old
+search-version misses at startup. Visible thumbnails continue checking beyond the first 90-second batch
+while the app is active, including automatic retries after connection failures. The local change passed
+nine image simulator tests; see the current-state record for backend and live-search verification.
+
 ## Shared-browser price fallback — implemented locally
 
 After normal multi-retailer research finishes without a usable price, an ordinary-account watch can

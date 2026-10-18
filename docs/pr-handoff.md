@@ -1,5 +1,13 @@
 # Merged-work handoff for returning agents
 
+## Existing inventory images released
+
+PR [#39](https://github.com/saharshBhargava/agora/pull/39), merge `343f183`, is deployed. Missing
+inventory image bindings and older automatic-search misses now recover through the shared image pipeline.
+Demo imagery and user overrides remain preserved; no migration was added. Do not replay the shared
+checkout’s uncommitted backend copies. Native continued polling remains local and requires a rebuilt app.
+See [current state](current-state.md) for deployment and validation evidence.
+
 ## Price discovery correction released
 
 PR [#36](https://github.com/saharshBhargava/agora/pull/36), merge `be1e9de`, is deployed. Preserve the

@@ -45,6 +45,28 @@ struct InventoryItem: Decodable, Identifiable, Equatable {
         return quantity < parLevel
     }
     var quantityLabel: String { quantity.map { "\($0.formatted()) \(unit)" } ?? "Quantity unknown" }
+
+    var stockSummary: String {
+        if quantity == 0 { return "Out of stock" }
+        return isRunningLow ? "Running low · \(quantityLabel) left" : quantityLabel
+    }
+
+    /// Restock priority, not a consumption forecast. Ratios keep different units comparable.
+    static func restockOrder(_ lhs: Self, _ rhs: Self) -> Bool {
+        func rank(_ item: Self) -> Int {
+            if item.quantity == 0 { return 0 }
+            if item.isRunningLow { return 1 }
+            return item.quantity == nil ? 3 : 2
+        }
+        let leftRank = rank(lhs), rightRank = rank(rhs)
+        if leftRank != rightRank { return leftRank < rightRank }
+        if leftRank == 1, let lq = lhs.quantity, let lp = lhs.parLevel, lp > 0,
+           let rq = rhs.quantity, let rp = rhs.parLevel, rp > 0, lq / lp != rq / rp {
+            return lq / lp < rq / rp
+        }
+        let comparison = lhs.displayName.localizedStandardCompare(rhs.displayName)
+        return comparison == .orderedSame ? lhs.id.uuidString < rhs.id.uuidString : comparison == .orderedAscending
+    }
 }
 
 struct InventoryObservation: Decodable {

@@ -128,9 +128,9 @@ struct HomeView: View {
             } else if shopping.active.isEmpty {
                 sectionMessage("Save something you want and set a target price.")
             } else {
-                HomeCarousel {
+                ItemCarousel {
                     ForEach(shopping.active) { item in
-                        HomeCarouselItem(title: item.title, detail: item.targetLabel.map { "Target \($0)" }) { size in
+                        ItemCarouselItem(title: item.title, detail: item.targetLabel.map { "Target \($0)" }) { size in
                             ItemThumbnail(kind: "wishlist", id: item.id, name: item.title,
                                           category: item.category, size: size)
                         }
@@ -152,9 +152,9 @@ struct HomeView: View {
             } else if shopping.suggestions.isEmpty {
                 sectionMessage("Review replenishment suggestions or find ideas based on your inventory.")
             } else {
-                HomeCarousel {
+                ItemCarousel {
                     ForEach(shopping.suggestions) { item in
-                        HomeCarouselItem(title: item.title, detail: item.rationale) { size in
+                        ItemCarouselItem(title: item.title, detail: item.rationale) { size in
                             ItemThumbnail(kind: "wishlist", id: item.id, name: item.title,
                                           category: item.category, size: size)
                         }
@@ -175,10 +175,10 @@ struct HomeView: View {
                 tripsDestination
             }
             if !upcomingTrips.isEmpty {
-                HomeCarousel {
+                ItemCarousel {
                     ForEach(upcomingTrips) { trip in
                         NavigationLink { tripsDestination } label: {
-                            HomeCarouselItem(title: trip.title,
+                            ItemCarouselItem(title: trip.title,
                                              detail: trip.startDate?.formatted(.dateTime.weekday().hour().minute())) { size in
                                 // Trips have no product image; use a date medallion in the same circular layout.
                                 VStack(spacing: 2) {
@@ -229,9 +229,9 @@ struct HomeView: View {
             } else if lowItems.isEmpty {
                 sectionMessage("No items below their restock levels. Items need a quantity and a restock level to be checked.")
             } else {
-                HomeCarousel {
+                ItemCarousel {
                     ForEach(lowItems) { item in
-                        HomeCarouselItem(title: item.displayName,
+                        ItemCarouselItem(title: item.displayName,
                                          detail: item.quantity.map { $0 == 0 ? "Out of stock" : "\($0.formatted()) \(item.unit) left" },
                                          detailColor: item.quantity == 0 ? .red : .secondary) { size in
                             ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName,
@@ -273,7 +273,7 @@ struct HomeView: View {
 }
 
 /// Each category keeps its own scroll position and snaps to the nearest item.
-private struct HomeCarousel<Content: View>: View {
+struct ItemCarousel<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -290,7 +290,7 @@ private struct HomeCarousel<Content: View>: View {
     }
 }
 
-private struct HomeCarouselItem<Artwork: View>: View {
+struct ItemCarouselItem<Artwork: View>: View {
     let title: String
     var detail: String?
     var detailColor: Color = .secondary

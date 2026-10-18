@@ -20,6 +20,26 @@ private func decodeTripList(_ row: [String: Any]) throws -> TripList {
 
 final class TripPlannerTests: XCTestCase {
     private var options: TripPlanningOptions { TripPlanningOptions(days: 2, startHour: 9, endHour: 20, durationMinutes: 60, timezone: "UTC") }
+    func testStoreGroupsPreserveEveryListAndSeparateMerchantLocations() throws {
+        let downtown = UUID(), north = UUID()
+        func list(_ name: String, merchant: UUID?, locality: String = "") throws -> TripList {
+            var row = tripListJSON(id: UUID()); row["name"] = name
+            if let merchant {
+                row["merchant"] = ["id": merchant.uuidString, "name": "Market", "locality": locality]
+            }
+            return try decodeTripList(row)
+        }
+        let lists = try [list("Weekend", merchant: downtown, locality: "Downtown"),
+                         list("Household", merchant: nil),
+                         list("Groceries", merchant: downtown, locality: "Downtown"),
+                         list("Pickup", merchant: north, locality: "North")]
+        let groups = TripListStoreGroup.group(lists)
+        XCTAssertEqual(groups.map(\.name), ["Market · Downtown", "Market · North", "Any store"])
+        XCTAssertEqual(groups[0].lists.map(\.name), ["Groceries", "Weekend"])
+        XCTAssertEqual(Set(groups.flatMap(\.lists).map(\.id)), Set(lists.map(\.id)))
+        XCTAssertTrue(TripListStoreGroup.group([]).isEmpty)
+    }
+
     func testBusyIntervalsEarliestDeadlineAndMultipleStoresNeverOverlap() throws {
         let later = try decodeTripList(tripListJSON())
         let urgent = try decodeTripList(tripListJSON(id: UUID(), deadline: "2026-10-17T12:00:00Z"))

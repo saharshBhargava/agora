@@ -138,6 +138,25 @@ final class InventoryTests: XCTestCase {
         XCTAssertTrue(patch.values.allSatisfy { $0 is NSNull })
     }
 
+    func testRestockPriorityUsesRelativeStockAndKeepsUnknownQuantitiesLast() throws {
+        let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .iso8601
+        func item(_ name: String, _ quantity: Double?, _ par: Double?) throws -> InventoryItem {
+            var value = row
+            value["id"] = UUID().uuidString; value["display_name"] = name
+            value["quantity"] = quantity as Any? ?? NSNull()
+            value["par_level"] = par as Any? ?? NSNull()
+            value.removeValue(forKey: "observed_at")
+            return try decoder.decode(InventoryItem.self, from: JSONSerialization.data(withJSONObject: value))
+        }
+        let items = try [item("Unknown", nil, 2), item("Stocked", 5, 2),
+                         item("Milk", 1, 2), item("Eggs", 3, 12), item("Empty", 0, nil), item("No level", 1, nil)]
+        XCTAssertEqual(items.sorted(by: InventoryItem.restockOrder).map(\.displayName),
+                       ["Empty", "Eggs", "Milk", "No level", "Stocked", "Unknown"])
+        XCTAssertEqual(items[4].stockSummary, "Out of stock")
+        XCTAssertEqual(items[0].stockSummary, "Quantity unknown")
+    }
+
     func testValidationRejectsInvalidNumbersAndAllowsUnknownAndZero() throws {
         for value in ["-1", "10001", "NaN", "inf", "abc"] { XCTAssertThrowsError(try InventoryDraft.number(value)) }
         XCTAssertNil(try InventoryDraft.number("")); XCTAssertEqual(try InventoryDraft.number("0"), 0)

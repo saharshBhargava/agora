@@ -72,6 +72,28 @@ final class ItemImageTests: XCTestCase {
         XCTAssertEqual(requests.count, 2)
     }
 
+    func testVisibleInventoryAutomaticallyRecoversAfterImageServiceFailure() async throws {
+        let response = descriptor(), image = data
+        var reads = 0
+        ImageHTTP.handler = { request in
+            if request.url!.path.contains("/assets/") { return (200, image) }
+            reads += 1
+            return reads == 1 ? (503, Data()) : (200, response)
+        }
+        let observing = Task { await store.observe(ref, interval: .milliseconds(10)) }
+        defer { observing.cancel() }
+        for _ in 0..<100 where store.pictures[assetID] == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertNotNil(store.pictures[assetID])
+        XCTAssertNil(store.loadMessages[ref])
+        XCTAssertEqual(reads, 2, "Automatic checks reuse the descriptor cache after recovery")
+        store.reset(context: "another-household")
+        await observing.value
+        XCTAssertTrue(store.pictures.isEmpty)
+        XCTAssertEqual(reads, 2, "An old observer must stop when the household changes")
+    }
+
     func testNeverSendsCredentialsToExternalImagePath() async throws {
         ImageHTTP.handler = { _ in XCTFail("No network request is allowed"); return (500, Data()) }
         for path in ["https://attacker.example/a.jpg", "v1/item-images/assets/../../me", "v1/item-images/assets/not-a-uuid"] {

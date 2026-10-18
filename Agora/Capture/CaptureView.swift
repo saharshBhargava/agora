@@ -7,71 +7,66 @@ import UniformTypeIdentifiers
 struct CaptureView: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var inventory: InventoryStore
-    @StateObject private var library = MediaLibrary()
+    @StateObject private var library: MediaLibrary
     @State private var camera: CameraMode?
-    @State private var pickingLibrary = false
+    @State private var sheet: CaptureSheet?
     @State private var pickingFiles = false
-    @State private var preview: CaptureItem?
     @State private var deleting: CaptureItem?
     @State private var requestingPermission = false
     @State private var needsSettings = false
     @State private var cameraDismissed = true
-    @State private var pendingReview: CaptureReview?
-    @State private var captureReview: CaptureReview?
-    private struct CaptureReview: Identifiable {
-        let item: CaptureItem
-        let controller: RecognitionController
-        var id: UUID { item.id }
+    @State private var sheetDismissed = true
+    @State private var reviewQueue = ScanReviewQueue()
+    @State private var scanAfterDismiss = false
+    @State private var showingAll = false
+    @State private var inputContext: UUID?
+
+    init(settings: SettingsStore, inventory: InventoryStore, library: MediaLibrary? = nil) {
+        self.settings = settings; self.inventory = inventory
+        _library = StateObject(wrappedValue: library ?? MediaLibrary())
     }
+
     enum CameraMode: String, Identifiable { case photo, video; var id: String { rawValue } }
+    private enum CaptureSheet: Identifiable {
+        case library, review(CaptureItem), preview(CaptureItem)
+        var id: String {
+            switch self {
+            case .library: return "library"
+            case .review(let item): return "review-\(item.id)"
+            case .preview(let item): return "preview-\(item.id)"
+            }
+        }
+    }
+    private var disabled: Bool { library.busy || requestingPermission }
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Capture something new").font(.title2.bold())
-                        Text("Take a photo or record a video.").foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 28) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Add items to your inventory").font(.largeTitle.bold())
+                        Text("Scan, review, and save. You choose what gets added.")
+                            .font(.body).foregroundStyle(.secondary)
                     }
-                    HStack(spacing: 12) {
-                        captureButton("Photo", icon: "camera", mode: .photo)
-                        captureButton("Video", icon: "video", mode: .video)
-                    }.disabled(library.busy || requestingPermission)
-                    HStack {
-                        Button { pickingLibrary = true } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
-                            .buttonStyle(.borderedProminent)
-                        Button { pickingFiles = true } label: { Label("Files", systemImage: "folder") }
-                            .buttonStyle(.bordered)
-                    }.disabled(library.busy || requestingPermission)
-                    Text("New camera captures go to your selected inventory model to identify items. Enter the purchase store while recognition runs.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    if library.busy { ProgressView("Saving media…").frame(maxWidth: .infinity) }
-                    HStack {
-                        Text("Your media").font(.title2.bold())
-                        Spacer()
-                        Text("\(library.items.count)").foregroundStyle(.secondary)
+                    scanActions
+                    if library.busy {
+                        ProgressView("Preparing your scans…").frame(maxWidth: .infinity)
                     }
-                    if library.items.isEmpty {
-                        ContentUnavailableView("No captures yet", systemImage: "photo.stack", description: Text("Use the camera or import existing photos and videos to get started."))
-                    } else {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 14)], spacing: 14) {
-                            ForEach(library.items) { item in
-                                Button { preview = item } label: { MediaTile(item: item, url: library.url(for: item)) }
-                                    .buttonStyle(.plain)
-                                    .contextMenu {
-                                        ShareLink(item: library.url(for: item)) { Label("Share", systemImage: "square.and.arrow.up") }
-                                        Button("Delete", systemImage: "trash", role: .destructive) { deleting = item }
-                                    }
-                            }
-                        }
-                    }
-                }.padding()
+                    recentScans
+                }
+                .padding(20)
+                .frame(maxWidth: 700, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
+            .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("Capture")
+            .navigationBarTitleDisplayMode(.inline)
             .task { await library.load() }
             .fullScreenCover(item: $camera, onDismiss: {
                 cameraDismissed = true
-                presentCaptureReview()
+                presentNextReview()
             }) { mode in
+                // The native camera provides Use Photo / Retake before handing us the capture.
                 CameraPicker(video: mode == .video) { result in
                     camera = nil
                     switch result {
@@ -80,47 +75,42 @@ struct CaptureView: View {
                     }
                 }.ignoresSafeArea()
             }
-
-            .sheet(isPresented: $pickingLibrary) {
-                LibraryPicker { results in
-                    pickingLibrary = false
-                    guard !results.isEmpty else { return }
-                    library.busy = true
-                    Task {
-                        defer { library.busy = false }
-                        for result in results {
-                            do {
-                                let (url, kind) = try await LibraryPicker.copyFile(from: result)
-                                await library.add(file: url, kind: kind)
-                                try? FileManager.default.removeItem(at: url)
-                            } catch { library.error = "Could not import a selected item: \(error.localizedDescription)" }
-                        }
+            .sheet(item: $sheet, onDismiss: {
+                sheetDismissed = true
+                if scanAfterDismiss {
+                    scanAfterDismiss = false
+                    Task { await openCamera(.photo) }
+                } else { presentNextReview() }
+            }) { destination in
+                switch destination {
+                case .library:
+                    LibraryPicker { results in
+                        sheet = nil
+                        guard !results.isEmpty else { return }
+                        importPhotos(results)
                     }
+                case .review(let item):
+                    RecognitionView(item: item, url: library.url(for: item), settings: settings,
+                                    store: inventory, library: library,
+                                    onClose: { reviewQueue.clear() },
+                                    onScanMore: {
+                                        reviewQueue.clear(); scanAfterDismiss = true; sheet = nil
+                                    },
+                                    onNextScan: reviewQueue.isEmpty ? nil : { sheet = nil })
+                case .preview(let item):
+                    MediaPreview(item: item, url: library.url(for: item), settings: settings, inventory: inventory, library: library)
                 }
             }
             .fileImporter(isPresented: $pickingFiles, allowedContentTypes: [.image, .movie, .pdf], allowsMultipleSelection: true) { result in
                 switch result {
-                case .success(let urls):
-                    library.busy = true
-                    Task {
-                        defer { library.busy = false }
-                        for url in urls {
-                            let access = url.startAccessingSecurityScopedResource()
-                            defer { if access { url.stopAccessingSecurityScopedResource() } }
-                            let type = UTType(filenameExtension: url.pathExtension)
-                            let kind: CaptureItem.Kind = type?.conforms(to: .movie) == true ? .video : type?.conforms(to: .pdf) == true ? .document : .image
-                            await library.add(file: url, kind: kind)
-                        }
-                    }
+                case .success(let urls): importFiles(urls)
                 case .failure(let error): library.error = error.localizedDescription
                 }
             }
-            .sheet(item: $captureReview) { review in
-                RecognitionView(item: review.item, url: library.url(for: review.item), settings: settings,
-                                store: inventory, library: library, controller: review.controller)
-            }
-            .sheet(item: $preview) { item in
-                MediaPreview(item: item, url: library.url(for: item), settings: settings, inventory: inventory, library: library)
+            .onChange(of: pickingFiles) { _, presented in if !presented { presentNextReview() } }
+            .onChange(of: inventory.context) { _, _ in
+                inputContext = nil
+                reviewQueue.clear(); scanAfterDismiss = false; sheet = nil; camera = nil
             }
             .alert("Capture", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
                 if needsSettings {
@@ -136,67 +126,196 @@ struct CaptureView: View {
             }
         }
     }
-    private func captureButton(_ title: String, icon: String, mode: CameraMode) -> some View {
-        Button { Task { await openCamera(mode) } } label: {
-            VStack(spacing: 10) { Image(systemName: icon).font(.title); Text(title).font(.headline) }
-                .frame(maxWidth: .infinity).padding(.vertical, 22)
-                .background(Color.teal.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
-        }.accessibilityIdentifier("capture.\(mode.rawValue)")
+
+    private var scanActions: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label("Keep labels visible and include the whole item.", systemImage: "viewfinder")
+                .font(.subheadline).foregroundStyle(.secondary)
+            Button { Task { await openCamera(.photo) } } label: {
+                Label("Scan items", systemImage: "camera.viewfinder")
+                    .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large)
+            .accessibilityIdentifier("capture.photo")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) { importActions }
+                VStack(alignment: .leading, spacing: 12) { importActions }
+            }
+            Divider()
+            Button { Task { await openCamera(.video) } } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "video").font(.title2)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Scan a shelf").font(.headline)
+                        Text("Record a short video. Pan slowly so labels stay clear.")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                }
+                .padding(.vertical, 8).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).accessibilityIdentifier("capture.video")
+            Text("Photos and videos are identified automatically. Review the results before saving. PDFs are kept for viewing only.")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        .disabled(disabled)
     }
+
+    @ViewBuilder private var importActions: some View {
+        Button { present(.library) } label: { Label("Choose photos", systemImage: "photo.on.rectangle") }
+            .buttonStyle(.bordered).accessibilityIdentifier("capture.library")
+        Menu {
+            Button("Photos, videos, or PDFs", systemImage: "folder") {
+                inputContext = inventory.context; pickingFiles = true
+            }
+        } label: { Label("Import", systemImage: "square.and.arrow.down") }
+        .accessibilityIdentifier("capture.files")
+    }
+
+    private var recentScans: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Recent scans").font(.title3.bold()).accessibilityAddTraits(.isHeader)
+                Spacer()
+                if library.items.count > 3 {
+                    Button(showingAll ? "Show less" : "See all") { showingAll.toggle() }
+                        .font(.subheadline)
+                }
+            }
+            if library.items.isEmpty {
+                Label("Your scans will appear here. You can return to review them anytime.", systemImage: "clock")
+                    .font(.subheadline).foregroundStyle(.secondary).padding(.vertical, 8)
+            } else {
+                ForEach(showingAll ? library.items : Array(library.items.prefix(3))) { item in
+                    HStack(spacing: 8) {
+                        Button { present(item.kind == .document ? .preview(item) : .review(item)) } label: {
+                            RecentScanRow(item: item, url: library.url(for: item),
+                                          status: item.scanStatus(accountID: inventory.accountID, householdID: inventory.householdID))
+                        }
+                        .buttonStyle(.plain)
+                        Menu {
+                            Button("View media & captions", systemImage: "photo") { present(.preview(item)) }
+                            ShareLink(item: library.url(for: item)) { Label("Share", systemImage: "square.and.arrow.up") }
+                            Button("Delete", systemImage: "trash", role: .destructive) { deleting = item }
+                        } label: {
+                            Image(systemName: "ellipsis").frame(width: 44, height: 44).contentShape(Rectangle())
+                        }.accessibilityLabel("Options for \(item.title)")
+                    }
+                }
+            }
+        }
+    }
+
+    private func present(_ destination: CaptureSheet) {
+        if case .library = destination { inputContext = inventory.context }
+        sheetDismissed = false; sheet = destination
+    }
+
     private func openCamera(_ mode: CameraMode) async {
         requestingPermission = true; needsSettings = false
+        let context = inventory.context
         defer { requestingPermission = false }
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-            library.error = "This device does not support camera capture. Use Photo Library or Files, or try on a physical iPhone."
+            library.error = "This device does not support camera capture. Choose photos or import a file instead."
             return
         }
         guard await AVCaptureDevice.requestAccess(for: .video) else {
-            needsSettings = true; library.error = "Allow camera access in Settings to take photos or record videos."; return
+            needsSettings = true; library.error = "Allow camera access in Settings to scan items."; return
         }
         if mode == .video, !(await AVCaptureDevice.requestAccess(for: .audio)) {
             needsSettings = true; library.error = "Allow microphone access in Settings to record videos with sound."; return
         }
-        cameraDismissed = false
-        camera = mode
+        guard inventory.context == context else { return }
+        inputContext = context; cameraDismissed = false; camera = mode
     }
+
     private func saveTemporary(_ url: URL, kind: CaptureItem.Kind) {
+        guard let context = inputContext, context == inventory.context else {
+            try? FileManager.default.removeItem(at: url); return
+        }
         library.busy = true
         Task {
-            defer { library.busy = false; try? FileManager.default.removeItem(at: url) }
-            guard let item = await library.add(file: url, kind: kind) else { return }
-            let controller = RecognitionController()
-            controller.generateIfNeeded(item: item, file: library.url(for: item), settings: settings, store: inventory)
-            pendingReview = CaptureReview(item: item, controller: controller)
-            presentCaptureReview()
+            defer { library.busy = false; presentNextReview(); try? FileManager.default.removeItem(at: url) }
+            if let item = await library.add(file: url, kind: kind), inventory.context == context {
+                reviewQueue.enqueue([item])
+            }
         }
     }
-    private func presentCaptureReview() {
-        // The file copy and camera dismissal can finish in either order.
-        guard cameraDismissed, let pendingReview else { return }
-        captureReview = pendingReview
-        self.pendingReview = nil
+
+    private func importPhotos(_ results: [PHPickerResult]) {
+        guard let context = inputContext, context == inventory.context else { return }
+        library.busy = true
+        Task {
+            defer { library.busy = false; presentNextReview() }
+            for result in results {
+                guard inventory.context == context else { return }
+                do {
+                    let (url, kind) = try await LibraryPicker.copyFile(from: result)
+                    defer { try? FileManager.default.removeItem(at: url) }
+                    if let item = await library.add(file: url, kind: kind), inventory.context == context {
+                        reviewQueue.enqueue([item])
+                    }
+                } catch { library.error = "Could not import a selected item: \(error.localizedDescription)" }
+            }
+        }
+    }
+
+    private func importFiles(_ urls: [URL]) {
+        guard let context = inputContext, context == inventory.context else { return }
+        library.busy = true
+        Task {
+            defer { library.busy = false; presentNextReview() }
+            for url in urls {
+                guard inventory.context == context else { return }
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                let type = UTType(filenameExtension: url.pathExtension)
+                let kind: CaptureItem.Kind = type?.conforms(to: .movie) == true ? .video : type?.conforms(to: .pdf) == true ? .document : .image
+                if let item = await library.add(file: url, kind: kind), inventory.context == context {
+                    reviewQueue.enqueue([item])
+                }
+            }
+        }
+    }
+
+    private func presentNextReview() {
+        guard cameraDismissed, sheetDismissed, !pickingFiles, !library.busy, sheet == nil,
+              let next = reviewQueue.next() else { return }
+        present(.review(next))
     }
 }
 
-private struct MediaTile: View {
+private struct RecentScanRow: View {
     let item: CaptureItem
     let url: URL
+    let status: String
     @State private var thumbnail: UIImage?
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        HStack(spacing: 12) {
             ZStack {
                 Color.secondary.opacity(0.08)
                 if let thumbnail { Image(uiImage: thumbnail).resizable().scaledToFill() }
-                else { Image(systemName: item.symbol).font(.largeTitle).foregroundStyle(.teal) }
-                if item.kind == .video { Image(systemName: "play.circle.fill").font(.largeTitle).foregroundStyle(.white).shadow(radius: 3) }
-            }.frame(height: 140).clipped().clipShape(RoundedRectangle(cornerRadius: 12))
-            Text(item.title).font(.headline)
-            Text(item.createdAt, format: .dateTime.month().day().hour().minute()).font(.caption).foregroundStyle(.secondary)
+                else { Image(systemName: item.symbol).foregroundStyle(.teal) }
+                if item.kind == .video { Image(systemName: "play.circle.fill").foregroundStyle(.white).shadow(radius: 2) }
+            }
+            .frame(width: 64, height: 64).clipped().clipShape(RoundedRectangle(cornerRadius: 12))
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title).font(.subheadline.weight(.semibold))
+                Text(status).font(.caption).foregroundStyle(.secondary)
+                Text(item.createdAt, format: .dateTime.month().day().hour().minute())
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle()).accessibilityElement(children: .combine)
         .task(id: item.id) {
             if item.kind == .image { thumbnail = await Task.detached { MediaLibrary.thumbnail(url) }.value }
             else if item.kind == .video {
-                let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url)); generator.appliesPreferredTrackTransform = true; generator.maximumSize = CGSize(width: 600, height: 600)
+                let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+                generator.appliesPreferredTrackTransform = true; generator.maximumSize = CGSize(width: 160, height: 160)
                 if let image = try? await generator.image(at: .zero) { thumbnail = UIImage(cgImage: image.image) }
             }
         }

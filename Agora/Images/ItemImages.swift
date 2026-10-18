@@ -115,6 +115,14 @@ final class ItemImageStore: ObservableObject {
         self.context = context + UUID().uuidString
     }
 
+    func observe(_ ref: ItemImageReference, interval: Duration = .seconds(30)) async {
+        let epoch = context
+        while !Task.isCancelled, context == epoch {
+            await load(ref)
+            do { try await Task.sleep(for: interval) } catch { return }
+        }
+    }
+
     func load(_ ref: ItemImageReference, force: Bool = false) async {
         if let task = tasks[ref] { await task.value; return }
         if !force, let date = loadedAt[ref], Date().timeIntervalSince(date) < 60 { return }
@@ -217,6 +225,7 @@ private struct StoredItemThumbnail: View {
     let size: CGFloat
     let editable: Bool
     @State private var editing = false
+    @Environment(\.scenePhase) private var phase
     var body: some View {
         Group {
             if let asset = store.descriptors[ref]?.displayAsset, let image = store.pictures[asset.id] {
@@ -237,7 +246,9 @@ private struct StoredItemThumbnail: View {
         .contextMenu {
             if editable { Button("Change image", systemImage: "photo") { editing = true } }
         }
-        .task(id: "\(ref)-\(store.context)-\(store.revision)") { await store.load(ref) }
+        .task(id: "\(ref)-\(store.context)-\(store.revision)-\(phase == .active)") {
+            if phase == .active { await store.observe(ref) }
+        }
         .sheet(isPresented: $editing) { ItemImageEditor(store: store, ref: ref) }
     }
 }
