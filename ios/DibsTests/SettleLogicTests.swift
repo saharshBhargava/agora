@@ -148,7 +148,7 @@ final class SettleLogicTests: XCTestCase {
         let run = try load("run-receipt")
         let rows = SettleLogic.checkRows(run: run)
         XCTAssertEqual(rows.map(\.sub), [
-            "Kirkland Eggs 24 ct · Priya and Marcus",
+            "Kirkland Eggs 24 ct · Priya, Marcus",
             "Paper Towels 12 pk · Priya",
             "2% Milk · yours",
         ])
@@ -209,6 +209,9 @@ final class SettleLogicTests: XCTestCase {
         XCTAssertEqual(SettleLogic.follow(path: [.claim(claim)], run: partly), [.settle(claim)])
         XCTAssertEqual(SettleLogic.follow(path: [.shopper(shop)], run: partly), [.settle(shop)])
         XCTAssertNil(SettleLogic.follow(path: [.settle(shop)], run: partly))
+        // Back from a finished Settle goes Home, not to the stale cart underneath.
+        XCTAssertEqual(SettleLogic.follow(path: [.shopper(shop), .settle(shop)], run: partly), [.settle(shop)])
+        XCTAssertEqual(SettleLogic.follow(path: [.claim(claim), .settle(claim)], run: partly), [.settle(claim)])
         XCTAssertNil(SettleLogic.follow(path: [], run: partly))
         XCTAssertNil(SettleLogic.follow(path: [.claim(RunRef(runId: "other", personId: priya))], run: partly))
 
@@ -218,13 +221,30 @@ final class SettleLogicTests: XCTestCase {
         var locked = receipt
         locked.state = .locked
         XCTAssertNil(SettleLogic.follow(path: [.shopper(shop)], run: locked), "the shopper taps through to the receipt")
+        XCTAssertNil(SettleLogic.follow(path: [.shopper(shop), .settle(shop)], run: receipt), "Back returns to the cart mid-check")
+    }
+
+    func testReceiptPathPushesWhileCheckingOutAndReplacesOnceFinished() throws {
+        let receipt = try load("run-receipt")
+        let shop = RunRef(runId: receipt.id, personId: "jake")
+        var locked = receipt
+        locked.state = .locked
+        XCTAssertEqual(SettleLogic.receiptPath(path: [.shopper(shop)], ref: shop, run: locked), [.shopper(shop), .settle(shop)])
+        XCTAssertEqual(SettleLogic.receiptPath(path: [.shopper(shop), .settle(shop)], ref: shop, run: locked), [.shopper(shop), .settle(shop)])
+        XCTAssertEqual(SettleLogic.receiptPath(path: [.shopper(shop)], ref: shop, run: nil), [.shopper(shop), .settle(shop)])
+        var settled = receipt
+        settled.state = .settled
+        XCTAssertEqual(SettleLogic.receiptPath(path: [.shopper(shop)], ref: shop, run: settled), [.settle(shop)])
+        var partly = receipt
+        partly.state = .partlySettled
+        XCTAssertEqual(SettleLogic.receiptPath(path: [.shopper(shop)], ref: shop, run: partly), [.settle(shop)])
     }
 
     // MARK: receipt photo
 
     func testReceiptPhotoFitsTwoThousandPixels() throws {
-        XCTAssertEqual(ReceiptImage.targetSize(for: CGSize(width: 3024, height: 4032)), CGSize(width: 1500, height: 2000))
-        XCTAssertEqual(ReceiptImage.targetSize(for: CGSize(width: 4000, height: 1000)), CGSize(width: 2000, height: 500))
+        XCTAssertEqual(ReceiptImage.targetSize(for: CGSize(width: 3024, height: 4032)), CGSize(width: 1800, height: 2400))
+        XCTAssertEqual(ReceiptImage.targetSize(for: CGSize(width: 4800, height: 1200)), CGSize(width: 2400, height: 600))
         XCTAssertEqual(ReceiptImage.targetSize(for: CGSize(width: 1200, height: 1600)), CGSize(width: 1200, height: 1600))
 
         let big = UIGraphicsImageRenderer(size: CGSize(width: 3000, height: 1500), format: {
@@ -234,12 +254,12 @@ final class SettleLogicTests: XCTestCase {
         }
         let base64 = try XCTUnwrap(ReceiptImage.jpegBase64(big))
         let decoded = try XCTUnwrap(UIImage(data: try XCTUnwrap(Data(base64Encoded: base64))))
-        XCTAssertEqual(decoded.size.width * decoded.scale, 2000)
-        XCTAssertEqual(decoded.size.height * decoded.scale, 1000)
+        XCTAssertEqual(decoded.size.width * decoded.scale, 2400)
+        XCTAssertEqual(decoded.size.height * decoded.scale, 1200)
     }
 
     func testBusyReceiptPhotoFitsTheServerBodyLimit() throws {
-        // Random noise compresses badly: at 2000 px and 0.8 it is several MB.
+        // Random noise compresses badly: several MB even at 1500x2000.
         let w = 1500, h = 2000
         var bytes = [UInt8](repeating: 0, count: w * h * 4)
         var seed: UInt32 = 12345
@@ -248,8 +268,13 @@ final class SettleLogicTests: XCTestCase {
             CGContext(data: raw.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
                       space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)?.makeImage()
         })
-        let base64 = try XCTUnwrap(ReceiptImage.jpegBase64(UIImage(cgImage: cg)))
+        let image = UIImage(cgImage: cg)
+        let base64 = try XCTUnwrap(ReceiptImage.jpegBase64(image))
         XCTAssertLessThanOrEqual(base64.utf8.count, ReceiptImage.maxBase64Bytes)
-        XCTAssertNotNil(UIImage(data: try XCTUnwrap(Data(base64Encoded: base64))))
+        XCTAssertEqual(ReceiptImage.maxBase64Bytes, 6_000_000)
+        // A tighter cap forces the quality and size steps.
+        let small = try XCTUnwrap(ReceiptImage.jpegBase64(image, maxBytes: 1_500_000))
+        XCTAssertLessThanOrEqual(small.utf8.count, 1_500_000)
+        XCTAssertNotNil(UIImage(data: try XCTUnwrap(Data(base64Encoded: small))))
     }
 }

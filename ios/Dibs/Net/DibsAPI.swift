@@ -169,7 +169,8 @@ public struct DibsAPI: Sendable {
     }
 
     public func confirm(runId: String, personId: String) async throws -> Run {
-        try await call("POST", "\(Self.runPath(runId))/confirm", body: PersonBody(personId: personId))
+        // Settling runs every capture, reversal and the payout before it answers.
+        try await call("POST", "\(Self.runPath(runId))/confirm", body: PersonBody(personId: personId), timeout: slowTimeout)
     }
 
     // MARK: transport

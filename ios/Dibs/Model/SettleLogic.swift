@@ -197,7 +197,7 @@ enum SettleLogic {
             var sub: String?
             if let chip {
                 let names = chip.claimers.map { run.person($0)?.name ?? "?" }
-                sub = "\(chip.name) · \(names.isEmpty ? "yours" : RunText.listNames(names))"
+                sub = "\(chip.name) · \(names.isEmpty ? "yours" : names.joined(separator: ", "))"
             } else if mine {
                 sub = "Mine"
             } else if line.isTax {
@@ -245,8 +245,9 @@ enum SettleLogic {
 
     // MARK: routing
 
-    /// The stack to show when the live run moves on: a claim or shopper screen becomes Settle once the run
-    /// is settled or partly settled, and the shopper's cart becomes the receipt check once a receipt is read.
+    /// The stack to show when the live run moves on. Once the run is settled or partly settled, a claim,
+    /// shopper or settle screen on top becomes Settle alone, so Back goes Home rather than to a stale cart.
+    /// The shopper's cart becomes the receipt check once a receipt is read (Back returns to the cart).
     /// Nil when nothing changes.
     static func follow(path: [Route], run: Run) -> [Route]? {
         guard let last = path.last else { return nil }
@@ -255,13 +256,29 @@ enum SettleLogic {
         switch last {
         case .claim(let r): ref = r; shopperScreen = false
         case .shopper(let r): ref = r; shopperScreen = true
+        case .settle(let r): ref = r; shopperScreen = false
         default: return nil
         }
         guard ref.runId == run.id else { return nil }
-        let done = run.state == .settled || run.state == .partlySettled
-        guard done || (shopperScreen && run.state == .receipt) else { return nil }
-        return Array(path.dropLast()) + [.settle(ref)]
+        let next: [Route]
+        if isFinished(run) {
+            next = [.settle(ref)]
+        } else if shopperScreen, run.state == .receipt {
+            next = Array(path.dropLast()) + [.settle(ref)]
+        } else {
+            return nil
+        }
+        return next == path ? nil : next
     }
+
+    /// The stack after the shopper taps into the receipt flow: pushed on the cart while the run is still
+    /// being checked out, Settle alone once the run is finished.
+    static func receiptPath(path: [Route], ref: RunRef, run: Run?) -> [Route] {
+        if let run, run.id == ref.runId, isFinished(run) { return [.settle(ref)] }
+        return path.last == .settle(ref) ? path : path + [.settle(ref)]
+    }
+
+    static func isFinished(_ run: Run) -> Bool { run.state == .settled || run.state == .partlySettled }
 
     // MARK: I've paid
 

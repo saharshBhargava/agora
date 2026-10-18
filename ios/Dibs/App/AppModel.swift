@@ -140,11 +140,11 @@ final class AppModel {
     /// `Route.settle`, which shows the receipt camera while the run is locked, then the check, then Settle.
     func openReceipt(_ ref: RunRef) {
         intent += 1
-        if path.last != .settle(ref) { path.append(.settle(ref)) }
+        path = SettleLogic.receiptPath(path: path, ref: ref, run: store.run)
     }
 
-    /// When the live run reaches settled or partly settled (or, for the shopper, a read receipt), a claim
-    /// or shopper screen on top is replaced by Settle.
+    /// When the live run reaches settled or partly settled, the stack becomes Settle alone (Back goes
+    /// Home); for the shopper, a read receipt replaces the cart on top with the check.
     func followRun() {
         guard let run = store.run, store.runId == run.id,
               let next = SettleLogic.follow(path: path, run: run) else { return }

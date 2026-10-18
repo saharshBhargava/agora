@@ -2,10 +2,10 @@
 import SwiftUI
 import UIKit
 
-/// The receipt photo the server reads: JPEG, at most 2000 px on the long side, quality 0.8.
+/// The receipt photo the server reads: JPEG, at most 2400 px on the long side, quality 0.85.
 enum ReceiptImage {
-    static let maxSide: CGFloat = 2000
-    static let quality: CGFloat = 0.8
+    static let maxSide: CGFloat = 2400
+    static let quality: CGFloat = 0.85
 
     /// `size` scaled down (never up) so the long side is at most `maxSide`, in whole pixels.
     static func targetSize(for size: CGSize, maxSide: CGFloat = maxSide) -> CGSize {
@@ -15,13 +15,13 @@ enum ReceiptImage {
         return CGSize(width: (size.width * k).rounded(), height: (size.height * k).rounded())
     }
 
-    /// The server takes request bodies up to 1 MiB (Fastify's default), so the base64 stays under this.
-    static let maxBase64Bytes = 1_000_000
+    /// The server takes request bodies up to 8 MB; the base64 stays under 6 MB to leave headroom.
+    static let maxBase64Bytes = 6_000_000
 
-    /// Base64 JPEG (no data: prefix), upright, at most 2000 px at quality 0.8. A busy photo that would
-    /// not fit the server's body limit steps down in quality, then size, until it does.
+    /// Base64 JPEG (no data: prefix), upright, at most 2400 px at quality 0.85. A busy photo over the
+    /// payload cap steps down in quality, then size, until it fits.
     static func jpegBase64(_ image: UIImage, maxBytes: Int = maxBase64Bytes) -> String? {
-        let steps: [(side: CGFloat, quality: CGFloat)] = [(maxSide, quality), (maxSide, 0.6), (1600, 0.6), (1280, 0.6), (1024, 0.5)]
+        let steps: [(side: CGFloat, quality: CGFloat)] = [(maxSide, quality), (maxSide, 0.7), (2000, 0.7), (1600, 0.6), (1280, 0.6), (1024, 0.5)]
         var last: String?
         for step in steps {
             guard let b64 = encode(image, side: step.side, quality: step.quality) else { return nil }

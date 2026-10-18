@@ -89,9 +89,10 @@ struct SettleView: View {
         }
         .background(Color.paper.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) {
-            if run.state == .settled {
-                Button("Start another run") {
-                    HomeRouting.clearLastRun(defaults: model.defaults)
+            if SettleLogic.isFinished(run) {
+                // Settled: forget the run. Partly settled: keep it so the shopper can come back to retry.
+                Button(run.state == .settled ? "Start another run" : "Done") {
+                    if run.state == .settled { HomeRouting.clearLastRun(defaults: model.defaults) }
                     model.path = []
                 }
                 .font(.system(size: 16, weight: .bold))
@@ -125,11 +126,11 @@ struct SettleView: View {
             case .partly(let name, let amount, let note):
                 partlyPill
                 heroTitle("\(name) gets back so far", amount: amount, size: 60)
-                heroNote(note, color: Color(hex: 0xC9C5BE))
+                heroNote(note, color: Color.white.opacity(0.85))
             case .owed(let name, let amount, let note):
                 partlyPill
                 heroTitle("You owe \(name)", amount: amount, size: 60)
-                heroNote(note, color: Color(hex: 0xC9C5BE))
+                heroNote(note, color: Color.white.opacity(0.85))
                 if paid {
                     Label("You marked this paid", systemImage: "checkmark")
                         .font(.system(size: 15, weight: .bold))

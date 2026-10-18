@@ -10,7 +10,8 @@ struct ReceiptView: View {
     var onSubmit: (String) -> Void
     var onError: (String) -> Void
 
-    @State private var camera = ReceiptCamera()
+    /// Created once in `.task`, so redraws never build another capture session.
+    @State private var camera: ReceiptCamera?
     @State private var status: ReceiptCamera.Status = .starting
     @State private var pick: PhotosPickerItem?
     @State private var capturing = false
@@ -22,7 +23,7 @@ struct ReceiptView: View {
                     .font(.display(26))
                 Text("Fit the whole receipt in the frame. We match each line to what was claimed.")
                     .font(.system(size: 14))
-                    .foregroundStyle(Color(hex: 0xC9C5BE))
+                    .foregroundStyle(Color.white.opacity(0.85))
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -52,9 +53,11 @@ struct ReceiptView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            status = await camera.start()
+            let cam = camera ?? ReceiptCamera()
+            camera = cam
+            status = await cam.start()
         }
-        .onDisappear { camera.stop() }
+        .onDisappear { camera?.stop() }
         .onChange(of: pick) { _, item in
             guard let item else { return }
             pick = nil
@@ -66,7 +69,7 @@ struct ReceiptView: View {
         ZStack {
             switch status {
             case .running:
-                ReceiptCameraPreview(session: camera.session)
+                if let camera { ReceiptCameraPreview(session: camera.session) }
             case .starting:
                 Color.black.opacity(0.25)
             case .denied, .unavailable:
@@ -76,7 +79,7 @@ struct ReceiptView: View {
                         .font(.system(size: 15, weight: .bold))
                     Text("Pick a photo of the receipt instead.")
                         .font(.system(size: 14))
-                        .foregroundStyle(Color(hex: 0xC9C5BE))
+                        .foregroundStyle(Color.white.opacity(0.85))
                     if status == .denied {
                         Button("Open Settings") {
                             if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
@@ -168,6 +171,7 @@ struct ReceiptView: View {
         capturing = true
         defer { capturing = false }
         do {
+            guard let camera else { return onError("Point the camera at the receipt first") }
             let data = try await camera.capture()
             guard let base64 = await Self.encode(data) else { return onError("Could not read that photo") }
             onSubmit(base64)

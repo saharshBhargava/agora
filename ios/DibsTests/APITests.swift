@@ -289,6 +289,10 @@ final class APITests: XCTestCase {
         XCTAssertEqual(last.timeout, 45)
         StubProtocol.reset()
         StubProtocol.reply(200, runJSON)
+        _ = try await api.confirm(runId: "r1", personId: "jake")
+        XCTAssertEqual(last.timeout, 45)
+        StubProtocol.reset()
+        StubProtocol.reply(200, runJSON)
         _ = try await api.getRun("r1")
         XCTAssertEqual(last.timeout, 10)
     }
