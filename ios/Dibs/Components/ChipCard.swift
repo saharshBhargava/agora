@@ -101,9 +101,11 @@ struct ChipCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             HStack {
-                Text(identifying ? "…" : chip.priceCents.map(Money.format) ?? "~$?")
+                Text(identifying ? "…" : ClaimLogic.priceText(chip))
                     .font(.system(size: 13))
                     .foregroundStyle(Color.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Spacer(minLength: 4)
                 if let tag {
                     Text(tag.text)

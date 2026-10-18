@@ -236,7 +236,55 @@ final class ClaimLogicTests: XCTestCase {
         XCTAssertEqual(ClaimLogic.wishNote(theirs, people: p, me: "priya"), "Lands in Marcus's tray when Jake adds it")
     }
 
-    // MARK: live view outline
+    // MARK: run changes
+
+    func testRemovingAChipIClaimedIsAnEventAndItsReturnIsNot() {
+        let before = run([chip("coke", 199, ["priya"], addedAt: 1), chip("milk", 429, ["marcus"], addedAt: 2)])
+        var after = before
+        after.chips[0].state = .removed
+        after.chips[1].state = .removed
+        XCTAssertEqual(ClaimLogic.events(from: before, to: after, me: "priya"), [.removed(chipName: "Coke")])
+        XCTAssertEqual(ClaimLogic.events(from: before, to: after, me: "lee"), [])
+        // Undo remove: the chip comes back with its claims; the tray just updates.
+        XCTAssertEqual(ClaimLogic.events(from: after, to: before, me: "priya"), [])
+        // Already removed in both snapshots: no repeat.
+        XCTAssertEqual(ClaimLogic.events(from: after, to: after, me: "priya"), [])
+        XCTAssertEqual(ClaimLogic.removedLine(chipName: "Coke Zero", shopperName: "Jake"), "Jake removed Coke Zero from the cart")
+    }
+
+    func testMyWishLandingInTheCartIsAnEvent() {
+        let wish = chip("w1", nil, state: .wish, wishedBy: "priya")
+        let before = run([Chip(id: "w1", name: "Everything bagels", state: .wish, wishedBy: "priya")])
+        // server resolveWish: the wish is replaced by the chip, and I get the claim.
+        let claimed = run([Chip(id: "c1", name: "Everything Bagels", priceCents: 599, claimers: ["priya"], state: .claimed)])
+        XCTAssertEqual(ClaimLogic.events(from: before, to: claimed, me: "priya"),
+                       [.wishArrived(wishName: "Everything bagels", chipId: "c1", overCap: false)])
+        // Over my cap: I'm in overCap instead, so the raise sheet should follow.
+        let over = run([Chip(id: "c1", name: "everything  bagels!", priceCents: 9999, state: .open, overCap: ["priya"])])
+        XCTAssertEqual(ClaimLogic.events(from: before, to: over, me: "priya"),
+                       [.wishArrived(wishName: "Everything bagels", chipId: "c1", overCap: true)])
+        // Someone else's wish, or my wish deleted with nothing landing: no event.
+        XCTAssertEqual(ClaimLogic.events(from: before, to: claimed, me: "marcus"), [])
+        XCTAssertEqual(ClaimLogic.events(from: before, to: run([]), me: "priya"), [])
+        // A different name does not match.
+        let other = run([Chip(id: "c2", name: "Bagels 6 ct", priceCents: 599, claimers: ["priya"], state: .claimed)])
+        XCTAssertEqual(ClaimLogic.events(from: before, to: other, me: "priya"), [])
+        XCTAssertEqual(wish.state, .wish)
+        XCTAssertEqual(ClaimLogic.wishArrivedLine(wishName: "Everything bagels"), "Your Everything bagels are in the cart")
+    }
+
+    func testNormalizeMatchesTheServer() {
+        XCTAssertEqual(ClaimLogic.normalize("  Everything   Bagels! "), "everythingbagels")
+        XCTAssertEqual(ClaimLogic.normalize("2% Milk"), "2milk")
+    }
+
+    func testLeaveRunAndPriceCopy() {
+        XCTAssertEqual(ClaimLogic.leaveRunMessage(authorizedCents: 4000), "Your $40 hold stays until the shopper checks out.")
+        XCTAssertEqual(ClaimLogic.priceText(chip("x", nil)), "Finding price…")
+        XCTAssertEqual(ClaimLogic.priceText(chip("x", 429)), "$4.29")
+    }
+
+
 
     func testHighlightPrefersIdentifyingRegion() {
         let region = Box(x: 10, y: 20, w: 100, h: 80)

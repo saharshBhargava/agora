@@ -145,9 +145,15 @@ struct TrayRow: View {
                 }
             }
             Spacer(minLength: 8)
-            Text(share.map(Money.format) ?? "~$?")
-                .font(.display(20))
-                .foregroundStyle(Color.white)
+            if let share {
+                Text(Money.format(share))
+                    .font(.display(20))
+                    .foregroundStyle(Color.white)
+            } else {
+                Text(ClaimLogic.priceText(chip))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.85))
+            }
         }
         .padding(10)
         .frame(height: 64)

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// What the claim screen can do to the run. `ClaimView` wires these to the shared `RunStore` and `DibsAPI`;
 /// previews pass stand-ins.
@@ -41,7 +42,8 @@ struct ClaimView: View {
                         lastError: store.lastError,
                         picks: ClaimLogic.usualPicks(saved: ClaimLogic.savedPicks(model.defaults), run: run),
                         actions: actions,
-                        onSettle: onSettle
+                        onSettle: onSettle,
+                        onLeaveRun: leaveRun
                     )
                     .onChange(of: ClaimLogic.seenNames(run), initial: true) { _, names in
                         ClaimLogic.recordSeen(names, defaults: model.defaults)
@@ -87,6 +89,14 @@ struct ClaimView: View {
         )
     }
 
+    /// There is no leave-run endpoint on the server: the hold stays until checkout. Leaving stops
+    /// listening, forgets this as the run to reopen at launch (the join link still brings me back) and goes Home.
+    private func leaveRun() {
+        model.leaveRun()
+        HomeRouting.clearLastRun(defaults: model.defaults)
+        model.path = []
+    }
+
     private var shopperPanel: some View {
         VStack(alignment: .leading, spacing: Metrics.space2) {
             Text("This page is for claimers.")
@@ -114,8 +124,11 @@ struct ClaimScreen: View {
     var picks: [String] = []
     var actions = ClaimActions()
     var onSettle: () -> Void = {}
+    /// "Leave this run?" confirmed.
+    var onLeaveRun: () -> Void = {}
 
     @State private var toast: Toast?
+    @State private var confirmLeave = false
     @State private var overCap: Chip?
     @State private var raiseOff = false
     @State private var busy = false
@@ -197,7 +210,33 @@ struct ClaimScreen: View {
             WishView(picks: picks, shopperName: shopper?.name) { await actions.wish($0) }
         }
         .onChange(of: errorSeq) {
-            if let lastError { toast = .notice(ClaimLogic.notice(lastError)) }
+            if let lastError {
+                toast = .notice(ClaimLogic.notice(lastError))
+                Haptics.refused()
+            }
+        }
+        .onChange(of: run) { old, new in
+            for event in ClaimLogic.events(from: old, to: new, me: me.id) { show(event, in: new) }
+        }
+        .alert("Leave this run?", isPresented: $confirmLeave) {
+            Button("Leave", role: .destructive, action: onLeaveRun)
+            Button("Stay", role: .cancel) {}
+        } message: {
+            Text(ClaimLogic.leaveRunMessage(authorizedCents: me.authorizedCents))
+        }
+    }
+
+    private func show(_ event: ClaimLogic.ClaimEvent, in new: Run) {
+        switch event {
+        case .removed(let name):
+            toast = .notice(ClaimLogic.removedLine(chipName: name, shopperName: new.shopper?.name))
+        case .wishArrived(let wishName, let chipId, let overCapNow):
+            toast = .notice(ClaimLogic.wishArrivedLine(wishName: wishName))
+            // It landed past my hold: the server left me out of the claim, so offer the raise.
+            if overCapNow, let chip = new.chip(chipId), overCap == nil {
+                raiseOff = false
+                overCap = chip
+            }
         }
     }
 
@@ -206,7 +245,20 @@ struct ClaimScreen: View {
     private var header: some View {
         let others = run.people.filter { $0.id != me.id }
         let stack = others + [me]
-        return HStack(alignment: .center) {
+        return HStack(alignment: .center, spacing: 10) {
+            Button { confirmLeave = true } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.ink)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(Color.card))
+                    .overlay(Circle().strokeBorder(Color.line))
+                    .frame(width: Metrics.tap, height: Metrics.tap)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, -6)
+            .accessibilityLabel("Leave this run")
             VStack(alignment: .leading, spacing: 2) {
                 Text(run.title)
                     .font(.display(22))
@@ -405,13 +457,20 @@ struct ClaimScreen: View {
     private func tryClaim(_ chip: Chip) {
         switch ClaimLogic.decide(chip, roomChips: roomChips, me: me.id, authorizedCents: me.authorizedCents, taxRate: run.taxRate) {
         case .claim:
-            send(actions.claim(chip.id), label: "Claimed \(chip.name)") { undoSend(actions.leave(chip.id)) }
+            claim(chip)
         case .overCap:
             raiseOff = false
             overCap = chip
+            Haptics.refused()
         case .alreadyMine, .notClaimable:
             break
         }
+    }
+
+    private func claim(_ chip: Chip) {
+        let sent = actions.claim(chip.id)
+        if sent, open { Haptics.claimed() }
+        send(sent, label: "Claimed \(chip.name)") { undoSend(actions.leave(chip.id)) }
     }
 
     private func leave(_ chip: Chip) {
@@ -439,6 +498,7 @@ struct ClaimScreen: View {
 
     private func showSendError() {
         toast = .notice(actions.sendError() ?? RunStore.reconnectingMessage)
+        Haptics.refused()
     }
 
     private func raise(for chip: Chip) async {
@@ -449,14 +509,22 @@ struct ClaimScreen: View {
             try await actions.raise(raiseTarget(for: chip))
             overCap = nil
             // The raise was for this chip: claim it now that it fits.
-            send(actions.claim(chip.id), label: "Claimed \(chip.name)") { undoSend(actions.leave(chip.id)) }
+            claim(chip)
         } catch DibsError.server(_, let status) where status == 403 {
             raiseOff = true
         } catch {
             overCap = nil
             toast = .notice(ClaimLogic.notice((error as? LocalizedError)?.errorDescription ?? "Could not raise your cap"))
+            Haptics.refused()
         }
     }
+}
+
+/// Light tap when a claim goes out; a warning buzz when the server or the cap says no.
+@MainActor
+private enum Haptics {
+    static func claimed() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    static func refused() { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
 }
 
 #if DEBUG

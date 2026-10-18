@@ -233,6 +233,70 @@ enum ClaimLogic {
     /// A server reason ("over cap") as a toast ("Over cap").
     static func notice(_ reason: String) -> String { RunText.capitalize(reason) }
 
+    // MARK: run changes
+
+    /// Something that happened to me between two run snapshots.
+    enum ClaimEvent: Equatable {
+        /// A chip I had claimed was removed from the cart (by the shopper or the shopper's camera).
+        case removed(chipName: String)
+        /// My wish was matched by a real chip; the server claimed it for me, or flagged me over cap.
+        case wishArrived(wishName: String, chipId: String, overCap: Bool)
+    }
+
+    /// The server's name key for matching a wish (server/src/run.ts `normalize`).
+    static func normalize(_ name: String) -> String {
+        name.lowercased()
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            .filter { ("a"..."z").contains($0) || ("0"..."9").contains($0) }
+    }
+
+    /// What changed for me from `old` to `new`. A chip coming back (undo remove) is not an event.
+    static func events(from old: Run, to new: Run, me: String) -> [ClaimEvent] {
+        guard old.id == new.id else { return [] }
+        var out: [ClaimEvent] = []
+        for c in new.chips where c.state == .removed {
+            if let before = old.chip(c.id), before.state != .removed, before.claimers.contains(me) {
+                out.append(.removed(chipName: c.name))
+            }
+        }
+        for w in old.chips where w.state == .wish && w.wishedBy == me && new.chip(w.id) == nil {
+            let key = normalize(w.name)
+            guard !key.isEmpty else { continue }
+            let landed = new.chips.first { c in
+                guard c.state != .wish, c.state != .removed, normalize(c.name) == key,
+                      c.claimers.contains(me) || c.overCap.contains(me) else { return false }
+                // Only new news: not a chip that already had me before.
+                guard let before = old.chip(c.id) else { return true }
+                return !before.claimers.contains(me) && !before.overCap.contains(me)
+            }
+            if let landed {
+                out.append(.wishArrived(wishName: w.name, chipId: landed.id, overCap: !landed.claimers.contains(me)))
+            }
+        }
+        return out
+    }
+
+    /// "Jake removed Coke Zero from the cart".
+    static func removedLine(chipName: String, shopperName: String?) -> String {
+        "\(shopperName ?? "The shopper") removed \(chipName) from the cart"
+    }
+
+    /// "Your Everything bagels are in the cart".
+    static func wishArrivedLine(wishName: String) -> String {
+        "Your \(wishName) are in the cart"
+    }
+
+    /// The leave-run confirmation: "Your $40 hold stays until the shopper checks out."
+    static func leaveRunMessage(authorizedCents: Int?) -> String {
+        guard let held = authorizedCents else { return "You can come back with the link until the shopper checks out." }
+        return "Your \(Money.whole(held)) hold stays until the shopper checks out."
+    }
+
+    /// The price under a chip: the price, or "Finding price…" while the server looks it up.
+    static func priceText(_ chip: Chip) -> String {
+        chip.priceCents.map(Money.format) ?? "Finding price…"
+    }
+
     // MARK: live view
 
     struct Highlight: Equatable {
