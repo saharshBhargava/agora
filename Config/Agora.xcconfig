@@ -1,6 +1,6 @@
 // Public iOS OAuth credentials. Override locally in Config/Local.xcconfig.
 AGORA_GOOGLE_IOS_CLIENT_ID = 875535919816-pt11h5vsprq94mktf5of9ltfbu529evl.apps.googleusercontent.com
 AGORA_GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.875535919816-pt11h5vsprq94mktf5of9ltfbu529evl
-// Shared hosted backend. Calendar calls Google directly. Override locally for another server.
+// Shared hosted backend. Demo uses Agora Calendar; ordinary accounts use Google. Override locally if needed.
 AGORA_API_BASE_URL = https:/$()/agora-api-yq3m.onrender.com
 #include? "Local.xcconfig"

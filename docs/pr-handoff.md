@@ -2,6 +2,20 @@
 
 Updated October 17, 2026 (America/Los_Angeles). Read this before resuming older feature branches.
 
+## Password-first demo access
+
+The sample account now signs into iOS using username `demo` and the existing Render
+`AGORA_DEMO_PASSWORD`. Google is an optional alternate entry. Do not restore a mandatory Google-only gate.
+`CalendarConnection` owns the verified account session; `AgoraClient` asks it for the appropriate Bearer
+credential. Password sessions are origin-bound in Keychain. Never commit the password or add provider keys
+for the sample account. `users.is_demo` remains server-only and is not exposed in profile responses.
+
+Migration `0013_calendar_events.sql` stores the private account calendar. Seed/reset/backfill include realistic
+events; old `/v1/calendar` routes also dispatch demo requests internally so they cannot reach Google.
+Native sample chat/captions/recognition use the built-in ModelClient; server scans select built-in vision
+per user. Ordinary accounts retain their real providers. Built-in recognition provenance is denied for
+ordinary users. The iOS CI job builds and runs auth/transport tests on a simulator.
+
 ## Forecasts and shopping lists — PR #9
 
 Current main includes the dedicated demo account from PR #11. The forecast branch now incorporates it and

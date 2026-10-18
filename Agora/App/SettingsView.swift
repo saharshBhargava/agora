@@ -8,7 +8,12 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 NavigationLink {
-                    ModelSettingsView(settings: settings)
+                    if workspace.calendar.isDemoAccount {
+                        Form { Section("Built-in integrations") {
+                            Text("Chat, captions and recognition use sample responses. Calendar events stay inside the sample account. No external API keys are needed.")
+                            Text("Sign out and connect your own Google account to configure real providers.").foregroundStyle(.secondary)
+                        } }.navigationTitle("Models")
+                    } else { ModelSettingsView(settings: settings) }
                 } label: {
                     settingsRow("Models", detail: "Connections and feature assignments", symbol: "cpu")
                 }
@@ -20,7 +25,7 @@ struct SettingsView: View {
                 NavigationLink {
                     ConnectedAccountsSettingsView(settings: settings, workspace: workspace)
                 } label: {
-                    settingsRow("Connected accounts", detail: "Google Calendar and Gemini", symbol: "person.crop.circle.badge.checkmark")
+                    settingsRow("Connected accounts", detail: workspace.calendar.isDemoAccount ? "Built-in integrations" : "Google Calendar and Gemini", symbol: "person.crop.circle.badge.checkmark")
                 }
                 NavigationLink {
                     AutonomySettingsView()
@@ -91,7 +96,7 @@ private struct ConnectedAccountsSettingsView: View {
     var body: some View {
         Form {
             CalendarSettingsSection(calendar: workspace.calendar, stopAgent: { workspace.agent.stop() })
-            Section("Google Gemini") {
+            if !workspace.calendar.isDemoAccount { Section("Google Gemini") {
                 Label(settings.hasKey ? "API key saved on this device" : "No API key saved", systemImage: settings.hasKey ? "checkmark.circle.fill" : "key")
                     .foregroundStyle(settings.hasKey ? Color.green : Color.secondary)
                     .accessibilityIdentifier("apiKeyStatus")
@@ -120,6 +125,7 @@ private struct ConnectedAccountsSettingsView: View {
                 Link("Get an API key in Google AI Studio", destination: URL(string: "https://aistudio.google.com/apikey")!)
                 Text("Your Gemini key stays in this device’s Keychain and is sent only to Google’s API. Chat, captions, and inventory recognition use the model profiles assigned under Models.").font(.footnote).foregroundStyle(.secondary)
             }
+        }
         }
         .navigationTitle("Connected accounts")
         .navigationBarTitleDisplayMode(.inline)

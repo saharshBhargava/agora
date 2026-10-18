@@ -225,7 +225,7 @@ private struct ModelConnectionEditor: View {
                 Section("Connection") {
                     TextField("Name", text: $connection.name).textInputAutocapitalization(.words)
                     Picker("Provider", selection: $connection.provider) {
-                        ForEach(ModelProviderKind.allCases) { provider in Text(provider.title).tag(provider) }
+                        ForEach(ModelProviderKind.allCases.filter { $0 != .builtin }) { provider in Text(provider.title).tag(provider) }
                     }
                     .disabled(connection.id == ModelConfiguration.geminiConnectionID)
                     if connection.provider == .openAICompatible {
@@ -501,6 +501,7 @@ private struct ModelProfileEditor: View {
         let identity = ModelIdentity(provider: connection.provider, model: profile.model, profileID: profile.id)
         let key = try settings.connectionKey(connection)
         switch connection.provider {
+        case .builtin: throw BrowserError("integration_unavailable")
         case .gemini:
             guard let key else { throw BrowserError("missing_api_key", "Add the Gemini connection’s API key before testing capabilities.") }
             return GeminiModelClient(identity: identity, capabilities: profile.capabilities, key: key)

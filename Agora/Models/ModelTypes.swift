@@ -41,10 +41,11 @@ indirect enum ModelJSON: Codable, Equatable {
 }
 
 enum ModelProviderKind: String, Codable, CaseIterable, Identifiable {
+    case builtin
     case gemini
     case openAICompatible = "openai-compatible"
     var id: String { rawValue }
-    var title: String { self == .gemini ? "Google Gemini" : "Local OpenAI-compatible" }
+    var title: String { self == .builtin ? "Agora" : self == .gemini ? "Google Gemini" : "Local OpenAI-compatible" }
 }
 
 struct ModelIdentity: Codable, Equatable {

@@ -23,6 +23,7 @@ from app.routers import (
     audit,
     budgets,
     calendar,
+    demo,
     events,
     forecasts,
     inventory,
@@ -140,7 +141,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     for router in (account.router, inventory.router, merchants.router, scans.router, events.router,
                    audit.router, calendar.router, wishlist.router, forecasts.router, lists.router,
-                   agent.router, budgets.router):
+                   agent.router, budgets.router, demo.router):
         app.include_router(router)
     return app
 

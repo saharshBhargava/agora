@@ -1,7 +1,7 @@
 """The demo account: one designated account, pre-filled with realistic history for every feature.
 
 How you get in (all map to the same account):
-- iOS: sign in with Google using an address listed in AGORA_DEMO_GOOGLE_EMAILS.
+- iOS: use the username/password form; Google is an optional alternative.
 - curl / desktop / API docs: POST /v1/dev/login {"handle": "demo", "password": <AGORA_DEMO_PASSWORD>}.
 
 Isolation rules:
@@ -52,6 +52,7 @@ async def ensure_demo_account(db: Database, settings: Settings) -> UUID:
     if existing:
         await _forecasts_and_lists(db, existing)
         await _commerce(db, existing)
+        await _calendar(db, existing)
         return existing
     user_id = await ensure_user(db, DEMO_SUBJECT, VISIBLE_HANDLE, settings.demo_display_name)
     async with db.system() as conn:
@@ -125,6 +126,7 @@ async def _seed(db: Database, user_id: UUID) -> None:
                     target_id=user_id)
     await _forecasts_and_lists(db, user_id)
     await _commerce(db, user_id)
+    await _calendar(db, user_id)
 
 
 async def _commerce(db: Database, user_id: UUID) -> None:
@@ -263,3 +265,20 @@ async def _wishlist(conn: asyncpg.Connection, household_id: UUID, user_id: UUID,
         await conn.execute(
             """INSERT INTO wishlist_feedback (wishlist_item_id, household_id, user_id, rating, reason_code)
                VALUES ($1, $2, $3, $4, $5)""", item_id, household_id, user_id, rating, reason)
+
+
+async def _calendar(db: Database, user_id: UUID) -> None:
+    """Backfill a private calendar without changing existing rehearsed events."""
+    async with db.scoped(user_id) as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo.calendar'), hashtext($1))", str(user_id))
+        if await conn.fetchval("SELECT 1 FROM calendar_events WHERE user_id = $1 LIMIT 1", user_id):
+            return
+        household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
+        tomorrow = (datetime.now(UTC) + timedelta(days=1)).replace(hour=17, minute=0, second=0, microsecond=0)
+        for offset, title, duration in ((0, "Team planning", 1), (3, "Lunch with Maya", 1),
+                                         (24, "Weekly grocery trip", 1)):
+            start = tomorrow + timedelta(hours=offset)
+            await conn.execute(
+                """INSERT INTO calendar_events (user_id, household_id, title, starts_at, ends_at, timezone)
+                   VALUES ($1,$2,$3,$4,$5,'Etc/UTC')""", user_id, household_id, title,
+                start, start + timedelta(hours=duration))

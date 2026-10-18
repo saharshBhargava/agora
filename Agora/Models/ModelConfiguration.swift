@@ -36,6 +36,9 @@ struct ModelConfiguration: Codable, Equatable {
 @MainActor
 extension SettingsStore {
     func client(for feature: ModelFeature, profileID: UUID? = nil, http: CaptionHTTPClient? = nil, kind: CaptureItem.Kind? = nil) throws -> ModelClient {
+        if let calendar = demoCalendar, calendar.isDemoAccount, calendar.connected {
+            return DemoModelClient(calendar: calendar, feature: feature)
+        }
         let profile = try modelConfiguration.profile(for: feature, override: profileID)
         let connection = try modelConfiguration.connection(for: profile)
         let model = profile.model.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -49,6 +52,7 @@ extension SettingsStore {
         let identity = ModelIdentity(provider: connection.provider, model: model, profileID: profile.id)
         let key = try connectionKey(connection)
         switch connection.provider {
+        case .builtin: throw BrowserError("integration_unavailable", "Sign in to the sample account to use built-in responses.")
         case .gemini:
             guard let key, !key.isEmpty else { throw BrowserError("missing_api_key", "Add the Gemini connection’s API key in Settings.") }
             return GeminiModelClient(identity: identity, capabilities: profile.capabilities, key: key, http: http)
@@ -58,8 +62,10 @@ extension SettingsStore {
         }
     }
     func availableModels(connection: ModelConnection, http: CaptionHTTPClient? = nil) async throws -> [String] {
+        if demoCalendar?.isDemoAccount == true { return ["agora-sample-v1"] }
         let key = try connectionKey(connection)
         switch connection.provider {
+        case .builtin: throw BrowserError("integration_unavailable", "Sign in to the sample account to use built-in responses.")
         case .gemini:
             guard let key else { throw BrowserError("missing_api_key", "Save the Gemini API key first.") }
             return try await GeminiProvider.availableModels(key: key, http: http)
@@ -68,11 +74,13 @@ extension SettingsStore {
         }
     }
     func featureDescription(_ feature: ModelFeature) -> String {
+        if demoCalendar?.isDemoAccount == true { return "Agora · Built-in responses" }
         guard let profile = try? modelConfiguration.profile(for: feature),
               let connection = try? modelConfiguration.connection(for: profile) else { return "Choose a model in Settings" }
         return "\(connection.name) · \(profile.model)"
     }
     func mediaDisclosure(for feature: ModelFeature, kind: CaptureItem.Kind) -> String {
+        if demoCalendar?.isDemoAccount == true { return "Built-in sample results for testing. Your media stays on this device; no external model is called." }
         guard let profile = try? modelConfiguration.profile(for: feature),
               let connection = try? modelConfiguration.connection(for: profile) else { return "Choose a model in Settings." }
         if kind == .video {

@@ -212,3 +212,18 @@ def make_provider(kind: str, settings: Settings, client: httpx.AsyncClient) -> V
     if kind == "replay":
         return ReplayProvider(settings.replay_dir)
     return None
+
+
+class BuiltinProvider:
+    """No network or credentials; selected only after checking the server-owned demo flag."""
+
+    name = "builtin"
+    model = "agora-sample-v1"
+
+    async def detect(self, frame: bytes) -> list[RawDetection]:
+        return parse_items({"items": [
+            {"name": "2% milk", "brand": "Darigold", "category": "dairy", "count": 2,
+             "fill_fraction": None, "box": None, "confidence": 0.96},
+            {"name": "large eggs", "brand": None, "category": "dairy", "count": 12,
+             "fill_fraction": None, "box": None, "confidence": 0.94},
+        ]})

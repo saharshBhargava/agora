@@ -138,3 +138,66 @@ enum InventoryRecognitionContract {
         return result
     }
 }
+
+
+/// Available only after /v1/demo/profile verifies the server-owned account eligibility.
+/// Ignores media bytes/URLs and never calls a third-party model or browser tool.
+@MainActor
+final class DemoModelClient: ModelClient {
+    let identity = ModelIdentity(provider: .builtin, model: "agora-sample-v1")
+    let capabilities = ModelCapabilities(images: true, tools: true, structuredOutput: true, streaming: true)
+    private let calendar: CalendarConnection
+    private let accountID: String?
+    private let feature: ModelFeature
+    init(calendar: CalendarConnection, feature: ModelFeature) {
+        self.calendar = calendar; self.accountID = calendar.accountID; self.feature = feature
+    }
+    func generate(_ request: ModelRequest, onEvent: @escaping @MainActor (ModelEvent) -> Void) async throws -> ModelResponse {
+        try await calendar.verifyDemo(expectedAccountID: accountID)
+        func response(_ text: String, calls: [ModelToolCall] = []) -> ModelResponse {
+            ModelResponse(message: .init(role: .assistant, content: [.text(text)], toolCalls: calls))
+        }
+        switch feature {
+        case .captions:
+            return response("Fresh groceries for the week: milk, eggs and ripe avocados, ready for easy breakfasts and quick meals.")
+        case .inventory:
+            return response(#"{"items":[{"name":"2% milk","category":"dairy","unit":"unit","quantity":2,"confidence":0.96},{"name":"Large eggs","category":"dairy","unit":"unit","quantity":12,"confidence":0.94},{"name":"Avocados","category":"produce","unit":"unit","quantity":3,"confidence":0.91}]}"#)
+        case .chat:
+            if let result = request.messages.last?.toolResults.last {
+                let value = result.value.object ?? [:]
+                if value["error"] != nil { return response("The action could not be completed. Review the account or try a new request when you are ready.") }
+                if result.name == "calendar_create_event" { return response("The grocery trip is saved to your Agora Calendar. No invitations were sent.") }
+                if let busyValue = value["busy"], case .array(let busy) = busyValue {
+                    let intervals = busy.compactMap { entry -> String? in
+                        guard let window = entry.object, let startValue = window["start"], let endValue = window["end"],
+                              case .string(let start) = startValue, case .string(let end) = endValue else { return nil }
+                        return "\(start) → \(end)"
+                    }
+                    return response(intervals.isEmpty ? "Your Agora Calendar has no busy intervals in the checked window." :
+                        "Your Agora Calendar is busy at:\n" + intervals.joined(separator: "\n"))
+                }
+                return response("I could not confirm Calendar availability. Please try a new request.")
+            }
+            let prompt = request.messages.last(where: { $0.role == .user })?.content.compactMap {
+                if case .text(let text) = $0 { return text }; return nil
+            }.joined(separator: " ").lowercased() ?? ""
+            let scheduling = ["schedule", "book", "add a trip", "plan a trip"].contains(where: prompt.contains)
+            let availability = ["calendar", "free time", "availability", "busy"].contains(where: prompt.contains)
+            if scheduling || availability {
+                var utc = Calendar(identifier: .gregorian); utc.timeZone = TimeZone(secondsFromGMT: 0)!
+                let tomorrow = utc.date(byAdding: .day, value: 1, to: utc.startOfDay(for: Date()))!
+                let start = tomorrow.addingTimeInterval(scheduling ? 19 * 3600 : 8 * 3600)
+                let end = start.addingTimeInterval(scheduling ? 3600 : 14 * 3600)
+                let formatter = ISO8601DateFormatter()
+                var args: [String: ModelJSON] = ["start": .string(formatter.string(from: start)),
+                    "end": .string(formatter.string(from: end)), "timezone": .string("Etc/UTC")]
+                let name = scheduling ? "calendar_create_event" : "calendar_freebusy"
+                guard request.tools.contains(where: { $0.name == name }) else { return response("Calendar tools are unavailable for this request.") }
+                if scheduling { args["title"] = .string("Weekly grocery trip"); args["location"] = .string("PCC Community Markets") }
+                return response(scheduling ? "Review this sample grocery trip for tomorrow at 19:00 UTC before I save it." : "I’ll check tomorrow’s availability.",
+                                calls: [.init(id: UUID().uuidString, name: name, arguments: args)])
+            }
+            return response("Your household inventory, shopping lists, wishlist and purchase history are ready to explore. Try ‘Check my calendar’ or ‘Schedule a grocery trip’. You can review captured groceries before saving them to inventory.")
+        }
+    }
+}

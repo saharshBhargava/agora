@@ -79,7 +79,8 @@ final class AgentCoordinator: ObservableObject {
         let uncertainCalendar = calendarMutationInFlight == old
         generation = UUID(); task?.cancel(); task = nil; calendarMutationInFlight = nil
         resolveApproval(false); browser.revoke(); running = false; self.paused = paused && !uncertainCalendar
-        status = uncertainCalendar ? "A Calendar event may have been saved. Check Google Calendar before retrying." : reason
+        let calendarName = calendar?.isDemoAccount == true ? "Agora Calendar" : "Google Calendar"
+        status = uncertainCalendar ? "A Calendar event may have been saved. Check \(calendarName) before retrying." : reason
         browser.state.status = status
         if uncertainCalendar { messages.append(ChatMessage(role: "notice", text: status)) }
         if wasRunning { try? repository.record(task: old, operation: "task", phase: browser.state.busy || uncertainCalendar ? "outcome_unknown" : "stopped") }
@@ -151,7 +152,7 @@ final class AgentCoordinator: ObservableObject {
                             let approvedAccountID = calendar.accountID
                             let call = try CalendarCall(raw)
                             if call.name == "calendar_create_event" {
-                                approval = ActionApproval(title: "Add this Google Calendar event?", detail: call.approvalDetail)
+                                approval = ActionApproval(title: calendar.isDemoAccount ? "Add this Agora Calendar event?" : "Add this Google Calendar event?", detail: call.approvalDetail)
                                 status = "Waiting for your approval"
                                 let allowed = await withCheckedContinuation { approvalReply = $0 }
                                 guard allowed else { throw BrowserError("approval_denied", "Do not retry this action.") }
