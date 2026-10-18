@@ -230,8 +230,8 @@ card numbers. Run and env details: [Dibs README](dibs/README.md).
 | Agora data | The "+ Wish" page can read the demo household's open lists, wishlist suggestions and run-outs through the Dibs server when `TEAM_API_BASE_URL` and `AGORA_DEMO_PASSWORD` are set; this adapter is tested with mocked responses only, not against the live API. Without them it suggests from past Dibs runs. |
 | CI | `.github/workflows/dibs.yml`: server + web tests, typecheck and smoke on PRs and main; the Dibs iOS suite on PRs only. Agora's `backend`/`ios` workflows and `deploy` are unaffected by Dibs paths. |
 
-Verification on branch `dibs-mock-demo` (87c6d80): server 246 and web 142 tests, server/web typecheck,
-iOS 306 simulator tests; a live run with the shopper on a physical iPhone and a web claimer covered join,
+Verification on branch `dibs-mock-demo` (31713d0): server 248 and web 142 tests, server/web typecheck,
+iOS 307 simulator tests; a live run with the shopper on a physical iPhone and a web claimer covered join,
 claim, wish, key refusal, checkout and last call, a Gemini-read receipt with tax, capture and the simulated
 payout. This records the demo build on a laptop, not a hosted deployment or a distributed iOS build.
 Next steps (Dibs as a tab in the Agora app, shared sign-in, settle → inventory write-back) are in the
