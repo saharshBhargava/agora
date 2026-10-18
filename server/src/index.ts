@@ -87,6 +87,8 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   }
 
   // ---- runs ----
+  app.get('/api/health', async () => ({ ok: true }));
+
   app.post('/api/runs', async () => {
     const run = seedRun(now());
     store.add(run);
@@ -421,7 +423,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   });
 
   const webOut = pathJoin(here, '..', '..', 'web', 'out');
-  if (existsSync(webOut)) await app.register(fastifyStatic, { root: webOut });
+  if (existsSync(webOut)) await app.register(fastifyStatic, { root: webOut, extensions: ['html'] });
 
   app.addHook('onClose', async () => {
     for (const t of timers.values()) clearTimeout(t);
