@@ -8,6 +8,7 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
         let url: URL
         let body: Data?
         let contentType: String?
+        let timeout: TimeInterval
     }
 
     struct Reply: Sendable {
@@ -32,7 +33,8 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
         let body = request.httpBody ?? request.httpBodyStream.map(Self.read)
         let reply = Self.lock.withLock { () -> Reply in
             Self._requests.append(Recorded(method: request.httpMethod ?? "GET", url: request.url!, body: body,
-                                           contentType: request.value(forHTTPHeaderField: "content-type")))
+                                           contentType: request.value(forHTTPHeaderField: "content-type"),
+                                           timeout: request.timeoutInterval))
             return Self._reply
         }
         if let error = reply.error {
@@ -275,5 +277,19 @@ final class APITests: XCTestCase {
     func testRequestsUseTenSecondTimeout() throws {
         let req = try api.request("GET", "/api/runs/r1", body: Optional<String>.none)
         XCTAssertEqual(req.timeoutInterval, 10)
+    }
+
+    func testGeminiCallsGetFortyFiveSeconds() async throws {
+        StubProtocol.reply(200, #"{"id":"c1","name":"Eggs","state":"identifying"}"#)
+        _ = try await api.addChip(runId: "r1", imageBase64: "AAAA")
+        XCTAssertEqual(last.timeout, 45)
+        StubProtocol.reset()
+        StubProtocol.reply(200, #"{"lines":[],"matches":[],"unmatchedLines":[]}"#)
+        _ = try await api.receipt(runId: "r1", imageBase64: "BBBB")
+        XCTAssertEqual(last.timeout, 45)
+        StubProtocol.reset()
+        StubProtocol.reply(200, runJSON)
+        _ = try await api.getRun("r1")
+        XCTAssertEqual(last.timeout, 10)
     }
 }

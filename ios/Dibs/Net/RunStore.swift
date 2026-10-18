@@ -6,7 +6,11 @@ import UIKit
 ///
 /// On every (re)connect the store fetches the run over REST before it applies socket messages:
 /// messages that arrive while that fetch is in flight are held, then replayed in order on top of it.
-/// Messages and fetch results from an earlier connection are dropped as stale.
+/// Messages and fetch results from an earlier connection are dropped as stale. Once the REST run is
+/// applied, held `{t:'run'}` snapshots are dropped, except the newest one that arrived after the REST
+/// request went out (the server broadcasts the full run on every change, so that one may be newer).
+/// A chip action that may not have reached the server (send failure, or a drop before the server
+/// answered) always surfaces in `lastError`: claims are never silently lost.
 @MainActor
 @Observable
 public final class RunStore {
@@ -15,6 +19,7 @@ public final class RunStore {
     }
 
     public static let reconnectingMessage = "Reconnecting…"
+    public static let notSentMessage = "That didn't reach the server. Check your items and try again."
 
     public private(set) var run: Run?
     public private(set) var connection: Connection = .connecting
@@ -47,11 +52,23 @@ public final class RunStore {
     /// Which (re)open is current; fetches from older opens are ignored.
     @ObservationIgnored private var syncGen = 0
     @ObservationIgnored private var syncing = false
-    @ObservationIgnored private var held: [ServerMsg] = []
+    /// Messages held during a resync, with whether they arrived after the REST request went out.
+    @ObservationIgnored private var held: [(msg: ServerMsg, afterRequest: Bool)] = []
+    @ObservationIgnored private var requestIssued = false
+    /// Chip actions sent since the server last spoke; if the connection drops first, they may be lost.
+    @ObservationIgnored private var unanswered = 0
+    /// The error text a failed REST fetch set, cleared when a fresh run arrives.
+    @ObservationIgnored private var fetchError: String?
+    /// Closes the socket from deinit if the store is released without disconnect().
+    @ObservationIgnored private let teardownBox = TeardownBox()
 
     public init(fetchRun: @escaping Fetch, makeSocket: @escaping SocketFactory) {
         self.fetchRun = fetchRun
         self.makeSocket = makeSocket
+    }
+
+    deinit {
+        teardownBox.run()
     }
 
     public convenience init(api: DibsAPI) {
@@ -64,7 +81,10 @@ public final class RunStore {
 
     // MARK: connection
 
+    /// Connects to a run. Calling it again for the same run and person while connected or
+    /// reconnecting is a no-op (no state wipe).
     public func connect(runId: String, personId: String) {
+        if socket != nil, connection != .refused, self.runId == runId, self.personId == personId { return }
         disconnect()
         epoch += 1
         let myEpoch = epoch
@@ -85,7 +105,13 @@ public final class RunStore {
             guard let self, self.epoch == myEpoch else { return }
             self.receive(msg)
         }
+        s.onSendFailed = { [weak self] msg in
+            guard let self, self.epoch == myEpoch else { return }
+            if case .frame = msg { return }
+            self.lastError = Self.notSentMessage
+        }
         socket = s
+        teardownBox.set(s.teardown)
         s.start()
     }
 
@@ -93,10 +119,18 @@ public final class RunStore {
         epoch += 1
         socket?.onEvent = nil
         socket?.onMessage = nil
+        socket?.onSendFailed = nil
         socket?.stop()
         socket = nil
+        teardownBox.set(nil)
         syncing = false
         held = []
+        unanswered = 0
+    }
+
+    /// Call when the app returns to the foreground: re-checks the socket (ping, or reconnect now).
+    public func foregrounded() {
+        socket?.checkAlive()
     }
 
     /// Re-fetches the run over REST (for example after a REST call elsewhere), keeping the socket.
@@ -109,7 +143,7 @@ public final class RunStore {
             apply(run: r)
         } catch {
             guard epoch == myEpoch else { return }
-            lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            showFetchError(error)
         }
     }
 
@@ -132,10 +166,17 @@ public final class RunStore {
             // Anything held from the dropped connection is stale; the next open re-fetches.
             syncing = false
             held = []
+            if unanswered > 0 { lastError = Self.notSentMessage }
+            unanswered = 0
         case .refused:
+            // Refusal wins over anything a resync set.
             connection = .refused
+            syncGen += 1
             syncing = false
             held = []
+            unanswered = 0
+            lastError = nil
+            fetchError = nil
         }
     }
 
@@ -145,25 +186,42 @@ public final class RunStore {
         let gen = syncGen
         let myEpoch = epoch
         syncing = true
+        requestIssued = false
         held = []
         Task { [weak self, fetchRun] in
+            guard let self, self.epoch == myEpoch, self.syncGen == gen else { return }
+            self.requestIssued = true
             let result: Result<Run, Error>
             do { result = .success(try await fetchRun(runId)) } catch { result = .failure(error) }
-            guard let self, self.epoch == myEpoch, self.syncGen == gen, self.syncing else { return }
-            switch result {
-            case .success(let r): self.apply(run: r)
-            case .failure(let e): self.lastError = (e as? LocalizedError)?.errorDescription ?? e.localizedDescription
-            }
-            self.syncing = false
+            guard self.epoch == myEpoch, self.syncGen == gen, self.syncing else { return }
             let queued = self.held
             self.held = []
-            for m in queued { self.apply(m) }
+            self.syncing = false
+            var newestRun: Int?
+            switch result {
+            case .success(let r):
+                self.apply(run: r)
+                // Held snapshots from before the request are older than r: drop them. Keep only the
+                // newest snapshot that arrived after the request, which may be newer than r.
+                newestRun = queued.lastIndex { if case .run = $0.msg { return $0.afterRequest } else { return false } }
+            case .failure(let e):
+                self.showFetchError(e)
+                newestRun = queued.lastIndex { if case .run = $0.msg { return true } else { return false } }
+            }
+            for (i, h) in queued.enumerated() {
+                if case .run = h.msg, i != newestRun { continue }
+                self.apply(h.msg)
+            }
         }
     }
 
     private func receive(_ msg: ServerMsg) {
+        switch msg {
+        case .run, .error: unanswered = 0
+        default: break
+        }
         if syncing {
-            held.append(msg)
+            held.append((msg, requestIssued))
         } else {
             apply(msg)
         }
@@ -192,8 +250,18 @@ public final class RunStore {
         }
     }
 
+    private func showFetchError(_ e: Error) {
+        let text = (e as? LocalizedError)?.errorDescription ?? e.localizedDescription
+        lastError = text
+        fetchError = text
+    }
+
     private func apply(run r: Run) {
         run = r
+        if let f = fetchError {
+            if lastError == f { lastError = nil }
+            fetchError = nil
+        }
         if let ends = r.lastCallEndsAt {
             lastCallEndsAt = Date(timeIntervalSince1970: ends / 1000)
         } else {
@@ -220,8 +288,27 @@ public final class RunStore {
 
     /// Returns false and sets `lastError` to "Reconnecting…" when the socket is not open.
     private func send(_ msg: ClientMsg) -> Bool {
-        if socket?.send(msg) == true { return true }
+        if socket?.send(msg) == true {
+            unanswered += 1
+            return true
+        }
         lastError = Self.reconnectingMessage
         return false
+    }
+}
+
+/// Holds the socket's teardown so the store's nonisolated deinit can close it.
+private final class TeardownBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var action: (@Sendable () -> Void)?
+
+    func set(_ a: (@Sendable () -> Void)?) { lock.withLock { action = a } }
+
+    func run() {
+        let a = lock.withLock { () -> (@Sendable () -> Void)? in
+            defer { action = nil }
+            return action
+        }
+        a?()
     }
 }

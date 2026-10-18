@@ -63,11 +63,14 @@ public struct DibsAPI: Sendable {
     public let base: URL
     public let session: URLSession
     public let timeout: TimeInterval
+    /// For addChip and receipt, which wait on Gemini on the server.
+    public let slowTimeout: TimeInterval
 
-    public init(base: URL, session: URLSession = .shared, timeout: TimeInterval = 10) {
+    public init(base: URL, session: URLSession = .shared, timeout: TimeInterval = 10, slowTimeout: TimeInterval = 45) {
         self.base = base
         self.session = session
         self.timeout = timeout
+        self.slowTimeout = slowTimeout
     }
 
     // MARK: URLs
@@ -121,7 +124,7 @@ public struct DibsAPI: Sendable {
 
     public func addChip(runId: String, imageBase64: String, hint: String? = nil) async throws -> Chip {
         struct Body: Encodable { let imageBase64: String; let hint: String? }
-        return try await call("POST", "\(Self.runPath(runId))/chips", body: Body(imageBase64: imageBase64, hint: hint))
+        return try await call("POST", "\(Self.runPath(runId))/chips", body: Body(imageBase64: imageBase64, hint: hint), timeout: slowTimeout)
     }
 
     public func fixChip(runId: String, chipId: String, personId: String, name: String? = nil, priceCents: Int? = nil) async throws -> Run {
@@ -157,7 +160,7 @@ public struct DibsAPI: Sendable {
 
     public func receipt(runId: String, imageBase64: String) async throws -> ReceiptState {
         struct Body: Encodable { let imageBase64: String }
-        return try await call("POST", "\(Self.runPath(runId))/receipt", body: Body(imageBase64: imageBase64))
+        return try await call("POST", "\(Self.runPath(runId))/receipt", body: Body(imageBase64: imageBase64), timeout: slowTimeout)
     }
 
     public func fixReceiptLine(runId: String, lineIndex: Int, target: ReceiptTarget) async throws -> ReceiptState {
@@ -178,12 +181,12 @@ public struct DibsAPI: Sendable {
         try await send(request(method, path, body: Optional<NoBody>.none))
     }
 
-    private func call<T: Decodable, B: Encodable>(_ method: String, _ path: String, body: B) async throws -> T {
-        try await send(request(method, path, body: body))
+    private func call<T: Decodable, B: Encodable>(_ method: String, _ path: String, body: B, timeout: TimeInterval? = nil) async throws -> T {
+        try await send(request(method, path, body: body, timeout: timeout))
     }
 
-    func request<B: Encodable>(_ method: String, _ path: String, body: B?) throws -> URLRequest {
-        var req = URLRequest(url: url(path), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
+    func request<B: Encodable>(_ method: String, _ path: String, body: B?, timeout: TimeInterval? = nil) throws -> URLRequest {
+        var req = URLRequest(url: url(path), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout ?? self.timeout)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "accept")
         if let body {

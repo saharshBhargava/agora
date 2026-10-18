@@ -3,7 +3,8 @@ import Foundation
 /// Connection lifecycle events a run socket reports.
 public enum SocketEvent: Sendable, Equatable {
     case connecting
-    /// The socket is open. The server pushes a `{t:'run'}` snapshot right after.
+    /// The socket is open and the server has spoken (its `{t:'run'}` snapshot follows this event).
+    /// A server that accepts and then refuses (1008) never reaches `.open`.
     case open
     /// The socket dropped; it reconnects after `retryIn` seconds.
     case closed(retryIn: TimeInterval)
@@ -16,14 +17,22 @@ public enum SocketEvent: Sendable, Equatable {
 public protocol RunSocketing: AnyObject {
     var onMessage: ((ServerMsg) -> Void)? { get set }
     var onEvent: ((SocketEvent) -> Void)? { get set }
+    /// A message `send` accepted could not be written. The socket then reconnects.
+    var onSendFailed: ((ClientMsg) -> Void)? { get set }
     func start()
     func stop()
     /// Sends when the socket is open. Returns false (and sends nothing) otherwise.
     func send(_ msg: ClientMsg) -> Bool
+    /// Checks the connection now (for example when the app returns to the foreground): pings an open
+    /// socket and drops it if no pong comes back soon; reconnects at once when waiting to retry.
+    func checkAlive()
+    /// Closes the connection from any context (used from `deinit`).
+    nonisolated var teardown: @Sendable () -> Void { get }
 }
 
 /// The live run socket: `<base as ws/wss>/ws?run=&person=`, reconnecting with backoff
 /// 0.5, 1, 2, 4, 8 s (capped at 8) and stopping for good on close code 1008.
+/// Pings every 10 s; a ping or send failure, or an unanswered ping, drops and reconnects.
 @MainActor
 public final class RunSocket: RunSocketing {
     public nonisolated static let backoffSchedule: [TimeInterval] = [0.5, 1, 2, 4, 8]
@@ -46,19 +55,39 @@ public final class RunSocket: RunSocketing {
 
     public var onMessage: ((ServerMsg) -> Void)?
     public var onEvent: ((SocketEvent) -> Void)?
+    public var onSendFailed: ((ClientMsg) -> Void)?
+    /// True once the server has spoken on the current connection.
     public private(set) var isOpen = false
 
     private let url: URL
-    private var session: URLSession?
-    private var task: URLSessionWebSocketTask?
+    private let heartbeatInterval: TimeInterval
+    private let pingTimeout: TimeInterval
+    private nonisolated let resources = SocketResources()
     private var retry: Task<Void, Never>?
+    private var heartbeat: Task<Void, Never>?
     private var attempt = 0
     private var stopped = true
+    private var pingSeq = 0
+    private var outstandingPing: (seq: Int, sentAt: Date)?
     private let delegate = SocketDelegate()
 
-    public init(base: URL, runId: String, personId: String) {
+    private var session: URLSession? { resources.session }
+    private var task: URLSessionWebSocketTask? { resources.task }
+
+    public init(base: URL, runId: String, personId: String, heartbeatInterval: TimeInterval = 10, pingTimeout: TimeInterval = 8) {
         url = Self.url(base: base, runId: runId, personId: personId)
+        self.heartbeatInterval = heartbeatInterval
+        self.pingTimeout = pingTimeout
         delegate.owner = self
+    }
+
+    deinit {
+        // Released without stop(): close the socket so it stops receiving frames.
+        resources.teardown()
+    }
+
+    public nonisolated var teardown: @Sendable () -> Void {
+        { [resources] in resources.teardown() }
     }
 
     public func start() {
@@ -66,7 +95,7 @@ public final class RunSocket: RunSocketing {
         stopped = false
         attempt = 0
         // Delegate callbacks and receive completions all arrive on the main queue, in order.
-        session = URLSession(configuration: .default, delegate: delegate, delegateQueue: .main)
+        resources.session = URLSession(configuration: .default, delegate: delegate, delegateQueue: .main)
         open()
     }
 
@@ -75,16 +104,34 @@ public final class RunSocket: RunSocketing {
         isOpen = false
         retry?.cancel()
         retry = nil
-        task?.cancel(with: .goingAway, reason: nil)
-        task = nil
-        session?.invalidateAndCancel()
-        session = nil
+        heartbeat?.cancel()
+        heartbeat = nil
+        resources.teardown()
     }
 
     public func send(_ msg: ClientMsg) -> Bool {
-        guard isOpen, let task else { return false }
-        task.send(.string(msg.jsonString())) { _ in }
+        guard isOpen, let t = task else { return false }
+        t.send(.string(msg.jsonString())) { [weak self] error in
+            guard error != nil else { return }
+            Task { @MainActor [weak self] in
+                guard let self, self.task === t else { return }
+                self.onSendFailed?(msg)
+                self.dropped(t, code: Self.code(t))
+            }
+        }
         return true
+    }
+
+    public func checkAlive() {
+        guard !stopped else { return }
+        if isOpen, let t = task {
+            ping(t, deadline: min(5, pingTimeout))
+        } else if task == nil {
+            // Waiting out a backoff: try now.
+            retry?.cancel()
+            retry = nil
+            open()
+        }
     }
 
     // MARK: lifecycle
@@ -94,7 +141,9 @@ public final class RunSocket: RunSocketing {
         onEvent?(.connecting)
         let t = session.webSocketTask(with: url)
         t.maximumMessageSize = 8 * 1024 * 1024
-        task = t
+        resources.task = t
+        isOpen = false
+        outstandingPing = nil
         t.resume()
         receive(on: t)
     }
@@ -111,6 +160,7 @@ public final class RunSocket: RunSocketing {
                     case .data(let d): text = String(decoding: d, as: UTF8.self)
                     @unknown default: text = ""
                     }
+                    if !self.isOpen { self.becameLive(t) }
                     if let msg = ServerMsg.parse(text) { self.onMessage?(msg) }
                     self.receive(on: t)
                 case .failure:
@@ -129,23 +179,75 @@ public final class RunSocket: RunSocketing {
         }
     }
 
-    fileprivate func didOpen(_ t: URLSessionWebSocketTask) {
-        guard task === t, !stopped else { return }
+    /// The first server message on a connection: only now is it live. Backoff resets here, so a
+    /// server that accepts and drops without speaking is not hammered every 0.5 s.
+    private func becameLive(_ t: URLSessionWebSocketTask) {
         attempt = 0
         isOpen = true
         onEvent?(.open)
+        heartbeat?.cancel()
+        let interval = heartbeatInterval
+        heartbeat = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(interval))
+                guard !Task.isCancelled, let self else { return }
+                self.tick(t)
+            }
+        }
+    }
+
+    private func tick(_ t: URLSessionWebSocketTask) {
+        guard task === t, isOpen else { return }
+        if let o = outstandingPing {
+            if Date().timeIntervalSince(o.sentAt) >= pingTimeout { dropped(t, code: .abnormalClosure) }
+            return
+        }
+        ping(t, deadline: nil)
+    }
+
+    private func ping(_ t: URLSessionWebSocketTask, deadline: TimeInterval?) {
+        pingSeq += 1
+        let seq = pingSeq
+        outstandingPing = (seq, Date())
+        t.sendPing { [weak self] error in
+            Task { @MainActor [weak self] in
+                guard let self, self.task === t else { return }
+                if error != nil {
+                    self.dropped(t, code: Self.code(t))
+                } else if self.outstandingPing?.seq == seq {
+                    self.outstandingPing = nil
+                }
+            }
+        }
+        if let deadline {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(deadline))
+                guard let self, self.task === t, self.outstandingPing?.seq == seq else { return }
+                self.dropped(t, code: .abnormalClosure)
+            }
+        }
+    }
+
+    private static func code(_ t: URLSessionWebSocketTask) -> URLSessionWebSocketTask.CloseCode {
+        t.closeCode == .invalid ? .abnormalClosure : t.closeCode
+    }
+
+    fileprivate func didOpen(_ t: URLSessionWebSocketTask) {
+        // Handshake done. `.open` waits for the server's first message (see becameLive).
     }
 
     fileprivate func dropped(_ t: URLSessionWebSocketTask, code: URLSessionWebSocketTask.CloseCode) {
         guard task === t, !stopped else { return }
         isOpen = false
-        task = nil
+        resources.task = nil
+        heartbeat?.cancel()
+        heartbeat = nil
+        outstandingPing = nil
         t.cancel()
         if code == .policyViolation {
             stopped = true
             retry?.cancel()
-            session?.invalidateAndCancel()
-            session = nil
+            resources.teardown()
             onEvent?(.refused)
             return
         }
@@ -158,6 +260,32 @@ public final class RunSocket: RunSocketing {
             guard !Task.isCancelled else { return }
             self?.open()
         }
+    }
+}
+
+/// The session and task, reachable from `deinit` (nonisolated) to close the connection.
+private final class SocketResources: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _session: URLSession?
+    private var _task: URLSessionWebSocketTask?
+
+    var session: URLSession? {
+        get { lock.withLock { _session } }
+        set { lock.withLock { _session = newValue } }
+    }
+
+    var task: URLSessionWebSocketTask? {
+        get { lock.withLock { _task } }
+        set { lock.withLock { _task = newValue } }
+    }
+
+    func teardown() {
+        let (s, t) = lock.withLock { () -> (URLSession?, URLSessionWebSocketTask?) in
+            defer { _session = nil; _task = nil }
+            return (_session, _task)
+        }
+        t?.cancel(with: .goingAway, reason: nil)
+        s?.invalidateAndCancel()
     }
 }
 

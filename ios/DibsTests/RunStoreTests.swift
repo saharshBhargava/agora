@@ -1,15 +1,31 @@
 import XCTest
 @testable import Dibs
 
+/// Counts teardown calls from any context.
+final class TeardownCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var n = 0
+    var value: Int { lock.withLock { n } }
+    func bump() { lock.withLock { n += 1 } }
+}
+
 /// A socket the test drives by hand.
 @MainActor
 final class FakeSocket: RunSocketing {
     var onMessage: ((ServerMsg) -> Void)?
     var onEvent: ((SocketEvent) -> Void)?
+    var onSendFailed: ((ClientMsg) -> Void)?
     var isOpen = false
     var started = 0
     var stopped = 0
+    var checks = 0
     var sent: [ClientMsg] = []
+    let teardowns = TeardownCounter()
+
+    nonisolated var teardown: @Sendable () -> Void { { [teardowns] in teardowns.bump() } }
+    func checkAlive() { checks += 1 }
+    /// The write of an accepted message failed: report it, then drop.
+    func failSend(_ msg: ClientMsg) { onSendFailed?(msg); drop() }
 
     func start() { started += 1 }
     func stop() { stopped += 1 }
@@ -40,7 +56,7 @@ final class FetchGate {
 
     /// Resolves fetch number `index` (0-based among those still waiting).
     func resolve(_ index: Int = 0, with run: Run) { waiting.remove(at: index).resume(returning: run) }
-    func fail(_ index: Int = 0, _ error: Error) { waiting.remove(at: index).resume(throwing: error) }
+    func fail(_ index: Int = 0, with error: Error) { waiting.remove(at: index).resume(throwing: error) }
 }
 
 @MainActor
@@ -227,5 +243,152 @@ final class RunStoreTests: XCTestCase {
         let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
         sockets[0].deliver(.frame(jpegBase64: png, at: 1))
         XCTAssertNotNil(store.liveFrame)
+    }
+
+    // MARK: fix round 1
+
+    func testRefusalWinsOverAResyncError() async throws {
+        store.connect(runId: "r1", personId: "nobody")
+        sockets[0].open()
+        await settle { self.gate.pending == 1 }
+        sockets[0].refuse()
+        gate.fail(with: DibsError.server(message: "unknown run", status: 404))
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(store.connection, .refused)
+        XCTAssertNil(store.lastError)
+    }
+
+    func testFailedResyncErrorClearsWhenAFreshRunArrives() async throws {
+        store.connect(runId: "r1", personId: "p1")
+        sockets[0].open()
+        await settle { self.gate.pending == 1 }
+        gate.fail(with: DibsError.offline)
+        await settle { self.store.lastError != nil }
+        XCTAssertEqual(store.lastError, DibsError.offline.errorDescription)
+        sockets[0].deliver(.run(run(chips: [chip("a")])))
+        XCTAssertNil(store.lastError)
+        XCTAssertEqual(store.run?.chips.map(\.id), ["a"])
+    }
+
+    func testServerErrorIsNotClearedByARun() async throws {
+        store.connect(runId: "r1", personId: "p1")
+        sockets[0].deliver(.error(reason: "cart closed"))
+        sockets[0].deliver(.run(run()))
+        XCTAssertEqual(store.lastError, "cart closed")
+    }
+
+    func testHeldSnapshotFromBeforeTheRequestIsDroppedButNonRunMessagesKept() async throws {
+        store.connect(runId: "r1", personId: "p1")
+        sockets[0].open()
+        // Arrives before the REST request goes out: older than the REST result.
+        sockets[0].deliver(.run(run(chips: [chip("old snapshot")])))
+        sockets[0].deliver(.lastCall(endsAt: 1_700_000_010_000))
+        await settle { self.gate.pending == 1 }
+        gate.resolve(with: run(chips: [chip("rest")]))
+        await settle { self.store.run != nil }
+        XCTAssertEqual(store.run?.chips.map(\.id), ["rest"])
+        XCTAssertEqual(store.lastCallEndsAt, Date(timeIntervalSince1970: 1_700_000_010))
+    }
+
+    func testOnlyTheNewestHeldSnapshotAfterTheRequestIsApplied() async throws {
+        store.connect(runId: "r1", personId: "p1")
+        sockets[0].open()
+        await settle { self.gate.pending == 1 }
+        sockets[0].deliver(.run(run(chips: [chip("a")])))
+        sockets[0].deliver(.identifying(region: Box(x: 1, y: 1, w: 1, h: 1)))
+        sockets[0].deliver(.run(run(chips: [chip("a"), chip("b", .identifying)])))
+        gate.resolve(with: run(chips: [chip("a")]))
+        await settle { self.store.run?.chips.count == 2 }
+        XCTAssertEqual(store.identifyingRegion, Box(x: 1, y: 1, w: 1, h: 1))
+    }
+
+    func testConnectAgainWithSameIdsIsANoOp() async throws {
+        store.connect(runId: "r1", personId: "p1")
+        sockets[0].open()
+        await settle { self.gate.pending == 1 }
+        gate.resolve(with: run(chips: [chip("a")]))
+        await settle { self.store.run != nil }
+        store.connect(runId: "r1", personId: "p1")
+        XCTAssertEqual(sockets.count, 1)
+        XCTAssertEqual(sockets[0].stopped, 0)
+        XCTAssertEqual(store.run?.chips.map(\.id), ["a"])
+        XCTAssertEqual(store.connection, .live)
+        store.connect(runId: "r1", personId: "jake")
+        XCTAssertEqual(sockets.count, 2)
+        XCTAssertNil(store.run)
+    }
+
+    func testReconnectAfterRefusalWithSameIdsStartsAgain() {
+        store.connect(runId: "r1", personId: "p1")
+        sockets[0].refuse()
+        store.connect(runId: "r1", personId: "p1")
+        XCTAssertEqual(sockets.count, 2)
+    }
+
+    func testFailedChipSendSurfacesInLastError() {
+        store.connect(runId: "r1", personId: "p1")
+        sockets[0].open()
+        XCTAssertTrue(store.claim("c1"))
+        XCTAssertNil(store.lastError)
+        sockets[0].failSend(.claim(chipId: "c1"))
+        XCTAssertEqual(store.lastError, RunStore.notSentMessage)
+        XCTAssertEqual(store.connection, .reconnecting)
+    }
+
+    func testFailedFrameSendIsSilent() {
+        store.connect(runId: "r1", personId: "jake")
+        sockets[0].open()
+        XCTAssertTrue(store.sendFrame(jpeg: Data([1]), detect: true))
+        sockets[0].onSendFailed?(.frame(jpegBase64: "AQ==", at: 0, detect: true))
+        XCTAssertNil(store.lastError)
+    }
+
+    func testDropBeforeTheServerAnsweredAClaimSurfaces() {
+        store.connect(runId: "r1", personId: "p1")
+        sockets[0].open()
+        store.claim("c1")
+        sockets[0].drop()
+        XCTAssertEqual(store.lastError, RunStore.notSentMessage)
+    }
+
+    func testDropAfterTheServerAnsweredIsQuiet() async throws {
+        store.connect(runId: "r1", personId: "p1")
+        sockets[0].open()
+        await settle { self.gate.pending == 1 }
+        gate.resolve(with: run())
+        await settle { self.store.run != nil }
+        store.claim("c1")
+        sockets[0].deliver(.run(run(chips: [Chip(id: "c1", name: "c1", claimers: ["p1"], state: .claimed)])))
+        sockets[0].drop()
+        XCTAssertNil(store.lastError)
+    }
+
+    func testForegroundedChecksTheSocket() {
+        store.connect(runId: "r1", personId: "p1")
+        store.foregrounded()
+        XCTAssertEqual(sockets[0].checks, 1)
+    }
+
+    func testReleasingTheStoreTearsDownTheSocket() async {
+        var made: FakeSocket?
+        var local: RunStore? = RunStore(fetchRun: { _ in throw DibsError.offline },
+                                        makeSocket: { _, _ in let s = FakeSocket(); made = s; return s })
+        local?.connect(runId: "r1", personId: "p1")
+        let counter = made!.teardowns
+        made = nil
+        XCTAssertEqual(counter.value, 0)
+        local = nil
+        XCTAssertEqual(counter.value, 1)
+    }
+
+    func testReleasedRunSocketIsFreedAndClosed() async throws {
+        weak var weakSocket: RunSocket?
+        do {
+            let s = RunSocket(base: URL(string: "http://127.0.0.1:9")!, runId: "r", personId: "p")
+            s.start()
+            weakSocket = s
+        }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertNil(weakSocket)
     }
 }
