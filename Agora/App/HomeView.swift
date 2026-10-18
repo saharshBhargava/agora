@@ -9,6 +9,7 @@ struct HomeView: View {
     @ObservedObject var store: InventoryStore
     @ObservedObject var shopping: ShoppingStore
     @ObservedObject var settings: SettingsStore
+    @ObservedObject var trips: TripStore
     private var inventory: [InventoryItem] { store.activeItems }
     private var loading: Bool { store.loading }
     private var inventoryError: String? { store.error }
@@ -49,7 +50,10 @@ struct HomeView: View {
                                     if let price = item.targetLabel { Text(price).font(.caption).foregroundStyle(.secondary) }
                                 }
                             }
-                            NavigationLink("View wishlist") { ShoppingView(store: shopping, settings: settings) }
+                            NavigationLink("View wishlist") {
+                                ShoppingView(store: shopping, settings: settings)
+                                    .toolbar(.visible, for: .navigationBar)
+                            }
                         }
                         dashboardCard(title: "Suggested for you", subtitle: "A few thoughtful additions.", symbol: "sparkles", tint: .teal) {
                             if shopping.suggestions.isEmpty {
@@ -62,18 +66,29 @@ struct HomeView: View {
                                 }
                             }
                             if let error = shopping.error { Text(error).font(.caption).foregroundStyle(.secondary) }
-                            NavigationLink("View suggestions") { ShoppingView(store: shopping, settings: settings, selection: "suggestions") }
+                            NavigationLink("View suggestions") {
+                                ShoppingView(store: shopping, settings: settings, selection: "suggestions")
+                                    .toolbar(.visible, for: .navigationBar)
+                            }
                         }
                         dashboardCard(title: "Upcoming trips", subtitle: "Make room for your next run.", symbol: "calendar", tint: .blue) {
-                            Text("Upcoming trip summaries are coming soon. For now, plan a shopping trip with your assistant.")
-                                .font(.subheadline).foregroundStyle(.secondary)
-                            Button {
-                                selectedTab = .chat
-                            } label: {
-                                Label("Plan a trip in chat", systemImage: "arrow.right")
-                                    .font(.subheadline.weight(.semibold))
+                            if trips.trips.contains(where: { $0.isUncertain }) {
+                                Label("A trip needs its Calendar status checked.", systemImage: "exclamationmark.circle")
+                                    .font(.caption).foregroundStyle(.orange)
                             }
-                            .padding(.top, 4)
+                            ForEach(trips.trips.filter { $0.status == "scheduled" && ($0.endDate ?? .distantPast) > Date() }
+                                .sorted { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }.prefix(2)) { trip in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(trip.title).font(.subheadline.weight(.semibold))
+                                    if let start = trip.startDate {
+                                        Text(start, format: .dateTime.weekday().hour().minute())
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            if let error = trips.error { Text(error).font(.caption).foregroundStyle(.secondary) }
+                            NavigationLink("Plan shopping trips") { tripsDestination }
+                                .accessibilityIdentifier("homeShoppingTrips")
                         }
                     }
                 }
@@ -82,19 +97,56 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity)
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("Home")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        selectedTab = .settings
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .accessibilityLabel("Settings")
-                }
-            }
-            .refreshable { await store.refresh(); await shopping.refresh() }
+            .safeAreaInset(edge: .top, spacing: 0) { topBar }
+            .toolbar(.hidden, for: .navigationBar)
+            .refreshable { await store.refresh(); await shopping.refresh(); await trips.refresh() }
         }
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 8) {
+            Image("AgoraWordmark")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 120, height: 50)
+                .accessibilityLabel("Agora")
+                .accessibilityAddTraits(.isHeader)
+
+            Spacer(minLength: 16)
+
+            NavigationLink { tripsDestination } label: {
+                Image(systemName: "calendar")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Calendar")
+            .accessibilityHint("View and plan shopping trips")
+            .accessibilityIdentifier("homeCalendar")
+
+            NavigationLink {
+                WatchInboxView(store: shopping.watches)
+                    .toolbar(.visible, for: .navigationBar)
+            } label: {
+                Image(systemName: "bell")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Notifications")
+            .accessibilityIdentifier("homeNotifications")
+        }
+        .font(.system(size: 21, weight: .regular))
+        .foregroundStyle(.primary)
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 5)
+        .frame(maxWidth: 900)
+        .frame(maxWidth: .infinity)
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea(edges: .top))
+    }
+
+    private var tripsDestination: some View {
+        TripsView(store: trips)
+            .toolbar(.visible, for: .navigationBar)
     }
 
     private var scanCard: some View {
@@ -179,6 +231,8 @@ struct HomeView: View {
                 }
             }
             Button("View inventory") { selectedTab = .inventory }
+                .font(.subheadline.weight(.semibold))
+            NavigationLink("Plan a restock trip") { tripsDestination }
                 .font(.subheadline.weight(.semibold))
         }
     }

@@ -119,7 +119,8 @@ final class CalendarConnection: ObservableObject {
         }
     }
     private func request(_ path: String, method: String, body: [String: Any]? = nil,
-                         account id: String, revision version: UUID, creating: Bool = false) async throws -> (Int, [String: Any]) {
+                         account id: String, revision version: UUID, creating: Bool = false,
+                         allowMissing: Bool = false) async throws -> (Int, [String: Any]) {
         let token: String
         do { token = try await authorization.accessToken(for: id) }
         catch { handle(error); throw error }
@@ -158,6 +159,7 @@ final class CalendarConnection: ObservableObject {
             }
             throw BrowserError("calendar_access_denied", "Google denied Calendar access. The Calendar API may need to be enabled for this app, or access may be restricted by your organization.")
         }
+        if response.statusCode == 404 && allowMissing { return (404, [:]) }
         if response.statusCode == 409 { return (409, [:]) }
         guard (200..<300).contains(response.statusCode) else {
             throw BrowserError(creating && response.statusCode >= 500 ? "outcome_unknown" : "calendar_request_failed",
@@ -231,6 +233,56 @@ final class CalendarConnection: ObservableObject {
               let link = event["htmlLink"] as? String, let url = URL(string: link), url.scheme == "https",
               ["www.google.com", "calendar.google.com"].contains(url.host ?? ""), url.user == nil, url.password == nil else {
             throw BrowserError("outcome_unknown", "Google did not return a confirmed event. Check Calendar before retrying.")
+        }
+        return ["created": true, "id": eventID, "url": link]
+    }
+    /// Recovery deliberately performs only reads. A missed creation response must never cause another insert.
+    func lookupExistingEvent(_ call: CalendarCall, taskID: UUID, expectedAccountID: String) async throws -> [String: Any]? {
+        guard connected, accountID == expectedAccountID, call.name == "calendar_create_event" else {
+            throw BrowserError("calendar_account_changed")
+        }
+        let version = revision
+        if isDemoAccount {
+            guard let origin = demoBaseURL else { throw BrowserError("agora_not_configured") }
+            let token = try await apiToken(for: expectedAccountID)
+            var components = URLComponents(url: origin.appendingPathComponent("v1/demo/calendar/events/by-request"), resolvingAgainstBaseURL: false)!
+            components.queryItems = [.init(name: "key", value: try call.requestKey(taskID: taskID))]
+            var query = URLRequest(url: components.url!)
+            query.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            let (data, response) = try await http.data(for: query)
+            try checkAccount(expectedAccountID, revision: version)
+            guard let response = response as? HTTPURLResponse,
+                  let result = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                throw BrowserError("outcome_unknown", "Could not verify the saved Calendar event. Check Calendar before trying another trip.")
+            }
+            if response.statusCode == 404, result["title"] as? String == "not_found" { return nil }
+            guard response.statusCode == 200, result["created"] as? Bool == true,
+                  let id = result["id"] as? String, UUID(uuidString: id) != nil else {
+                throw BrowserError("outcome_unknown", "Could not verify the saved Calendar event. Check Calendar before trying another trip.")
+            }
+            return ["created": true, "id": id]
+        }
+        let key = try call.requestKey(taskID: taskID)
+        let eventID = Self.hash(Data("agora:\(expectedAccountID):\(key)".utf8))
+        let fingerprint = Self.hash(try JSONSerialization.data(withJSONObject: call.arguments, options: [.sortedKeys]))
+        let (status, event) = try await request("calendars/primary/events/\(eventID)", method: "GET",
+                                          account: expectedAccountID, revision: version, allowMissing: true)
+        if status == 404 { return nil }
+        let properties = (event["extendedProperties"] as? [String: Any])?["private"] as? [String: Any]
+        guard properties?["agora_request"] as? String == fingerprint,
+              event["id"] as? String == eventID, event["status"] as? String != "cancelled",
+              event["summary"] as? String == call.arguments["title"] as? String,
+              (event["description"] as? String ?? "") == (call.arguments["description"] as? String ?? ""),
+              (event["location"] as? String ?? "") == (call.arguments["location"] as? String ?? ""),
+              ["start", "end"].allSatisfy({ key in
+                  guard let raw = (event[key] as? [String: Any])?["dateTime"] as? String,
+                        let expected = call.arguments[key] as? String,
+                        let actualDate = CalendarCall.date(raw), let expectedDate = CalendarCall.date(expected) else { return false }
+                  return actualDate == expectedDate
+              }),
+              let link = event["htmlLink"] as? String, let url = URL(string: link), url.scheme == "https",
+              ["www.google.com", "calendar.google.com"].contains(url.host ?? ""), url.user == nil, url.password == nil else {
+            throw BrowserError("outcome_unknown", "The existing Calendar event could not be verified. Check Calendar before continuing.")
         }
         return ["created": true, "id": eventID, "url": link]
     }

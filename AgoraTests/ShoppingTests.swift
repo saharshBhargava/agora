@@ -255,7 +255,9 @@ final class ShoppingTests: XCTestCase {
             add(attachment)
         }
         await calendar.signOut()
-        let home = UIHostingController(rootView: HomeView(selectedTab: .constant(.home), store: inventory, shopping: shopping, settings: settings))
+        let api = AgoraClient(calendar: calendar, baseURL: URL(string: "https://shopping.example.com"), http: session)
+        let trips = TripStore(api: api, inventory: inventory, calendar: calendar)
+        let home = UIHostingController(rootView: HomeView(selectedTab: .constant(.home), store: inventory, shopping: shopping, settings: settings, trips: trips))
         home.loadViewIfNeeded(); home.view.layoutIfNeeded(); XCTAssertNotNil(home.view)
     }
 }

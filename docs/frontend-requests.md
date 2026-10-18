@@ -431,15 +431,16 @@ See [backend refresh design](backend-spec.md#45-prices-deals-small-businesses).
   `interaction_urls`, the latest confirmed run shows **Needs browser review**. An explicit tap opens the
   shared browser privately and selects Chat; no model action or purchase starts automatically.
 
-## Replenishment to Calendar: backend contract
+## Replenishment to Calendar
 
 The backend now supports persisted trips through `GET /v1/trips`, `POST /v1/trips` and
-`PATCH /v1/trips/{id}/outcome`; see [the contract](api/replenishment-trips.md). The native planner UI is a
-separate client change. Generate per-store lists, use Calendar free/busy to propose a time, show the exact
-list and event for approval, and reserve its current list version before writing to Calendar. Use the trip
-ID as the stable Calendar request identity and report the confirmed event reference or uncertain outcome.
+`PATCH /v1/trips/{id}/outcome`; see [the contract](api/replenishment-trips.md). Home's calendar icon and
+shopping-trip links now open the native planner. It generates per-store lists, checks Calendar free/busy,
+and shows the exact list and event for approval before reserving the list version and writing to Calendar.
+The trip ID is the stable Calendar request identity; confirmed and uncertain outcomes persist across restarts.
 
-Refetch on `trip.updated`. Display persisted trips and recover uncertain writes through read-only event
+The client refreshes on foreground and every 30 seconds; SSE refresh remains future work. Persisted trips
+appear on Home and in the planner. Recover uncertain writes through read-only event
 lookup, never a new request identity. Demo recovery uses `GET /v1/demo/calendar/events/by-request?key=...`.
 Keep demo traffic on the private Calendar routes; ordinary accounts use their actual Google Calendar.
 A `409 duplicate_request` means retry the same request key after the competing transaction finishes.
