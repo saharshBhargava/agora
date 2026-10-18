@@ -121,3 +121,12 @@ Wishlist UI, model-backed ideas and six-hour replenishment jobs include the pass
 The refresh-state migration is `0014_wishlist_refresh.sql`; `0013_calendar_events.sql` is already merged and
 must not be renamed. Demo backfill preserves both Calendar events and shopping refresh state. The built-in,
 server-verified demo model also supports Shopping suggestions without external model calls.
+
+## Item images released — October 18, 2026
+
+[#31](https://github.com/saharshBhargava/agora/pull/31), merge `190de200`, adds item image routes, broad
+text discovery, explicit candidate choices and private photos. Migrations **0017_item_images.sql** and
+**0018_exact_item_images.sql** are now merged and applied; do not edit or renumber them. Existing items
+are backfilled, while demo artwork and user selections remain isolated/preserved. This backend release
+does not distribute the local native image UI. See [current state](current-state.md) and the
+[item image contract](api/item-images.md) for verification and behavior.

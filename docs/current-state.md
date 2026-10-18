@@ -214,12 +214,23 @@ The Gemini schema correction and compact composer/tab spacing are included.
 
 ## Broad item image search — October 18, 2026
 
-Prepared backend release adds migrations 0017/0018, household image bindings, private photos, demo-only
+Backend PR [#31](https://github.com/saharshBhargava/agora/pull/31) adds migrations 0017/0018, household image bindings, private photos, demo-only
 illustrations and bounded product-page discovery. Every item name is searchable without requiring brand,
 model or barcode. Relevant ambiguous images are returned as titled choices and require confirmation;
 only supported product matches auto-display. Search uses the existing web router independently of whether
 a reasoning model is configured. Optional model tools and visual vetoes remain available.
 
 The native implementation is local source work; this backend release does not distribute an iOS build.
-Live deployment verification and final test results will be recorded after release. The shared workspace's
+Production was verified at `190de200a8028939aab01a51b03f770ee548b2d9` on October 18, 2026 UTC:
+[deploy run](https://github.com/saharshBhargava/agora/actions/runs/39113668150) passed, `/readyz` reported
+migration 0018 with no pending migrations, and the authenticated image route returned 401 without a token
+instead of 404. PR and post-merge CI passed 602 tests on each of Postgres and TimescaleDB; Docker build and
+PR migration/rollback rehearsal passed. Eight focused native tests passed. A local full run had 601 passes
+and one disk-full failure; that isolated case passed after removing owned build artifacts.
+
+Live public searches downloaded PS5 disc/digital photos, Xbox Series X versions and a Lodge skillet. A
+disposable ordinary-account API flow for both consoles returned choices, saved explicit selections and served
+image bytes. The local demo CLI reset produced 25 image bindings. No production-account writes were used
+for these verification checks. Existing-item backfill is part of the additive production migration.
+A follow-up preserves Unicode characters during identity comparison; its focused image suite has 65 passes. The shared workspace's
 earlier exact-only search/fallback notes are superseded by [this contract](api/item-images.md).
