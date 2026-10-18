@@ -34,6 +34,9 @@ struct ChatToolActivity {
         case "calendar_create_event": return "Adding a Calendar event"
         case "calendar_list_events", "calendar_availability": return "Checking your Calendar"
         case "shopping_context": return "Reading your shopping context"
+        case "shopping_list_add": return "Adding to shopping list"
+        case "wishlist_add": return "Adding to wishlist"
+        case "inventory_add": return "Adding to inventory"
         case "shopping_suggest": return "Saving a suggestion"
         default: return name.replacingOccurrences(of: "_", with: " ").capitalized
         }

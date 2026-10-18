@@ -527,3 +527,17 @@ Captured examples:
   `list.created`, `list.updated` (field names and status), `list.item_added` (actor `agent` for agent lines),
   `list.item_updated` (field names), `list.item_removed`, `list.generated` (window and counts).
 - SSE events carry only `{household_id, type, id}`. Clients refetch through the API.
+
+
+## Chat additions (MVP)
+
+Chat can add items to existing open lists. It reads current household lists first and asks which list
+when the destination is ambiguous; list creation remains in the Lists screen. Explicit user requests save
+without another approval. Existing items are not merged and quantities are not changed.
+
+`POST /v1/lists/{list_id}/items` now accepts an optional `Idempotency-Key`; chat always sends it.
+The same user/key/body returns the original 201 response, even after that list is closed. Reusing the key
+for a different body returns 422 `idempotency_key_reused`. Concurrent retries serialize. With a key,
+a case/whitespace-normalized duplicate title returns 409 `already_on_list`, including checked items.
+Legacy requests without a key retain their existing behavior. Normal household authorization, audits and
+live-sync events still apply. A network failure is an uncertain save: check Lists before retrying.

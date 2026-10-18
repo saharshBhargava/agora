@@ -248,6 +248,30 @@ public-page searches for PS5 and Xbox Series X selected and served images throug
 without a selection request. All eight focused native tests passed, including automatic best-match display.
 Deployment is pending at this entry.
 
+## Chat additions MVP — October 18, 2026
+
+Chat now exposes three validated tools for explicit user requests: add to an existing shopping list,
+add an active wishlist item, or create a new inventory item. Each task first reads fresh household
+context; ambiguous destinations are clarified. Saves use the shared stores, so confirmed additions
+appear in the existing screens. Existing entries are reported without merging or changing quantities.
+Account/household changes cancel pending work and clear chat context; uncertain writes require checking
+Lists. Recommendations retain the separate suggestion/acceptance flow. The built-in demo uses a disclosed
+single-item text grammar with real private-account persistence and an idempotent seed/backfill.
+
+The three existing create APIs accept optional idempotency keys (always sent by chat), serialize retries
+and save responses atomically. Keyed inventory/list additions reject case/whitespace-normalized duplicate
+names; wishlist keeps its existing duplicate rules. No migration is needed. Existing automatic wishlist
+watch synchronization is preserved in the shared checkout. See [chat additions](api/chat-additions.md).
+
+Implementation was prepared on current main through `6a86e2f` and integrated with the shared checkout's
+uncommitted work. Validation: **659 backend tests**, Ruff and diff checks passed; the combined app built,
+and **71 selected iOS simulator tests passed with no skips**, including the real local API/Postgres chat
+flow, duplicate handling, destination ambiguity, persistence reload, Stop and account/household boundaries.
+A disposable local demo CLI reset also passed. Broader exploratory iOS runs encountered the existing
+unsigned-build Keychain limitation and a browser-scroll timing assertion; no full iOS suite pass is claimed.
+Live credentialed model inference, production deployment and a distributed iOS build were not performed.
+
+
 ## Automatic wishlist price checks — release preparation, October 18, 2026
 
 The native “Preparing automatic price checks” text was shown for an absent watch even when the hosted

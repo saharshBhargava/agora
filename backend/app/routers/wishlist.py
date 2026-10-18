@@ -213,6 +213,10 @@ async def add_item(body: WishlistItemIn, request: Request, user: Principal = Cur
         raise Problem(422, "invalid_request", "Title cannot be blank.")
     async with request.app.state.db.scoped(user.user_id) as conn:
         household_id = await require_household(conn, body.household_id, user.user_id)
+        request_key, digest, previous = await idempotency.begin_optional_add(
+            conn, request, user.user_id, "wishlist.add", body.model_dump(mode="json"))
+        if previous is not None:
+            return WishlistItem.model_validate(previous)
         await lock_household(conn, household_id)
         category = await _resolve_links(conn, household_id, body.product_id, body.inventory_item_id, body.category)
         key = title_key(body.title)
@@ -229,7 +233,9 @@ async def add_item(body: WishlistItemIn, request: Request, user: Principal = Cur
         await audit(conn, "wishlist.item_added", actor_id=user.user_id, household_id=household_id,
                     target_type="wishlist_item", target_id=item_id, meta={"source": "user"})
         await notify(conn, household_id, "wishlist.updated", item_id)
-        return await _load(conn, item_id)
+        result = await _load(conn, item_id)
+        await idempotency.finish_optional_add(conn, user.user_id, request_key, digest, result.model_dump(mode="json"))
+        return result
 
 
 @router.post("/suggestions", response_model=WishlistItem, status_code=201)

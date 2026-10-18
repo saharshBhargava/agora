@@ -538,3 +538,15 @@ existing suggestion POST. Model output cannot set target prices through that UI 
 `shopping_context` and `shopping_suggest` share this persistence path. All suggestions still require user
 acceptance to join the active wishlist. Live retailer prices and automatic purchase execution are outside
 this feature.
+
+
+## Explicit additions from chat
+
+`wishlist_add` saves an explicit user request directly to the active wishlist using `POST /v1/wishlist`.
+It uses `source=user`, just like the form. Agent recommendations still use `shopping_suggest` and wait
+for acceptance. Chat supports title and optional quantity (default 1, integer 1–99) in this MVP.
+
+The create route accepts an optional `Idempotency-Key`, always supplied by chat. Identical keyed retries
+return the original 201 response; changed bodies return 422 `idempotency_key_reused`. Creation serializes
+with existing wishlist operations, and existing open-title duplicates remain 409 `already_on_wishlist`.
+The same saved item appears in the Wishlist screen immediately. No purchase is performed.

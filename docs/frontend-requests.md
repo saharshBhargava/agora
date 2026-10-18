@@ -481,6 +481,15 @@ a confirmation step. Keep titled alternatives in **Change image**. All item name
 A new native build is required for the updated editor and service-unavailable/retry messages.
 
 
+## Chat additions MVP — implemented locally, October 18, 2026
+
+Chat can add items to existing shopping lists, the active wishlist and new inventory entries. Explicit
+requests save immediately; ambiguous destinations are clarified and duplicates leave quantities unchanged.
+Shared screens update after confirmed saves. Existing suggestions remain a separate acceptance flow.
+See [chat additions](api/chat-additions.md) for argument limits, demo examples and retry behavior.
+List creation from chat, existing-stock changes, browser/photo extraction and undo remain outside this MVP.
+
+
 ## Automatic-watch rollout compatibility
 
 The watch-list response advertises `automatic_watches:true` when wishlist saves and startup backfills

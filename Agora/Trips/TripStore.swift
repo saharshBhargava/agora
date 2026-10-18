@@ -260,7 +260,19 @@ final class TripStore: ObservableObject {
         return list.id
     }
 
-    func addItem(listID: UUID, draft: TripItemDraft) async throws {
+    func listsForChat() async throws -> [TripList] {
+        guard canUse, !busy, let householdID else { throw BrowserError("lists_unavailable", "Wait for shopping lists to finish loading.") }
+        let version = context
+        let result = try await api.fetch("v1/lists", as: [TripList].self,
+            query: [.init(name: "household_id", value: householdID.uuidString)])
+        try check(version)
+        guard result.allSatisfy({ $0.householdId == householdID }) else { throw BrowserError("invalid_server_response") }
+        loadID = UUID(); loading = false; lists = result
+        return result
+    }
+
+    @discardableResult
+    func addItem(listID: UUID, draft: TripItemDraft, key: String? = nil) async throws -> TripListItem {
         let body = try draft.body()
         guard canUse, !busy, let index = lists.firstIndex(where: { $0.id == listID && $0.status == "open" }) else {
             throw BrowserError("list_unavailable", "Refresh and choose an open shopping list.")
@@ -268,10 +280,12 @@ final class TripStore: ObservableObject {
         let version = context
         busy = true; loadID = UUID(); loading = false; error = nil; notice = nil
         defer { if context == version { busy = false } }
-        let item = try await api.fetch("v1/lists/\(listID)/items", as: TripListItem.self, method: "POST", body: body)
+        let item = try await api.fetch("v1/lists/\(listID)/items", as: TripListItem.self, method: "POST", body: body, key: key)
         try check(version)
         // Retain the confirmed write even if the subsequent refresh fails. Never repeat the POST.
-        lists[index].items.append(item); lists[index].openCount += item.checked ? 0 : 1
+        if !lists[index].items.contains(where: { $0.id == item.id }) {
+            lists[index].items.append(item); lists[index].openCount += item.checked ? 0 : 1
+        }
         proposals = []
         do {
             let list = try await api.fetch("v1/lists/\(listID)", as: TripList.self)
@@ -282,6 +296,7 @@ final class TripStore: ObservableObject {
             try check(version)
             notice = "Item saved. Pull to refresh for the latest list."
         }
+        return item
     }
 
     func setChecked(listID: UUID, itemID: UUID, checked: Bool) async {
