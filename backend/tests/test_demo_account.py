@@ -13,6 +13,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
+from app.auth import DEV_AUDIENCE, DEV_ISSUER
 from app.config import Settings
 from app.demo_account import DEMO_SUBJECT, ensure_demo_account, reset_demo_account
 from app.main import create_app
@@ -147,6 +148,26 @@ async def test_demo_login_needs_the_password(demo_app):
     missing = await client.post("/v1/dev/login", json={"handle": "demo"})
     assert wrong.status_code == missing.status_code == 401
     assert (await client.post("/v1/dev/login", json={"handle": "mallory", "password": PASSWORD})).status_code == 403
+
+
+async def test_stolen_dev_jwt_secret_cannot_impersonate_google_accounts(demo_app):
+    """HS256 tokens signed with AGORA_DEV_JWT_SECRET must not accept google:<sub> claims.
+
+    Before the subject allowlist, a leaked demo JWT secret could mint Bearer tokens for any
+    google: subject; under AGORA_AUTH_MODE=google those subjects are auto-provisioned, so the
+    leak became full account impersonation — not just access to the demo household.
+    """
+    app, client = demo_app
+    victim_sub = "google:" + uuid4().hex
+    now = int(time.time())
+    forged = jwt.encode(
+        {"iss": DEV_ISSUER, "aud": DEV_AUDIENCE, "sub": victim_sub, "iat": now, "nbf": now, "exp": now + 3600},
+        app.state.settings.dev_jwt_secret.get_secret_value(), algorithm="HS256",
+    )
+    response = await client.get("/v1/me", headers={"Authorization": f"Bearer {forged}"})
+    assert response.status_code == 401
+    async with app.state.db.system() as conn:
+        assert not await conn.fetchval("SELECT 1 FROM users WHERE auth_subject = $1", victim_sub)
 
 
 async def test_requests_cannot_flag_themselves_as_demo(demo_app):

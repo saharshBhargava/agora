@@ -5,7 +5,7 @@ import jwt
 import pytest
 from PIL import Image
 
-from app.auth import DEV_AUDIENCE, DEV_ISSUER, TokenVerifier, mint_dev_token
+from app.auth import DEV_AUDIENCE, DEV_ISSUER, TokenVerifier, is_dev_token_subject, mint_dev_token
 from app.config import Settings
 from app.core.detections import auto_accept, merge_frames, normalize, quantity
 from app.errors import Problem
@@ -88,6 +88,9 @@ def test_dev_tokens_verify_and_reject_tampering():
     verifier = TokenVerifier(settings)
     token, _ = mint_dev_token(settings, "dev:kedar")
     assert verifier.verify(token) == "dev:kedar"
+    assert mint_dev_token(settings, "demo:primary")[0]
+    assert is_dev_token_subject("dev:kedar") and is_dev_token_subject("demo:primary")
+    assert not is_dev_token_subject("google:victim") and not is_dev_token_subject("dev:X")
 
     forged = jwt.encode({"sub": "dev:kedar", "iss": DEV_ISSUER, "aud": DEV_AUDIENCE, "exp": time.time() + 60},
                         "x" * 40, algorithm="HS256")
@@ -99,6 +102,37 @@ def test_dev_tokens_verify_and_reject_tampering():
         with pytest.raises(Problem) as error:
             verifier.verify(bad)
         assert error.value.status == 401
+
+
+def test_hs256_tokens_reject_subjects_outside_dev_login_allowlist():
+    """A stolen AGORA_DEV_JWT_SECRET must not mint google:/arbitrary subjects that auto-create accounts.
+
+    Hosted demo accepts HS256 next to Google ID tokens. Without a subject allowlist, knowing the JWT
+    secret lets an attacker forge Authorization: Bearer tokens for google:<victim> and impersonate or
+    auto-provision real accounts under AGORA_AUTH_MODE=google.
+    """
+    settings = Settings(env="demo", auth_mode="google", google_ios_client_id="123-native.apps.googleusercontent.com",
+                        demo_password="a-long-demo-password",
+                        dev_jwt_secret="a-real-random-secret-for-the-demo-0123456789")
+    assert settings.dev_login_enabled
+    verifier = TokenVerifier(settings)
+    secret = settings.dev_jwt_secret.get_secret_value()
+    now = time.time()
+
+    for sub in ("demo:primary", "dev:kedar", "dev:saharsh"):
+        ok = jwt.encode({"sub": sub, "iss": DEV_ISSUER, "aud": DEV_AUDIENCE, "exp": now + 60},
+                        secret, algorithm="HS256")
+        assert verifier.verify(ok) == sub
+
+    for sub in ("google:victim-subject", "google:123", "oidc:user", "admin", "dev:", "dev:UPPER",
+                "dev:ab", "dev:" + "x" * 33, "demo:other"):
+        bad = jwt.encode({"sub": sub, "iss": DEV_ISSUER, "aud": DEV_AUDIENCE, "iat": now, "exp": now + 60},
+                         secret, algorithm="HS256")
+        with pytest.raises(Problem) as error:
+            verifier.verify(bad)
+        assert error.value.status == 401
+    with pytest.raises(ValueError, match="non-dev subject"):
+        mint_dev_token(settings, "google:victim-subject")
 
 
 def test_config_refuses_unsafe_deploys():
