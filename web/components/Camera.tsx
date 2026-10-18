@@ -67,7 +67,7 @@ export function Camera({ send, enabled, region, label, pending = true, mockHref,
         if (wake && wake !== s) void wake.release().catch(() => undefined);
         wake = s;
       } catch {
-        /* not supported or refused: the README asks for Auto-Lock off */
+        /* not supported or refused: docs/dibs/README.md asks for Auto-Lock off */
       }
     };
 

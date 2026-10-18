@@ -20,3 +20,7 @@ migrations must stay backward compatible. Details: [docs/deployment.md](docs/dep
 For operations read [docs/deployment.md](docs/deployment.md); for client integration read
 [docs/frontend-handoff.md](docs/frontend-handoff.md). The backend spec and original planning notes include
 unimplemented proposals: they are context, not proof that a feature exists or authorization to deploy it.
+
+Dibs, the shared grocery-run app in `ios/`, `server/` and `web/`, is separate from Agora's backend and deploy;
+read [docs/dibs/README.md](docs/dibs/README.md) and the Dibs section of [CLAUDE.md](CLAUDE.md) before touching it.
+

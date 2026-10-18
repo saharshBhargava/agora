@@ -100,6 +100,7 @@ a Gmail account just to let the frontend team sign in. See [frontend handoff](fr
 - **Runtime contract:** current routers/schemas/migrations and deployed OpenAPI, plus [API contracts](api/).
 - **Frontend integration:** [frontend handoff](frontend-handoff.md); [frontend requests](frontend-requests.md) is backlog where marked.
 - **Recreating/local fallback:** [SETUP.md](../SETUP.md) and [backend README](../backend/README.md).
+- **Dibs (separate app):** [Dibs README](dibs/README.md) and the dated Dibs section below.
 - **Historical design/reference:** [backend spec](backend-spec.md), [original planning notes](Dubhacks%20Planning%201.md),
   [judging rubric](RUBRIC.md). These are not evidence of implementation or instructions to change hosting.
 
@@ -176,3 +177,28 @@ client navigation change with no new stored data, API, or migration.
 Validation: 73 selected iOS simulator tests passed, including inventory, shopping, watches, trips and
 authentication checks. The Lists overview simulator capture was inspected. No production deployment or
 new distributed iOS build is claimed.
+
+## Dibs shared grocery run beside Agora — October 18, 2026 UTC
+
+Dibs (`ios/`, `server/`, `web/`, `scripts/{dev,demo-server,smoke}.sh`, root `package.json`, `Dockerfile`,
+`railway.json`) was merged in as a separate app; it changes no Agora file, API, migration or deployment.
+It is a shared grocery run: the shopper's iPhone livestreams the cart (15 fps), finds items on device with Apple
+Vision, the Dibs server names them with Gemini and the phone's hidden browser prices them on qfc.com; claimers
+join on the web or in the app and split items; Visa holds, captures and the payout are simulated. Each person
+gets a per-run secret key on REST and WebSocket, and runs leave the server without authorization ids or full
+card numbers. Run and env details: [Dibs README](dibs/README.md).
+
+| Item | State |
+|---|---|
+| Hosting | Laptop + HTTPS tunnel via `scripts/demo-server.sh`. **Not on Render**; `render.yaml` still pins `rootDir: backend`, so the Dibs root `Dockerfile` is not used by Agora's deploy. `railway.json` was never deployed. |
+| Identity | None shared with Agora: a typed name and a per-run key. No Agora account, household or demo-account link yet. |
+| Agora data | The "+ Wish" page can read the demo household's open lists, wishlist suggestions and run-outs through the Dibs server when `TEAM_API_BASE_URL` and `AGORA_DEMO_PASSWORD` are set; this adapter is tested with mocked responses only, not against the live API. Without them it suggests from past Dibs runs. |
+| CI | `.github/workflows/dibs.yml`: server + web tests, typecheck and smoke on PRs and main; the Dibs iOS suite on PRs only. Agora's `backend`/`ios` workflows and `deploy` are unaffected by Dibs paths. |
+
+Verification on branch `dibs-mock-demo` (87c6d80): server 246 and web 142 tests, server/web typecheck,
+iOS 306 simulator tests; a live run with the shopper on a physical iPhone and a web claimer covered join,
+claim, wish, key refusal, checkout and last call, a Gemini-read receipt with tax, capture and the simulated
+payout. This records the demo build on a laptop, not a hosted deployment or a distributed iOS build.
+Next steps (Dibs as a tab in the Agora app, shared sign-in, settle → inventory write-back) are in the
+[merge plan](superpowers/plans/2026-10-18-dibs-merge-plan.md); none is implemented.
+
