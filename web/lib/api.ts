@@ -3,6 +3,8 @@ import type { Chip, ReceiptState, Run } from './types';
 
 export const TEST_CARD = { number: '4111111111111111', expMonth: 12, expYear: 2031 };
 const DECLINED_CARD = { ...TEST_CARD, expYear: 1998 };
+/** The simulator holds this card fine but fails its capture at settle (shows "partly settled"). */
+export const FAIL_CAPTURE_CARD = { ...TEST_CARD, number: '4000000000000341' };
 
 export type JoinResult = {
   personId: string;
@@ -35,10 +37,14 @@ export const api = {
   // Fastify rejects a JSON content-type with an empty body, so send an empty object.
   createRun: () => call<{ runId: string; shopperId: string }>('/api/runs', { method: 'POST', body: '{}' }),
   getRun: (runId: string) => call<Run>(`/api/runs/${encodeURIComponent(runId)}`),
-  join: (runId: string, name: string, capCents: number, opts: { decline?: boolean } = {}) =>
+  join: (runId: string, name: string, capCents: number, opts: { decline?: boolean; failCapture?: boolean } = {}) =>
     call<JoinResult>(`/api/runs/${encodeURIComponent(runId)}/join`, {
       method: 'POST',
-      body: JSON.stringify({ name, card: opts.decline ? DECLINED_CARD : TEST_CARD, capCents }),
+      body: JSON.stringify({
+        name,
+        card: opts.decline ? DECLINED_CARD : opts.failCapture ? FAIL_CAPTURE_CARD : TEST_CARD,
+        capCents,
+      }),
     }),
   addChip: (runId: string, body: { imageBase64: string; hint?: string }) =>
     call<Chip>(`${run(runId)}/chips`, { method: 'POST', body: JSON.stringify(body) }),

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { api, TEST_CARD, type JoinResult } from '@/lib/api';
+import { api, FAIL_CAPTURE_CARD, TEST_CARD, type JoinResult } from '@/lib/api';
 import { HeldBadge } from '@/components/HeldBadge';
 import { Avatar } from '@/components/Avatar';
 import { wholeCents } from '@/lib/money';
@@ -9,6 +9,25 @@ import { isLiveChip, listNames } from '@/lib/share';
 import { runTitle, tileColor } from '@/lib/tile';
 import type { Person, Run } from '@/lib/types';
 
+const NAME_KEY = 'dibs.name';
+const MAX_NAME = 24;
+
+/** The name last used to join on this device; storage can be missing or blocked. */
+function rememberedName(): string {
+  try {
+    return localStorage.getItem(NAME_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function rememberName(name: string): void {
+  try {
+    localStorage.setItem(NAME_KEY, name);
+  } catch {
+    /* a private window: the name just isn't remembered */
+  }
+}
 
 function CardIcon() {
   return (
@@ -23,10 +42,15 @@ export default function JoinScreen() {
   const params = useSearchParams();
   const router = useRouter();
   const runId = params.get('run') ?? '';
-  const name = params.get('name') || 'A';
+  const nameParam = params.get('name');
   const capParam = Number.parseInt(params.get('cap') ?? '', 10);
   const capCents = Number.isFinite(capParam) && capParam > 0 ? capParam : 4000;
   const decline = params.get('decline') === '1';
+  const failCapture = params.get('failcapture') === '1';
+  const card = failCapture ? FAIL_CAPTURE_CARD : TEST_CARD;
+
+  const [nameInput, setNameInput] = useState(() => (nameParam?.trim() || rememberedName()).slice(0, MAX_NAME));
+  const name = nameInput.trim();
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,10 +72,12 @@ export default function JoinScreen() {
   }, [runId]);
 
   async function join() {
+    if (!name) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await api.join(runId, name, capCents, { decline });
+      const res = await api.join(runId, name, capCents, { decline, failCapture });
+      rememberName(name);
       setJoined(res);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not join');
@@ -118,13 +144,32 @@ export default function JoinScreen() {
         )}
       </section>
 
+      <div className="join-name">
+        <label htmlFor="join-name">Your name</label>
+        <input
+          id="join-name"
+          className="input"
+          value={nameInput}
+          onChange={(e) => setNameInput(e.target.value.slice(0, MAX_NAME))}
+          onKeyDown={(e) => { if (e.key === 'Enter' && name && !busy && !joined) void join(); }}
+          placeholder="First name"
+          maxLength={MAX_NAME}
+          autoComplete="given-name"
+          autoCapitalize="words"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="go"
+          disabled={!!joined}
+        />
+      </div>
+
       <div className="join-hold">
         <span className="join-hold-label">Your hold</span>
         <span className="money join-hold-amount">{wholeCents(capCents)}</span>
         <p className="join-hold-copy">
           Held on your card while the run is open. Only what you claim is captured; the rest is released when {shopperName} checks out.
         </p>
-        <span className="join-card"><CardIcon /><span>Visa ending {TEST_CARD.number.slice(-4)}</span></span>
+        <span className="join-card"><CardIcon /><span>Visa ending {card.number.slice(-4)}</span></span>
       </div>
 
       {joined && (
@@ -146,7 +191,7 @@ export default function JoinScreen() {
           Start claiming
         </button>
       ) : (
-        <button type="button" className="btn" onClick={join} disabled={busy}>
+        <button type="button" className="btn" onClick={join} disabled={busy || !name}>
           {busy ? 'Joining…' : `Join ${shopper ? `${shopper.name}'s` : 'the'} run`}
         </button>
       )}
