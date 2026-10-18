@@ -129,10 +129,21 @@ final class PriceWorkerTests: XCTestCase {
         return w
     }
 
-    /// One poll, then wait for the lookups it started.
-    private func poll() async {
+    override func tearDown() async throws {
+        worker?.stop()   // cancel any poll loop or lookup a failing test left behind
+        worker = nil
+    }
+
+    /// One poll, then wait (at most 5 s, so a stuck lookup fails instead of hanging) for its lookups.
+    private func poll(file: StaticString = #filePath, line: UInt = #line) async {
         await worker.pollOnce()
-        await worker.waitUntilIdle()
+        await settle(file: file, line: line)
+    }
+
+    private func settle(file: StaticString = #filePath, line: UInt = #line) async {
+        let deadline = Date().addingTimeInterval(5)
+        while !worker.isIdle && Date() < deadline { try? await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertTrue(worker.isIdle, "lookups still running after 5 s", file: file, line: line)
     }
 
     func testFastPathPostsPageTextAndStopsWhenFound() async throws {
@@ -219,7 +230,7 @@ final class PriceWorkerTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(20))
             maxActive = max(maxActive, worker.active.count)
         }
-        await worker.waitUntilIdle()
+        await settle()
 
         XCTAssertEqual(maxActive, 2)
         XCTAssertEqual(made.count, 2, "a pool of two browsers")
@@ -439,7 +450,7 @@ final class PriceWorkerTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(30))
         XCTAssertEqual(PriceWorker.shownLookup(worker.active)?.requestId, "r1")
         XCTAssertEqual(worker.currentName, "cosmic crisp apple")
-        await worker.waitUntilIdle()
+        await settle()
         XCTAssertNil(PriceWorker.shownLookup(worker.active), "hidden once the lookup ends")
     }
 

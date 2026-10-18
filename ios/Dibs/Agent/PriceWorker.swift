@@ -221,7 +221,7 @@ final class PriceWorker {
     }
 
     func stop() {
-        guard isRunning else { return }
+        guard isRunning || !inFlight.isEmpty else { return }
         PriceLog.event("price worker stop")
         loop?.cancel()
         loop = nil
@@ -241,7 +241,7 @@ final class PriceWorker {
     func use(api: DibsAPI) { self.api = PriceAPI(api: api) }
 
     /// One poll: fetch open requests and start each due one on a free browser. Returns without
-    /// waiting for the lookups (see `waitUntilIdle`).
+    /// waiting for the lookups (see `isIdle`).
     func pollOnce() async {
         guard let api else { return }
         let open: [PriceRequest]
@@ -268,10 +268,9 @@ final class PriceWorker {
         }
     }
 
-    /// Waits for every lookup in flight to finish.
-    func waitUntilIdle() async {
-        while let task = inFlight.values.first { await task.value }
-    }
+    /// No lookup in flight.
+    var isIdle: Bool { inFlight.isEmpty }
+
 
     private func freeSlot() -> Slot? {
         if let slot = slots.first(where: { !$0.busy }) { return slot }
