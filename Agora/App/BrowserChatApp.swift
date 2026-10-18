@@ -10,7 +10,7 @@ struct BrowserChatApp: App {
         WindowGroup {
             CalendarGate(calendar: workspace.calendar, onDisconnect: { workspace.agent.newChat() }) {
                 TabView(selection: $selectedTab) {
-                    HomeView(selectedTab: $selectedTab, calendar: workspace.calendar, backend: workspace.backend)
+                    HomeView(selectedTab: $selectedTab, calendar: workspace.calendar, api: workspace.api)
                         .tabItem { Label("Home", systemImage: "house") }
                         .tag(AppTab.home)
                     ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser)
@@ -41,16 +41,14 @@ final class ChatWorkspace: ObservableObject {
     let settings: SettingsStore
     let browser: BrowserSession
     let agent: AgentCoordinator
-    let api: AgoraClient
     let calendar: CalendarConnection
-    let backend: AgoraAPIClient
+    let api: AgoraClient
     init() {
         AppLog.event(.app, "workspace.created")
         let settings = SettingsStore(); self.settings = settings
         let browser = BrowserSession(policy: settings.policy); self.browser = browser
-        let api = AgoraClient(); self.api = api
         let calendar = CalendarConnection(); self.calendar = calendar
-        backend = AgoraAPIClient(calendar: calendar)
+        api = AgoraClient(calendar: calendar)
         agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar)
     }
 }
