@@ -141,3 +141,33 @@ async def test_reject_media_references_empty_lists_and_invalid_values(client):
     assert (await client.post("/v1/inventory/recognitions", headers=headers, json=body)).status_code == 422
     assert (await client.get("/v1/inventory", headers=headers)).json() == []
     assert (await client.post("/v1/inventory/recognitions", json=payload(household))).status_code == 401
+
+
+async def test_local_client_provider_and_model_provenance_and_retry(app, client):
+    headers, household, user = await context(client, "local_client_recognition")
+    body = {**payload(household), "provider": "openai-compatible", "model": "org/Qwen-VL:Q4_K_M"}
+    headers["Idempotency-Key"] = str(uuid4())
+    saved = await client.post("/v1/inventory/recognitions", headers=headers, json=body)
+    assert saved.status_code == 201, saved.text
+    retry = await client.post("/v1/inventory/recognitions", headers=headers, json=body)
+    assert retry.json() == saved.json()
+    async with app.state.db.scoped(UUID(user)) as conn:
+        scan = await conn.fetchrow("SELECT * FROM scans WHERE id = $1", UUID(saved.json()["recognition_id"]))
+        assert scan["provider"] == "openai-compatible-client" and scan["model"] == body["model"]
+        assert scan["frame_keys"] == scan["frame_hashes"] == []
+    body["provider"] = "gemini"
+    assert (await client.post("/v1/inventory/recognitions", headers=headers, json=body)).status_code == 422
+    body["provider"] = "unsupported"
+    headers["Idempotency-Key"] = str(uuid4())
+    assert (await client.post("/v1/inventory/recognitions", headers=headers, json=body)).status_code == 422
+
+
+async def test_explicit_gemini_matches_legacy_request_idempotency(client):
+    headers, household, _ = await context(client, "legacy_client_provider")
+    body = payload(household)
+    headers["Idempotency-Key"] = str(uuid4())
+    saved = await client.post("/v1/inventory/recognitions", headers=headers, json=body)
+    assert saved.status_code == 201
+    body["provider"] = "gemini"
+    retry = await client.post("/v1/inventory/recognitions", headers=headers, json=body)
+    assert retry.status_code == 201 and retry.json() == saved.json()

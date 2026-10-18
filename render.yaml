@@ -1,5 +1,6 @@
 # Render Blueprint (free plan, no credit card). New → Blueprint → pick this repo, then paste the database URL.
 # Free web services sleep after ~15 idle minutes and take about a minute to wake; see backend/README.md.
+# Team API: https://agora-api-yq3m.onrender.com (verified deployment record: docs/frontend-handoff.md).
 services:
   - type: web
     name: agora-api
@@ -10,17 +11,18 @@ services:
     dockerfilePath: ./Dockerfile        # both Docker paths are relative to rootDir (backend)
     dockerContext: .
     healthCheckPath: /readyz
-    autoDeployTrigger: checksPass       # deploy main only after its CI checks pass
+    # Releases are driven by .github/workflows/deploy.yml (test -> deploy -> smoke -> auto-rollback). It turns
+    # Render's own auto-deploy off; autoDeployTrigger is deliberately omitted so a Blueprint sync never turns it back on.
     envVars:
       - key: AGORA_DATABASE_URL        # Tiger Cloud (or any Postgres) connection string
         sync: false
       - key: AGORA_ENV
         value: demo
-      - key: AGORA_AUTH_MODE             # iOS signs in with Google; demo mode adds password-protected dev login
+      - key: AGORA_AUTH_MODE             # ordinary users use Google; demo app/API login uses the generated password
         value: google
       - key: AGORA_GOOGLE_IOS_CLIENT_ID  # public iOS client ID from Config/Agora.xcconfig; must match the app's
         value: 875535919816-pt11h5vsprq94mktf5of9ltfbu529evl.apps.googleusercontent.com
-      - key: AGORA_DEMO_GOOGLE_EMAILS    # the Google address(es) that sign in to the demo account, comma-separated
+      - key: AGORA_DEMO_GOOGLE_EMAILS    # optional alternate demo Google addresses; password sign-in needs none
         sync: false
       - key: AGORA_DEMO_PASSWORD         # password for /v1/dev/login {"handle": "demo"}; read it in Render's dashboard
         generateValue: true
@@ -32,12 +34,36 @@ services:
         value: gemini
       - key: AGORA_VISION_FALLBACK
         value: replay
+      # Optional local/LAN model server: change provider to openai-compatible and fallback to none.
+      # Configure these in Environment only when using that connection; localhost is this container.
+      # AGORA_OPENAI_BASE_URL=http://your-reachable-model-host:1234/v1
+      # AGORA_OPENAI_MODEL=<loaded vision model ID>
+      # AGORA_OPENAI_API_KEY=<optional server key>
       - key: AGORA_GEMINI_API_KEY
         sync: false
       - key: AGORA_PERCEPTRON_API_KEY
         sync: false
       - key: AGORA_RUN_WORKER_IN_PROCESS
         value: "true"
+      - key: AGORA_WATCH_SEARCH_MODEL
+        value: gemini-2.5-flash
+      - key: AGORA_APNS_ENABLED
+        value: "false"
+      - key: AGORA_WATCH_MODEL_PROVIDER
+        value: gemini
+      - key: AGORA_WATCH_SEARCH_PROVIDERS
+        value: '["exa","parallel","firecrawl","keenable","tavily","brave"]'
+      - key: AGORA_WATCH_SEARCH_KEYLESS
+        value: "true"
+      # Reasoning uses AGORA_GEMINI_API_KEY or the legacy AGORA_WATCH_SEARCH_API_KEY override.
+      # For a different model, use openai-compatible with AGORA_OPENAI_BASE_URL/MODEL/API_KEY.
+      # Search is independent: public Exa/Parallel/Keenable routes work without search keys.
+      # Optional AGORA_EXA_API_KEY, AGORA_PARALLEL_API_KEY, AGORA_FIRECRAWL_API_KEY,
+      # AGORA_KEENABLE_API_KEY, AGORA_TAVILY_API_KEY, AGORA_BRAVE_API_KEY belong in Environment.
+      # Remote iOS alerts require AGORA_APNS_KEY_ID, AGORA_APNS_TEAM_ID,
+      # AGORA_APNS_PRIVATE_KEY (multiline .p8 PEM), AGORA_APNS_TOPIC=dev.agora.browserchat,
+      # and AGORA_APNS_ENABLED=true. Keep signing credentials in Render Environment only.
+      # Timely six-hour checks require continuously available hosting; sleeping delays the worker.
       - key: AGORA_SEED_ON_BOOT          # idempotent: creates demo accounts once, never overwrites
         value: "true"
       - key: AGORA_SEED_NEW_USERS        # sample history belongs only to the designated demo account

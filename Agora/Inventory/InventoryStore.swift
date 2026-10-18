@@ -92,6 +92,18 @@ final class InventoryStore: ObservableObject {
         return item
     }
 
+    func addFromChat(title: String, quantity: Double?, unit: String?, key: String) async throws -> InventoryItem {
+        guard let householdID else { throw BrowserError("no_household") }
+        let version = context
+        var body: [String: Any] = ["household_id": householdID.uuidString, "display_name": title, "unit": unit ?? "unit"]
+        if let quantity { body["quantity"] = quantity }
+        let item = try await api.fetch("v1/inventory", as: InventoryItem.self, method: "POST", body: body, key: key)
+        try check(version)
+        guard item.householdId == householdID else { throw BrowserError("invalid_server_response") }
+        upsert(item)
+        return item
+    }
+
     func setArchived(_ item: InventoryItem, archived: Bool) async throws {
         guard item.householdId == householdID else { throw CancellationError() }
         let version = context
@@ -128,6 +140,8 @@ final class InventoryStore: ObservableObject {
         let location = try await api.fetch("v1/households/\(householdID)/locations", as: InventoryLocation.self,
                                            method: "POST", body: ["name": name, "kind": kind])
         try check(version)
+        // Invalidate reads started before this write completed (same as upsert).
+        loadID = UUID(); loading = false
         if let index = households.firstIndex(where: { $0.id == householdID }) {
             households[index].locations.append(location)
         }

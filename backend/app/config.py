@@ -62,13 +62,17 @@ class Settings(BaseSettings):
     s3_secret_access_key: SecretStr | None = None
 
     # Vision: primary provider plus optional fallback. "replay" serves cached/fixture results only.
-    vision_provider: Literal["perceptron", "gemini", "replay"] = "replay"
-    vision_fallback: Literal["perceptron", "gemini", "replay", "none"] = "none"
+    vision_provider: Literal["perceptron", "gemini", "openai-compatible", "replay"] = "replay"
+    vision_fallback: Literal["perceptron", "gemini", "openai-compatible", "replay", "none"] = "none"
     perceptron_api_key: SecretStr | None = None
     perceptron_base_url: str = "https://api.perceptron.inc/v1"
     perceptron_model: str = "perceptron-mk1.5"
     gemini_api_key: SecretStr | None = None
     gemini_model: str = "gemini-flash-latest"
+    # Local/LAN servers implement OpenAI Chat Completions; no key is sent unless supplied explicitly.
+    openai_base_url: str = "http://localhost:1234/v1"
+    openai_model: str = ""
+    openai_api_key: SecretStr | None = None
     vision_timeout_s: float = 45.0
     replay_dir: Path = Path(__file__).resolve().parent.parent / "seed" / "replay"
 
@@ -81,6 +85,37 @@ class Settings(BaseSettings):
     # Run the job worker inside the web process (single-machine deploys and local dev).
     run_worker_in_process: bool = True
     worker_concurrency: int = 2
+
+    # Background price monitoring uses server credentials, independently of on-device models.
+    watch_search_model: str = "gemini-2.5-flash"
+    watch_max_active: int = Field(default=25, ge=1, le=200)
+    watch_daily_alert_cap: int = Field(default=20, ge=1, le=100)
+    watch_daily_check_cap: int = Field(default=600, ge=3, le=5000)
+    watch_max_pages: int = Field(default=5, ge=1, le=10)
+    watch_max_searches: int = Field(default=3, ge=1, le=5)
+    watch_max_turns: int = Field(default=8, ge=2, le=12)
+    watch_timeout_s: float = Field(default=90, ge=10, le=180)
+    watch_search_api_key: SecretStr | None = None  # falls back to gemini_api_key
+    # The reasoning model and web search services are independent integrations.
+    watch_model_provider: Literal["gemini", "openai-compatible"] = "gemini"
+    watch_search_providers: list[
+        Literal["exa", "parallel", "firecrawl", "keenable", "tavily", "brave", "google"]
+    ] = Field(
+        default_factory=lambda: ["exa", "parallel", "firecrawl", "keenable", "tavily", "brave"])
+    watch_search_keyless: bool = True
+    watch_provider_request_budget: int = Field(default=12, ge=1, le=30)
+    watch_search_timeout_s: float = Field(default=25, ge=1, le=45)
+    exa_api_key: SecretStr | None = None
+    parallel_api_key: SecretStr | None = None
+    firecrawl_api_key: SecretStr | None = None
+    keenable_api_key: SecretStr | None = None
+    tavily_api_key: SecretStr | None = None
+    brave_api_key: SecretStr | None = None
+    apns_enabled: bool = False
+    apns_key_id: str | None = None
+    apns_team_id: str | None = None
+    apns_private_key: SecretStr | None = None
+    apns_topic: str = "dev.agora.browserchat"
 
     auto_accept_confidence: float = 0.85
     auto_accept_match: float = 0.8
@@ -107,6 +142,19 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _guard_prod(self) -> "Settings":
+        if "openai-compatible" in (self.vision_provider, self.vision_fallback, self.watch_model_provider):
+            try:
+                uri = urlsplit(self.openai_base_url)
+                valid = (uri.scheme in ("http", "https") and uri.hostname and uri.port != 0
+                         and not (uri.username or uri.password or uri.query or uri.fragment)
+                         and not any(c.isspace() or ord(c) < 32 for c in self.openai_base_url))
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError("AGORA_OPENAI_BASE_URL must be an HTTP(S) URL without credentials, query or fragment")
+            if not self.openai_model.strip() or len(self.openai_model) > 120 or any(
+                    ord(c) < 32 for c in self.openai_model):
+                raise ValueError("AGORA_OPENAI_MODEL must name a model (up to 120 characters)")
         if self.env == "prod":
             if self.auth_mode == "dev":
                 raise ValueError("AGORA_AUTH_MODE=dev is not allowed when AGORA_ENV=prod")

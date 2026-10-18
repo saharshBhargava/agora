@@ -15,7 +15,8 @@ async def test_snapshot_round_trip_preserves_rows_and_audit_chain(app, client, t
     source = app.state.db.dsn
     archive = tmp_path / "demo.zip"
     manifest = await export(source, str(archive))
-    assert {"users", "inventory_observations", "audit_log", "merchants"} <= {t["name"] for t in manifest["tables"]}
+    assert {"users", "inventory_observations", "audit_log", "merchants", "replenishment_trips"} <= {
+        t["name"] for t in manifest["tables"]}
 
     name = f"agora_restore_{uuid.uuid4().hex[:8]}"
     admin = await asyncpg.connect(ADMIN_URL)
@@ -26,7 +27,8 @@ async def test_snapshot_round_trip_preserves_rows_and_audit_chain(app, client, t
         src, dst = await asyncpg.connect(source), await asyncpg.connect(target)
         try:
             for table in ("users", "households", "inventory_items", "inventory_observations", "scans",
-                          "scan_detections", "merchants", "audit_log"):
+                          "scan_detections", "merchants", "audit_log", "replenishment_trips",
+                          "item_images", "item_image_assets"):
                 expected = await src.fetchval(f"SELECT count(*) FROM {table}")
                 assert counts[table] == expected == await dst.fetchval(f"SELECT count(*) FROM {table}"), table
             # Hashes were copied verbatim, so the restored chain still verifies, and new rows extend it.
@@ -47,3 +49,21 @@ async def test_snapshot_round_trip_preserves_rows_and_audit_chain(app, client, t
     finally:
         await admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
         await admin.close()
+
+
+async def test_encrypted_snapshot_needs_the_passphrase(app, tmp_path):
+    import pytest
+
+    from app.tools.snapshot import MAGIC, decrypt, export
+
+    archive = tmp_path / "backup.agora"
+    await export(app.state.db.dsn, str(archive), passphrase="correct horse battery staple")
+    blob = archive.read_bytes()
+    assert blob.startswith(MAGIC) and b"users.csv" not in blob  # nothing readable without the key
+    assert decrypt(blob, "correct horse battery staple").startswith(b"PK")  # a zip inside
+    for wrong in (None, "wrong passphrase"):
+        with pytest.raises(SystemExit):
+            decrypt(blob, wrong)
+    tampered = blob[:-1] + bytes([blob[-1] ^ 1])
+    with pytest.raises(SystemExit):
+        decrypt(tampered, "correct horse battery staple")

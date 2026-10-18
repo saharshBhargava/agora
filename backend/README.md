@@ -57,8 +57,24 @@ Each run creates and drops its own database. CI runs the suite against both `tim
 | `replay` (default) | nothing | Serves `seed/replay/<sha256>.json` fixtures. Unknown frames fail with `no_replay_fixture` |
 | `perceptron` | `AGORA_PERCEPTRON_API_KEY` | `perceptron-mk1.5`, JSON-schema constrained output |
 | `gemini` | `AGORA_GEMINI_API_KEY` | Good as `AGORA_VISION_FALLBACK` |
+| `openai-compatible` | `AGORA_OPENAI_BASE_URL`, `AGORA_OPENAI_MODEL` | Local/LAN Chat Completions vision server; optional `AGORA_OPENAI_API_KEY` |
 
-Every result is cached per household by frame hash, so re-running a scan never re-bills the provider. To make a
+The local connection uses `<base URL>/chat/completions` with inline JPEG images and a strict JSON schema.
+Load a vision model and enable an OpenAI-compatible server such as LM Studio; plain text models cannot
+recognize images. Example: `AGORA_VISION_PROVIDER=openai-compatible`,
+`AGORA_OPENAI_BASE_URL=http://localhost:1234/v1`, and `AGORA_OPENAI_MODEL=<loaded model ID>`.
+HTTP supports local/LAN hosts; use HTTPS for a remote endpoint. URLs cannot contain embedded credentials,
+queries or fragments; set the optional API-key variable separately. Redirects are refused. Schema support
+is required: incompatible servers return an error without silently changing the output contract.
+Set `AGORA_VISION_FALLBACK=none` to keep requests on this server; another provider is used only when
+explicitly configured as a fallback. Missing local model configuration fails startup.
+The endpoint must be reachable from the backend host: `localhost` on Render or in Docker means that
+container, so use an accessible server address or run the backend on the model's machine.
+See [LM Studio's image and Chat Completions endpoints](https://lmstudio.ai/docs/developer/openai-compat)
+and [JSON-schema output](https://lmstudio.ai/docs/developer/openai-compat/structured-output).
+
+Every result is cached per household by frame hash, provider and model; local caches also include a hash
+of the configured endpoint. Cached scans retain the original provider/model provenance. To make a
 demo wifi-proof: run the demo scans once with a real provider, then
 `uv run python -m app.tools.export_replay`, commit `seed/replay/`, and switch to `replay`.
 
@@ -93,7 +109,9 @@ suggestions and agent intents need an `Idempotency-Key` header. Errors are RFC 7
 | `GET /lists`, `POST /lists`, `GET\|PATCH /lists/{id}` | Shopping lists (archived, never deleted) |
 | `POST /lists/{id}/items`, `PATCH\|DELETE /lists/{id}/items/{id}` | List lines; agent lines must carry an explanation |
 | `POST /lists/generate` | Per-store lists from upcoming run-outs (`Idempotency-Key`) |
-| `GET /events` | Server-Sent Events: `scan.updated`, `inventory.updated`, `wishlist.updated`, `forecast.updated`, `list.updated`, `agent.updated`, `budget.updated`, `spend.updated` (IDs only; refetch) |
+| `GET /trips`, `POST /trips` | Household Calendar trips; reserve a reviewed, versioned list (`Idempotency-Key`) |
+| `PATCH /trips/{id}/outcome` | Owner reports a confirmed, failed or uncertain native Calendar write |
+| `GET /events` | Server-Sent Events: `scan.updated`, `inventory.updated`, `wishlist.updated`, `forecast.updated`, `list.updated`, `trip.updated`, `agent.updated`, `budget.updated`, `spend.updated` (IDs only; refetch) |
 | `GET /audit`, `GET /audit/verify` | Your audit trail; hash-chain integrity check |
 | `GET /merchants?q=`, `POST /merchants`, `GET /merchants/{id}` | Store search and find-or-create (see [docs/api/purchased-from.md](../docs/api/purchased-from.md)) |
 | `PATCH /scans/{id}`, `PATCH /scans/{id}/detections/{id}` | Change or clear an upload's or one product's store |
@@ -102,6 +120,15 @@ Agent intents, mandates, payments and budgets: [docs/api/agent-commerce.md](../d
 Wishlist contract, lifecycle and scoring: [docs/api/wishlist.md](../docs/api/wishlist.md). Forecasting method and
 lists: [docs/api/forecasts-and-lists.md](../docs/api/forecasts-and-lists.md). UI work waiting on the
 frontend team: [docs/frontend-requests.md](../docs/frontend-requests.md).
+
+Price watches: [docs/api/price-watches.md](../docs/api/price-watches.md). `watch_ops.py` handles versioned
+criteria, six-hour jobs and deterministic matching; `watch_research.py` runs the bounded research controller;
+`price_search.py` provides grounded URL discovery and verifies
+merchant structured data; `notifications.py` handles the persistent inbox outbox and APNs. Configure external
+credentials and always-available hosting as described in [SETUP](../SETUP.md#price-watches-and-remote-alerts).
+
+Trip persistence, native Calendar recovery and duplicate prevention:
+[docs/api/replenishment-trips.md](../docs/api/replenishment-trips.md).
 
 ## Where things live
 
@@ -114,7 +141,7 @@ app/commerce.py       policy inputs, budget usage, order + spend recording for a
 app/payments.py       PaymentProvider interface; simulated provider (tokens + brand/last4 only)
 app/core/             pure logic (merging, quantities, auto-accept rules, wishlist scoring, forecasting, agent policy), unit-tested
 app/forecasting.py    forecast jobs: refresh after each confirmed scan, nightly fan-out, stored history
-app/vision/           provider contract, output validation, Perceptron / Gemini / replay, cache
+app/vision/           provider contract, output validation, Gemini / OpenAI-compatible / Perceptron / replay, cache
 app/timeseries.py     Timescale and plain-Postgres implementations of the same queries
 app/jobs.py           Postgres job queue (SKIP LOCKED, LISTEN/NOTIFY wake-ups, backoff)
 migrations/           numbered SQL; *.timescale.sql only runs where TimescaleDB exists
@@ -171,12 +198,23 @@ Steps (the full walkthrough, including Google sign-in, is in [SETUP.md](../SETUP
 
 The database URL is read from `AGORA_DATABASE_URL`, or from `DATABASE_URL` when a host injects that name.
 
-## Native Google Calendar onboarding and Gemini tools
+## Demo access without Google or provider keys
+
+In iOS, use **Sign in to demo**, username `demo`, and the existing Render `AGORA_DEMO_PASSWORD` shared
+privately by the owner. This is also `POST /v1/dev/login`; returned `expires_at` is Unix seconds. The app
+stores only the session token in Keychain. No Gmail password or model key is needed. Google remains optional.
+
+Only the designated account gets built-in chat/caption/recognition, private Calendar events and simulated
+checkout. Scans bypass configured real vision providers for that account. Real users retain real providers.
+Migration `0013` adds calendar data with RLS and seed/backfill coverage. See [the API contract](../docs/api/demo-integrations.md).
+The native Google instructions below describe ordinary accounts.
+
+## Native Google Calendar onboarding and model tools
 
 Calendar now runs directly in the iOS app using Google's **GoogleSignIn / GoogleSignInSwift 9.2.0 SDK**
-and Google Calendar REST API. Each user signs into Google and grants Calendar access during onboarding.
+and Google Calendar REST API. Ordinary users sign into Google and grant Calendar access during onboarding.
 A deployed Agora backend is **not required for Calendar or chat**. Google access/refresh tokens stay under
-SDK management on the device; they are never sent to Gemini or the inventory backend.
+SDK management on the device; they are never sent to model providers or the inventory backend.
 
 ### One-time Google Cloud setup
 
@@ -207,7 +245,8 @@ For a separate Google Cloud project, follow these steps and override the client 
 6. Open the project, allow Swift Package Manager to resolve dependencies, rebuild and run. Sign in with
    Google and approve both Calendar permissions. The SDK handles callback validation, credential storage,
    restoration and token refresh. The app remains in onboarding if access is cancelled or only partially granted.
-7. Add the existing Gemini API key under **Settings → Connected accounts** and try:
+7. Configure a tool-capable model under **Settings → Models** (the existing Gemini connection uses the
+   key from **Settings → Connected accounts**) and try:
    **“Find a free half hour tomorrow afternoon and add a grocery run.”**
 
 An unconfigured build shows that Google sign-in needs setup and disables the sign-in button; waiting or
@@ -217,7 +256,7 @@ complete the applicable OAuth verification/publishing steps for public distribut
 
 ### Behavior and limits
 
-Gemini receives `calendar_freebusy` and `calendar_create_event`. Availability and event requests go from
+The selected chat model receives `calendar_freebusy` and `calendar_create_event`. Availability and event requests go from
 the phone to `https://www.googleapis.com/calendar/v3/`. Agora displays the exact event details before saving.
 The phone validates timestamp offsets against IANA timezone/DST rules, bounds availability to 31 days,
 and uses deterministic event IDs plus request fingerprints to recover retries without duplicate events.
@@ -232,16 +271,19 @@ server scheduling are not implemented. Settings provides reconnect, local sign-o
 ### Optional inventory backend
 
 The Home and Inventory screens use shared `AgoraClient` (Google ID token auth), separate from
-Calendar's Google access-token calls. Leaving the backend unconfigured displays an availability message
-and does not block Calendar.
-To enable inventory, deploy the existing FastAPI/Postgres service and configure:
+Calendar's Google access-token calls. The team API is live at `https://agora-api-yq3m.onrender.com`, and
+`Config/Agora.xcconfig` provides that URL by default. Pull main and rebuild; remove any stale local URL
+override. Public readiness, demo sign-in and authenticated data reads were verified; see the
+[frontend handoff](../docs/frontend-handoff.md) for access and remaining native sign-in checks.
+
+For a separate deployment, configure the FastAPI/Postgres service with:
 
 ```dotenv
 AGORA_AUTH_MODE=google
 AGORA_GOOGLE_IOS_CLIENT_ID=YOUR_CLIENT_ID.apps.googleusercontent.com
 ```
 
-In `Config/Local.xcconfig`, add:
+To override the shared server in `Config/Local.xcconfig`, add:
 
 ```xcconfig
 AGORA_API_BASE_URL = https:/$()/YOUR_API_HOST
@@ -253,19 +295,57 @@ signature, issuer, audience, authorized party and expiration against the configu
 Google's stable subject to the same Agora user as the earlier server OAuth flow. Inventory failures do not
 sign the user out of Calendar. Run migrations before starting the service, as described above.
 
-### Capture → Gemini → inventory
+### iOS model routing and tests
 
-After accepting a new camera photo or video, Capture immediately starts Gemini recognition and opens
-**Add to inventory**. The photo and **Purchased from** field are visible while Gemini identifies the items;
+Chat, captions and inventory recognition share the typed `ModelClient` request/message/tool contract in
+`Agora/Models/`. `SettingsStore.client(for:)` resolves a feature assignment or the default model profile;
+each profile binds one connection, a model ID and declared image/tool/schema/streaming/video capabilities.
+Gemini and OpenAI-compatible adapters own their request translation and output validation. Feature code
+owns prompts, inventory validation, approval and persistence. Provider dictionaries stay in the adapters;
+Gemini continuation envelopes preserve thought signatures across tool turns.
+
+**Settings → Models** manages connections and model profiles, a global default and feature assignments.
+A local server credential is optional and stored in Keychain for that connection's provider and endpoint;
+editing the endpoint does not reuse the previous destination's credential. Gemini's original key/model
+migrate to its built-in profile. Capability probes exercise small requests; model listing and declared
+capabilities alone do not establish that a particular model can complete every task. Missing capabilities
+produce an actionable error without substituting a cloud model. Changing chat destination, model or key
+cancels the current task and clears provider conversation context; another feature's assignment does not.
+Saved captions and recognition requests retain provider/model provenance; older library records still decode.
+
+`AgoraTests/LocalModelTests.swift` covers the local adapter, schemas, streaming, endpoints and bounded media.
+`AgoraTests/ModelIntegrationTests.swift` drives both adapters through real URLSession with fixture responses:
+chat tools/results/signatures, caption generation/save, inventory review/save/restart, feature routing,
+credential isolation, migration and context cancellation. `backend/tests/test_vision_providers.py` covers
+backend wire contracts plus upload → recognition → review → inventory and endpoint/household cache isolation.
+
+To include the real loopback model socket smoke test, start this from the repository root before running
+`AgoraTests/ModelIntegrationTests` in the iOS Simulator:
+
+```bash
+python3 scripts/model-fixture-server.py
+```
+
+It binds `127.0.0.1:18766`, serves model listing, Chat Completions tools, caption SSE and structured inventory,
+and logs no request contents. The smoke test skips when the fixture health marker is absent. This verifies
+HTTP integration without real model weights; repeat the feature flows against your actual loaded model
+before a live presentation.
+
+### Capture → selected model → inventory
+
+After accepting a new camera photo or video, Capture immediately starts recognition with its assigned model and opens
+**Add to inventory**. The photo and **Purchased from** field are visible while the model identifies the items;
 typing or choosing a store remains enabled, and incoming results preserve the text and keyboard focus.
 For an existing/imported capture, open it and choose **Identify items and add store** to start the same flow.
 Recognition starts once per capture review and does not require the inventory backend to be available.
-The app sends media directly to Google Gemini using the Gemini key/model from Settings. Images use inline data; videos use Google's Files
-API; the app attempts deletion after recognition and on failure/cancellation when a file reference is available.
-Any unconfirmed cleanup is shown in the review screen.
-No photo, video, file URL, or Gemini file reference is sent to the Agora backend. PDFs remain local gallery documents.
+The app sends media to the inventory model profile selected in **Settings → Models**. Gemini images use
+inline data; Gemini videos use Google's Files API with cleanup on success, failure and cancellation. Any
+unconfirmed cleanup is shown in review. OpenAI-compatible models receive bounded JPEG images or up to
+eight sampled video frames; original videos and audio are never sent to that connection. Recognition and
+captioning from sampled frames only describe visible content.
+No photo, video, file URL, or model file reference is sent to the Agora backend. PDFs remain local gallery documents.
 
-Gemini returns a schema-validated item list. Review names, units, quantities and categories, exclude unwanted
+Each provider returns the same validated item list. Review names, units, quantities and categories, exclude unwanted
 items, choose new or existing inventory entries, and optionally select a location, store and purchase date.
 Only an unambiguous name-and-unit match is preselected as an existing item. Quantities record the total visible
 at the capture's timestamp; they do not increment the previous count. Older observations appear in history
@@ -274,7 +354,7 @@ without replacing a newer count. For imports, the timestamp is when the file was
 **Add to inventory** resolves a typed store name using the existing merchant find-or-create endpoint, or uses
 the selected store, then calls `POST /v1/inventory/recognitions` through `AgoraClient`. Deploy this backend
 version before using capture saves; no new database migration is required. The endpoint accepts strict JSON
-(`household_id`, `captured_at`, `media_kind`, `model`, optional location/purchase details, and reviewed `items`).
+(`household_id`, `captured_at`, `media_kind`, `model`, optional `provider`, location/purchase details, and reviewed `items`).
 It reuses scan/detection records solely for observation and purchase provenance, with no media keys or recognition
 jobs. It queues a forecast refresh for affected items. The transaction validates ownership and units, writes the
 whole batch, and records its idempotent response.
@@ -289,7 +369,7 @@ purchase history and household isolation. iOS tests cover direct Google transpor
 video cleanup, edits/rejections, local persistence and retries. To run the app-to-backend integration test, start
 `tests.support.ios_inventory_server` with `AGORA_TEST_DATABASE_URL` pointing at a local admin database, then run
 `AgoraTests/InventoryLiveTests`. It creates and drops an isolated database; Gemini is mocked, and all inventory
-calls use the real local API. A live Gemini request is not part of these automated tests.
+calls use the real local API. Live provider requests are not part of these automated tests.
 
 ### Earlier server-side Calendar implementation
 
@@ -313,3 +393,54 @@ A real Google sign-in and event creation still need the Google Cloud setup above
 References: [Google iOS setup](https://developers.google.com/identity/sign-in/ios/start-integrating),
 [Google APIs from iOS](https://developers.google.com/identity/sign-in/ios/api-access),
 [Backend identity verification](https://developers.google.com/identity/sign-in/ios/backend-auth).
+
+
+## Wishlist and shopping suggestions
+
+Home now opens the iOS Wishlist and Suggested for you views. Users can add/edit items, keep USD target
+prices, set priorities and pins, accept/reject/snooze suggestions, leave feedback and mark purchases.
+`ShoppingStore` uses the shared authenticated API client and refreshes saved state every 30 seconds while
+active. Settings → Models includes **Shopping suggestions** for on-demand **Find ideas**. That action sends
+bounded inventory and feedback context to the selected model and validates its inventory references.
+Chat also exposes `shopping_context` and `shopping_suggest`.
+
+Migration `0014_wishlist_refresh.sql` adds household refresh state and job deduplication. Both the API's
+in-process worker and `python -m app.worker` register the six-hour replenishment schedule. Jobs run at
+00:00, 06:00, 12:00 and 18:00 UTC and recover missed intervals without replaying them all. They use observed
+stock and forecasts, not a model API, and require no additional credentials. Sleeping hosting can delay
+execution; keep the worker available for timely checks. Last-success/next-check/failure status is available
+at `GET /v1/wishlist/refresh-status`; `POST /v1/wishlist/refresh` runs a check on demand with idempotency.
+
+Price watches now monitor supported retailer pages and discover sources through configured research.
+Target prices remain user preferences until merchant evidence meets the confirmed criteria.
+The designated demo account is backfilled with refresh status without resetting existing history.
+
+### Replenishment shopping trips
+
+In iOS, open **Home → Plan shopping trips**, choose shopping hours and time including travel, then tap
+**Find shopping times**. Run-out forecasts generate store lists; the planner checks Calendar free/busy and
+proposes non-overlapping trips, with warnings when a deadline cannot be met. Open a list to review its
+items, or **Review trip → Add to Calendar** to approve the exact event. Availability is checked again before
+saving. The designated account follows the same flow using its private persisted Calendar.
+
+Migration `0015_replenishment_trips.sql` adds household-visible, owner-managed trip reservations and outcomes.
+The demo backfill links a realistic trip to its shopping list and private Calendar event. Calendar credentials
+stay on the phone. The server stores reviewed event details and provider references, and never calls Google
+from these trip endpoints. See [the contract](../docs/api/replenishment-trips.md) for concurrency, recovery,
+RLS and outcome rules. No unattended server scheduling, store-hours lookup or route optimization is included.
+
+To test the native flow against a real isolated API/database, start:
+
+```bash
+AGORA_TEST_DATABASE_URL=postgresql://localhost/postgres uv run python -m tests.support.ios_inventory_server
+```
+
+Run `AgoraTests/TripLiveTests` in the iOS Simulator. It signs into the local designated account, generates
+lists, plans and approves a trip, verifies the persisted Calendar event, restores the session and checks
+duplicate prevention and list updates. Its transport only redirects a synthetic test origin to loopback;
+normal app HTTPS validation is unchanged. `TripTests` covers native Google HTTP contracts with fixtures,
+deadline/busy-slot planning, DST and failure recovery. Live Google credentials are not needed for these tests.
+
+Price-watch web discovery uses `app/web_search.py` for provider routing and `app/watch_model.py` for
+the OpenAI-compatible reasoning transport. Search-provider keys are independent of the reasoning model;
+see [setup](../SETUP.md) and [price watches](../docs/api/price-watches.md) for keyless routes and budgets.

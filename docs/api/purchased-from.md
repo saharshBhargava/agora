@@ -67,11 +67,17 @@ Errors are always `application/problem+json`:
 
 ### Client-recognized captures
 
-`POST /v1/inventory/recognitions` saves reviewed Gemini results as JSON. It requires an
+`POST /v1/inventory/recognitions` saves reviewed model results as JSON. It requires an
 `Idempotency-Key` (8–128 printable ASCII characters) and the same authentication as inventory calls.
 Send `household_id`, `captured_at` (timestamp with offset, no more than five minutes in the future),
 `media_kind` (`photos` or `video`), `model`, and 1–100 `items`. Optional capture fields are `location_id`,
 `purchased_from_merchant_id`, and `purchased_on` (the existing purchase-date rules apply).
+`provider` optionally selects `gemini` (default, preserving earlier clients) or `openai-compatible`.
+`model` accepts 1–120 characters: an alphanumeric first character followed by alphanumerics,
+spaces, `.`, `_`, `:`, `/` or `-`, covering local IDs such as `org/Qwen-VL:Q4_K_M`.
+The saved scan records `gemini-client` or `openai-compatible-client` plus the supplied model ID;
+the endpoint does not invoke that provider. Changing provider changes the idempotency payload;
+omitting `provider` and explicitly sending `gemini` are equivalent for safe retries by existing clients.
 
 Each item requires `display_name` (1–120 characters), `unit` (1–20), `quantity` (0–10,000),
 and `confidence` (0–1). `category` (up to 40 characters) and `inventory_item_id` are optional.

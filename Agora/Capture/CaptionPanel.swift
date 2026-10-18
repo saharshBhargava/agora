@@ -10,13 +10,15 @@ struct CaptionPanel: View {
     @Environment(\.scenePhase) private var scenePhase
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("Caption with Gemini", systemImage: "sparkles").font(.title3.bold())
+            Label("Generate caption", systemImage: "sparkles").font(.title3.bold())
             Picker("Style", selection: $controller.style) {
                 ForEach(CaptionStyle.allCases) { style in Text(style.title).tag(style) }
             }.disabled(controller.busy)
             TextField("Optional instructions, e.g. focus on the clothing", text: $controller.instruction, axis: .vertical)
                 .lineLimit(2...4).textFieldStyle(.roundedBorder).disabled(controller.busy)
-            Text(item.kind == .video ? "Generate uploads this video and its audio to Google. Up to 5 minutes and 100 MB. We request deletion of the upload afterward." : "Generate sends a resized copy of this photo to Google. Your original stays unchanged.")
+            Text(controller.busy ? controller.modelDescription : settings.featureDescription(.captions))
+                .font(.caption).foregroundStyle(.secondary)
+            Text(controller.busy ? controller.mediaDisclosure : settings.mediaDisclosure(for: .captions, kind: item.kind))
                 .font(.footnote).foregroundStyle(.secondary)
             if controller.busy {
                 VStack(alignment: .leading, spacing: 8) {
@@ -36,8 +38,8 @@ struct CaptionPanel: View {
                 } label: {
                     Label(controller.generated == nil ? "Generate caption" : "Regenerate caption", systemImage: "sparkles")
                 }.buttonStyle(.borderedProminent)
-                    .disabled(!settings.hasKey || controller.instruction.utf8.count > 2000)
-                if !settings.hasKey { Text("Add your Gemini API key in Settings first.").font(.footnote).foregroundStyle(.secondary) }
+                    .disabled(!settings.isConfigured(for: .captions, kind: item.kind) || controller.instruction.utf8.count > 2000)
+                if !settings.isConfigured(for: .captions, kind: item.kind) { Text("Configure a caption model in Settings first.").font(.footnote).foregroundStyle(.secondary) }
             }
             if controller.generated != nil {
                 Text("Caption").font(.headline)
@@ -53,7 +55,7 @@ struct CaptionPanel: View {
                     ShareLink(item: controller.draft) { Image(systemName: "square.and.arrow.up") }.accessibilityLabel("Share caption")
                 }
                 if let saved = controller.generated {
-                    Text("\(saved.model) · \(saved.generatedAt.formatted(date: .abbreviated, time: .shortened))")
+                    Text("\(saved.effectiveProvider.title) · \(saved.model) · \(saved.generatedAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

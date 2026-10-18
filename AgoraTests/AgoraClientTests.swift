@@ -101,8 +101,9 @@ final class AgoraClientTests: XCTestCase {
         let items = try await client.fetch("v1/inventory", as: [InventoryRow].self)
         XCTAssertEqual(items, [InventoryRow(id: "item-1", displayName: "Milk"), InventoryRow(id: "item-2", displayName: "Eggs")])
 
-        // Explicitly empty so this check also works in builds with a configured backend.
-        let missing = AgoraClient(calendar: calendar, baseURL: URL(string: ""), http: http)
+        // A relative URL has no origin. An empty string can return nil and select the bundled live URL.
+        let missing = AgoraClient(calendar: calendar, baseURL: try XCTUnwrap(URL(string: "/")), http: http)
+        XCTAssertFalse(missing.isConfigured)
         do {
             _ = try await missing.fetch("v1/inventory", as: [InventoryRow].self)
             XCTFail("Expected not configured")
@@ -120,5 +121,23 @@ final class AgoraClientTests: XCTestCase {
         let client = AgoraClient(calendar: calendar, baseURL: URL(string: "https://api.example.com"), http: http)
         _ = try await client.request("v1/wishlist", method: "POST", body: ["title": "Oat milk"], key: "idem-123")
         XCTAssertEqual(sawKey, "idem-123")
+    }
+
+    func testValidOriginAcceptsHTTPSAndDebugLocalHTTP() {
+        XCTAssertTrue(AgoraClient.validOrigin(URL(string: "https://agora-api-yq3m.onrender.com")))
+        XCTAssertFalse(AgoraClient.validOrigin(URL(string: "https://user:pass@host.example/v1")))
+        XCTAssertFalse(AgoraClient.validOrigin(URL(string: "https://host.example?x=1")))
+        XCTAssertFalse(AgoraClient.validOrigin(URL(string: "/")))
+        #if DEBUG
+        for url in ["http://localhost:8000", "http://127.0.0.1:8000", "http://192.168.1.20:8000",
+                    "http://10.0.0.5:8000", "http://macbook.local:8000", "http://[::1]:8000"] {
+            XCTAssertTrue(AgoraClient.validOrigin(URL(string: url)), url)
+        }
+        for url in ["http://example.com", "http://8.8.8.8", "http://169.254.169.254", "ftp://localhost"] {
+            XCTAssertFalse(AgoraClient.validOrigin(URL(string: url)), url)
+        }
+        #else
+        XCTAssertFalse(AgoraClient.validOrigin(URL(string: "http://localhost:8000")))
+        #endif
     }
 }

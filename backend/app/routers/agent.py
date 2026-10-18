@@ -25,8 +25,8 @@ from app.payments import (
     SIMULATED_DEFAULT_METHOD,
     ChargeRequest,
     PaymentOutcomeUnknown,
-    SimulatedPaymentProvider,
-    charge_key,
+    intent_charge_key,
+    propose_charge_key,
 )
 from app.routers.account import require_household
 from app.schemas import (
@@ -100,18 +100,24 @@ async def _set_status(conn: asyncpg.Connection, intent_id: UUID, status: str, **
 
 
 async def _execute_checkout(request: Request, conn: asyncpg.Connection, intent: asyncpg.Record, actor_type: str,
-                            user_id: UUID) -> asyncpg.Record:
-    """Agora-native checkout through the configured PaymentProvider. Runs once per intent: the intent row is
-    locked, the provider key is derived from the intent ID, and orders are unique per intent."""
+                            user_id: UUID, *, provider_idempotency_key: str | None = None) -> asyncpg.Record:
+    """Agora-native checkout through the configured PaymentProvider.
+
+    The provider idempotency key must be stable across retries of the *same client attempt*. For propose→allow
+    it is derived from the client Idempotency-Key (the intent row may roll back after a successful charge); for
+    approve it defaults to the intent ID (the row already exists). Demo checkout uses the app-scoped simulator
+    so those keys actually dedupe across requests; it never calls a real provider.
+    """
     provider = request.app.state.payments
     if await is_demo_user(conn, user_id):
-        provider = SimulatedPaymentProvider()
+        provider = request.app.state.demo_payments
     elif provider.name == "simulated":
         raise Problem(503, "payments_unavailable", "Checkout is not available yet. No payment was taken.")
     intent = await _set_status(conn, intent["id"], "executing")
-    charge = ChargeRequest(idempotency_key=charge_key(intent["id"]), amount_cents=intent["amount_cents"],
-                           currency=intent["currency"], description=intent["title"],
-                           payment_method_ref=intent["payload"].get("payment_method_ref") or SIMULATED_DEFAULT_METHOD)
+    charge = ChargeRequest(
+        idempotency_key=provider_idempotency_key or intent_charge_key(intent["id"]),
+        amount_cents=intent["amount_cents"], currency=intent["currency"], description=intent["title"],
+        payment_method_ref=intent["payload"].get("payment_method_ref") or SIMULATED_DEFAULT_METHOD)
     meta: dict = {"provider": provider.name}
     try:
         result = await provider.charge(charge)
@@ -262,7 +268,8 @@ async def propose_intent(body: IntentIn, request: Request, user: Principal = Cur
                           "reasons": verdict.codes, "evidence": len(body.evidence),
                           "mandate_id": verdict.mandate_id})
         if verdict.decision == "allow" and body.execution == "agora":
-            await _execute_checkout(request, conn, row, "agent", user.user_id)
+            await _execute_checkout(request, conn, row, "agent", user.user_id,
+                                    provider_idempotency_key=propose_charge_key(user.user_id, key))
         await notify(conn, household_id, "agent.updated", row["id"])
         result = (await _load(conn, row["id"], user.user_id)).model_dump(mode="json")
         if not await idempotency.claim(conn, user.user_id, key, digest, 201, {"id": result["id"]}):
@@ -298,6 +305,9 @@ async def approve_intent(intent_id: UUID, request: Request, user: Principal = Cu
     ``approved`` and the on-device agent may go ahead. Repeating an approval is a no-op."""
     async with request.app.state.db.scoped(user.user_id) as conn:
         row = await _locked(conn, intent_id, user.user_id)
+        # Same household lock as propose: serialize checkout with concurrent policy decisions so both
+        # cannot slip under a budget/velocity cap while the other is mid-charge.
+        await _lock_household(conn, row["household_id"])
         if row["status"] in ("approved", "executing", "succeeded", "failed", "outcome_unknown"):
             return await _load(conn, intent_id, user.user_id)  # already approved, by the user or by policy
         if row["status"] != "proposed":
@@ -342,6 +352,9 @@ async def report_outcome(intent_id: UUID, body: IntentOutcomeIn, request: Reques
         row = await _locked(conn, intent_id, user.user_id)
         if row["execution"] != "device":
             raise Problem(409, "server_executed", "Agora checkout reports its own outcome.")
+        # Same household lock as propose/approve: a succeeded purchase must serialize with concurrent
+        # policy decisions so under-reported finals cannot slip past budget/mandate accounting.
+        await _lock_household(conn, row["household_id"])
         if row["status"] == body.status:
             return await _load(conn, intent_id, user.user_id)
         if body.status not in DEVICE_TRANSITIONS.get(row["status"], set()):
@@ -352,6 +365,11 @@ async def report_outcome(intent_id: UUID, body: IntentOutcomeIn, request: Reques
         meta: dict = {"kind": row["kind"], "from": row["status"]}
         if body.status == "succeeded" and row["kind"] == "purchase":
             final = body.final_amount_cents if body.final_amount_cents is not None else row["amount_cents"]
+            # Reject under-auth: reporting $0 (or any amount below the approved figure) would skip
+            # spend_entries and count as $0 against mandates/budgets.
+            if final is None or row["amount_cents"] is None or final < row["amount_cents"]:
+                raise Problem(422, "under_authorization",
+                              "final_amount_cents cannot be below the approved amount.")
             fields["final_amount_cents"] = final
             order_id, _ = await record_order(conn, row, final, provider="merchant_site")
             meta["order_id"] = str(order_id)

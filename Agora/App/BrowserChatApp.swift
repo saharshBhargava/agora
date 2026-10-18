@@ -3,14 +3,16 @@ import GoogleSignIn
 
 @main
 struct BrowserChatApp: App {
+    @UIApplicationDelegateAdaptor(AgoraNotificationDelegate.self) private var notificationsDelegate
+    @ObservedObject private var push = PushNotifications.shared
     @StateObject private var workspace = ChatWorkspace()
     @State private var selectedTab: AppTab = .home
     @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
-            CalendarGate(calendar: workspace.calendar, onDisconnect: { workspace.agent.newChat() }) {
+            CalendarGate(calendar: workspace.calendar, onDisconnect: { workspace.agent.resetConversations() }) {
                 TabView(selection: $selectedTab) {
-                    HomeView(selectedTab: $selectedTab, store: workspace.inventory)
+                    HomeView(selectedTab: $selectedTab, store: workspace.inventory, shopping: workspace.shopping, settings: workspace.settings, trips: workspace.trips)
                         .tabItem { Label("Home", systemImage: "house") }
                         .tag(AppTab.home)
                     ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser)
@@ -19,16 +21,26 @@ struct BrowserChatApp: App {
                     CaptureView(settings: workspace.settings, inventory: workspace.inventory)
                         .tabItem { Label("Capture", systemImage: "camera.viewfinder") }
                         .tag(AppTab.capture)
-                    InventoryView(store: workspace.inventory)
-                        .tabItem { Label("Inventory", systemImage: "shippingbox") }
-                        .tag(AppTab.inventory)
+                    ListsView(inventory: workspace.inventory, shopping: workspace.shopping, settings: workspace.settings, trips: workspace.trips)
+                        .tabItem { Label("Lists", systemImage: "list.bullet") }
+                        .tag(AppTab.lists)
                     SettingsView(settings: workspace.settings, workspace: workspace)
                         .tabItem { Label("Settings", systemImage: "gearshape") }
                         .tag(AppTab.settings)
                 }
                 .background { InventoryRefresh(store: workspace.inventory) }
+                .background { ShoppingRefresh(store: workspace.shopping) }
+                .background { TripRefresh(store: workspace.trips) }
             }
             .tint(.teal)
+            .sheet(isPresented: Binding(get: { push.openWatchID != nil && workspace.calendar.connected },
+                                       set: { if !$0 { push.openWatchID = nil } })) {
+                if let id = push.openWatchID {
+                    NavigationStack { WatchDetailView(store: workspace.shopping.watches, watchID: id) }
+                }
+            }
+            .background { PushSessionSync(calendar: workspace.calendar, api: workspace.api) }
+            .background { WatchBrowserReviewNavigation(store: workspace.shopping.watches, selectedTab: $selectedTab) }
             .onOpenURL { url in
                 if workspace.calendar.configurationIssue == nil { _ = GIDSignIn.sharedInstance.handle(url) }
             }
@@ -40,6 +52,19 @@ struct BrowserChatApp: App {
     }
 }
 
+private struct PushSessionSync: View {
+    @ObservedObject var calendar: CalendarConnection
+    let api: AgoraClient
+    @Environment(\.scenePhase) private var phase
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0)
+            .task(id: "\(calendar.accountID ?? "signed-out")-\(calendar.connected)-\(phase == .active)") {
+                if !calendar.connected { PushNotifications.shared.suspend() }
+                else if phase == .active { await PushNotifications.shared.sync(api: api) }
+            }
+    }
+}
+
 @MainActor
 final class ChatWorkspace: ObservableObject {
     let settings: SettingsStore
@@ -48,14 +73,67 @@ final class ChatWorkspace: ObservableObject {
     let calendar: CalendarConnection
     let api: AgoraClient
     let inventory: InventoryStore
+    let shopping: ShoppingStore
+    let trips: TripStore
     init() {
         AppLog.event(.app, "workspace.created")
         let settings = SettingsStore(); self.settings = settings
         let browser = BrowserSession(policy: settings.policy); self.browser = browser
-        let calendar = CalendarConnection(); self.calendar = calendar
+        let origin = (Bundle.main.object(forInfoDictionaryKey: "AgoraAPIBaseURL") as? String).flatMap(URL.init(string:))
+        let calendar = CalendarConnection(demoBaseURL: origin); self.calendar = calendar
+        settings.demoCalendar = calendar
         api = AgoraClient(calendar: calendar)
+        calendar.beforeSignOut = { [weak api] in
+            if let api { await PushNotifications.shared.signOut(api: api) }
+        }
         inventory = InventoryStore(api: api, calendar: calendar)
-        agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar)
+        shopping = ShoppingStore(api: api, inventory: inventory)
+        trips = TripStore(api: api, inventory: inventory, calendar: calendar)
+        agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar, shopping: shopping, trips: trips)
+        shopping.watches.browserReviewHandler = { [weak self] url in
+            guard let self, self.calendar.connected, self.inventory.accountID == self.calendar.accountID else {
+                throw BrowserError("account_changed", "Sign in again before opening this browser review.")
+            }
+            try self.browser.policy.validate(url)
+            self.agent.stop(reason: "You have control of this watch review. Continue directly in the browser.")
+            self.browser.close()
+            self.browser.state.isOpen = true
+            self.browser.state.privateMode = true
+            self.browser.setPresentationFromUser(.expanded)
+            self.browser.state.status = "Private browser review · You have control"
+            let context = self.shopping.watches.context, account = self.calendar.accountID
+            let epoch = self.browser.epoch, lease = self.browser.lease
+            Task { [weak self] in
+                guard let self, self.calendar.connected, self.calendar.accountID == account,
+                      self.shopping.watches.context == context, self.browser.epoch == epoch,
+                      self.browser.lease == lease else { return }
+                do { _ = try await self.browser.open(url) }
+                catch {
+                    guard self.calendar.connected, self.calendar.accountID == account,
+                          self.shopping.watches.context == context, self.browser.epoch == epoch else { return }
+                    // Manual/private mode deliberately blocks open's final observation. User takeover
+                    // and a new browser session also end monitoring without replacing their status.
+                    if let browserError = error as? BrowserError,
+                       ["user_action_required", "cancelled", "stale_session"].contains(browserError.code) { return }
+                    self.browser.state.status = InventoryStore.message(error)
+                }
+            }
+        }
+    }
+}
+
+private struct TripRefresh: View {
+    @ObservedObject var store: TripStore
+    @Environment(\.scenePhase) private var phase
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0)
+            .task(id: "\(store.context)-\(phase == .active)") {
+                guard phase == .active else { return }
+                while !Task.isCancelled {
+                    await store.refresh()
+                    do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                }
+            }
     }
 }
 
@@ -72,6 +150,34 @@ private struct InventoryRefresh: View {
                     await store.refresh()
                     do { try await Task.sleep(for: .seconds(30)) } catch { return }
                 }
+            }
+    }
+}
+
+private struct ShoppingRefresh: View {
+    @ObservedObject var store: ShoppingStore
+    @Environment(\.scenePhase) private var phase
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0)
+            .task(id: "\(store.context)-\(phase == .active)") {
+                guard phase == .active else { return }
+                while !Task.isCancelled {
+                    await store.refresh()
+                    do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                }
+            }
+    }
+}
+
+private struct WatchBrowserReviewNavigation: View {
+    @ObservedObject var store: WatchStore
+    @Binding var selectedTab: AppTab
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0)
+            .onChange(of: store.browserReviewRequestID) { _, request in
+                guard request != nil, store.canUse else { return }
+                PushNotifications.shared.openWatchID = nil
+                selectedTab = .chat
             }
     }
 }

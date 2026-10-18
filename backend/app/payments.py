@@ -4,8 +4,9 @@ Only tokens ever pass through here: a provider charges a ``payment_method_ref`` 
 on the device) and hands back its own charge reference plus brand/last4 for display. Card numbers, CVVs and
 bank details never reach this server, which keeps it out of PCI scope.
 
-Every charge carries an idempotency key derived from the intent ID, so a retried request, a crashed worker or a
-replayed approval can't charge twice: the provider returns the original result instead.
+Every charge carries a stable idempotency key so a retried request, a crashed worker or a replayed approval
+can't charge twice: the provider returns the original result instead. Keys must survive a rolled-back
+database transaction — see ``propose_charge_key`` vs ``intent_charge_key``.
 
 Seams for later, each a new ``PaymentProvider``:
 
@@ -18,6 +19,7 @@ Seams for later, each a new ``PaymentProvider``:
 import hashlib
 from dataclasses import dataclass
 from typing import Literal, Protocol
+from uuid import UUID
 
 from app.config import Settings
 
@@ -89,6 +91,25 @@ def make_payment_provider(settings: Settings) -> PaymentProvider:
     raise ValueError(f"payment provider {settings.payment_provider!r} is not implemented yet")
 
 
-def charge_key(intent_id: object) -> str:
-    """The provider idempotency key for an intent: stable across every retry of that intent."""
+def intent_charge_key(intent_id: object) -> str:
+    """Provider key for an intent that already exists (approve/retry of the same row).
+
+    Safe because the intent ID is allocated before the charge and survives a rolled-back approval attempt
+    (the row stays ``proposed``). Not safe for propose→allow→agora, where the intent INSERT and the charge
+    share one transaction: a post-charge rollback discards the ID and a retry would mint a new key.
+    """
     return f"agora-intent-{intent_id}"
+
+
+def propose_charge_key(user_id: UUID, idempotency_key: str) -> str:
+    """Provider key for Agora checkout during ``POST /v1/agent/intents``.
+
+    Bound to the client ``Idempotency-Key`` (required on propose), not the DB-generated intent ID, so a
+    charge that lands before the request transaction commits still dedupes when the client retries.
+    """
+    digest = hashlib.sha256(f"{user_id}:{idempotency_key}".encode()).hexdigest()
+    return f"agora-propose-{digest}"
+
+
+# Back-compat alias used by older call sites / docs snippets.
+charge_key = intent_charge_key

@@ -289,6 +289,32 @@ The worker groups list items by merchant, takes the earliest run-out date as the
 
 ### 4.5 Prices, deals, small businesses
 
+**Implemented:** the iOS Home screen links to Wishlist and Suggested for you. Wishlist targets are USD per
+item, before shipping and tax. Replenishment suggestions refresh through durable backend jobs every
+**6 hours**, at 00:00, 06:00, 12:00 and 18:00 UTC. `wishlist.sweep` queues one `wishlist.refresh` per due
+household; the job uses recent inventory observations and current forecasts, without an external model.
+It creates at most five suggestions per check, respecting the pending cap, open items, rejections, snoozes,
+recent purchases/removals, existing shopping-list lines and the acting member's agent pause. Unknown or
+more-than-30-day-old stock is not treated as empty stock. Retries cannot duplicate open suggestions.
+
+The app's **Find ideas** action uses its selected Suggestions model (Gemini or an OpenAI-compatible
+connection) for broader inventory-grounded ideas, validates inventory references and bounded output, and
+saves through the same suggestion service. Chat exposes `shopping_context` and `shopping_suggest`. These
+manual model calls are distinct from scheduled replenishment checks; model credentials remain on-device.
+
+`wishlist_refresh_state` stores the last successful check, next scheduled check, safe failure code and
+number generated. Missed schedule intervals coalesce into a current refresh. Prior suggestions and user
+price targets/decisions remain intact. The app fetches saved state on foreground and every 30 seconds while
+active; this is separate from the six-hour generation cadence. A continuously available worker is needed
+for timely unattended checks; sleeping hosting delays work until the worker resumes.
+
+**Implemented:** confirmed price watches attached to wishlist items, bounded Google Search discovery,
+source-verified Product/Offer observations, six-hour checks, deterministic matching, persistent offer inbox
+and APNs outbox delivery. See [price watch contract](api/price-watches.md). Targets remain separate from
+verified offers. Unsupported source fields never become implied price/availability guarantees. Server search
+and APNs credentials are required for those external integrations; demo behavior is isolated by `users.is_demo`.
+Broader retailer adapters, receipt-linked price history and the aggregates/routing below remain proposals.
+
 - `price_observations` comes from receipts (real prices you paid), seeded history for demo merchants, and optionally agent-browsed product pages.
 - A continuous aggregate `price_daily` (min/avg per product per merchant per day) drives "lowest in 30 days" and target-price alerts.
 - **Small-business routing**: when a run-out is coming, rank merchants that carry the product by `price + distance penalty − small_business_bonus` and explain the pick ("$0.40 more than Safeway, 0.6 mi, locally owned"). That's a direct "merchant outcomes" story for Commerce Impact.

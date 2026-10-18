@@ -425,7 +425,8 @@ intent with `"status": "rejected", "decided_by": "user", "reject_reason": "not_n
   invalid_transition` ("…It needs approval first."). Reporting the same status twice is a no-op.
 - `succeeded` on a purchase records an order and a spend entry (at `final_amount_cents`, defaulting to
   `amount_cents`) and fills `order_id`. A final amount above what was approved is recorded as it happened and
-  flagged `over_authorization` in the audit trail.
+  flagged `over_authorization` in the audit trail. A final amount **below** the approved figure is rejected
+  with `422 under_authorization` so spend/mandate accounting cannot be zeroed out by the device.
 - `failed` and `outcome_unknown` take an optional `error_code` (`^[a-z0-9_]{1,40}$`). Never send page text.
 - `agora` intents report their own outcome: calling this on one is `409 server_executed`.
 
@@ -444,9 +445,14 @@ refetch `/v1/agent/state` on these events as well as refreshing the activity lis
 - **Never card data.** The server receives a `payment_method_ref` (a provider token reference) and stores only
   the provider's charge reference plus brand and last4 on the order (`payment_ref`, `payment_brand`,
   `payment_last4`). PAN, CVV and expiry never reach the backend.
-- **No double charges.** The provider idempotency key is derived from the intent ID (`agora-intent-<id>`), the
-  intent row is locked while charging, and `orders.agent_intent_id` is unique. Retried proposals, repeated
-  approvals and racing requests all end with one charge and one order.
+- **No double charges.** Provider idempotency keys are stable across client retries even when the request
+  transaction rolls back after a successful charge:
+  - `POST /v1/agent/intents` with `execution: agora` keys the provider on the client `Idempotency-Key`
+    (`agora-propose-<sha256(user_id:key)>`), not the DB-generated intent ID (that ID is allocated in the same
+    transaction as the charge and would be discarded on rollback, minting a new charge key on retry).
+  - Approvals of an existing intent keep `agora-intent-<id>` (the row already exists).
+  - The intent row is locked while charging, and `orders.agent_intent_id` is unique. Retried proposals,
+    repeated approvals and racing requests all end with one charge and one order.
 - **Uncertain outcomes** (provider timeout, 5xx) become `outcome_unknown` with `error_code:
   "provider_timeout"`. They're never retried automatically.
 - Simulated test tokens: `sim_visa_4242` (default), `sim_mastercard_4444`, `sim_visa_declined` (→ `failed`,
@@ -591,6 +597,7 @@ Audit `meta` holds codes and counts only: no titles, amounts or rationale.
 | 409 | `duplicate_request` | A concurrent request with the same key is still finishing; retry |
 | 409 | `budget_exists` | A second active budget for the same period and category |
 | 422 | `idempotency_key_reused` | Same key, different body |
+| 422 | `under_authorization` | Device reported `final_amount_cents` below the approved amount |
 | 422 | `invalid_expiry` | Mandate expiry in the past or more than a year out |
 | 422 | `invalid_request` | Validation failed (lists the fields, never the values) |
 | 503 | `payments_unavailable` | Ordinary-account Agora checkout has no real payment provider; nothing was charged |

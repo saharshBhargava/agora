@@ -147,6 +147,28 @@ async def test_allow_within_mandate_device_checkout(client):
     assert listed["decision"] == "allow" and listed["reason_codes"] == ["autonomy_allows"]
 
 
+async def test_device_outcome_rejects_under_authorization(client):
+    """Reporting a final below the approved amount must not create a spend entry or succeed."""
+    h = await fresh(client)
+    await mandate(client, h)
+    intent = (await propose(client, h)).json()
+    assert intent["status"] == "approved" and intent["amount_cents"] == 899
+    assert (await outcome(client, h, intent["id"], "executing")).status_code == 200
+
+    for final in (0, 1, 898):
+        denied = await outcome(client, h, intent["id"], "succeeded", final_amount_cents=final)
+        assert denied.status_code == 422 and denied.json()["title"] == "under_authorization", denied.text
+    # No order/spend yet; the intent stays executing (still reserved against the mandate period).
+    assert (await client.get("/v1/spend", headers=h)).json()["total_cents"] == 0
+    assert (await client.get(f"/v1/agent/intents/{intent['id']}", headers=h)).json()["status"] == "executing"
+    assert (await client.get("/v1/agent/mandates", headers=h)).json()[0]["spent_this_period_cents"] == 899
+
+    paid = await outcome(client, h, intent["id"], "succeeded", final_amount_cents=899)
+    assert paid.status_code == 200 and paid.json()["final_amount_cents"] == 899
+    assert (await client.get("/v1/spend", headers=h)).json()["total_cents"] == 899
+    assert (await client.get("/v1/agent/mandates", headers=h)).json()[0]["spent_this_period_cents"] == 899
+
+
 async def test_escalates_over_cap_and_user_decides(client):
     h = await fresh(client)
     await mandate(client, h)
@@ -283,6 +305,51 @@ async def test_pause_revokes_cancels_and_denies(client):
     assert first_pause["meta"] == {"mandates_revoked": 1, "intents_cancelled": 2, "in_flight": 1}
 
 
+async def test_approve_holds_household_lock_during_checkout(client, app):
+    """Approve takes the same household lock as propose for the whole checkout transaction.
+
+    Without it, a concurrent auto-allow propose can read budgets before the approve transaction
+    commits spend and both charge under the same cap.
+    """
+    h = await fresh(client, autonomy="buy_with_approval")
+    await flag_demo(app, client, h)
+    await mandate(client, h)
+    created = await client.post("/v1/budgets", headers=h, json={"period": "month", "limit_cents": 1500})
+    assert created.status_code == 201, created.text
+    pending = (await propose(client, h, "Milk", execution="agora", amount_cents=899)).json()
+    assert pending["status"] == "proposed"
+    await client.patch("/v1/me/settings", headers=h, json={"autonomy_level": "buy_within_mandate"})
+
+    charge_started, release_charge = asyncio.Event(), asyncio.Event()
+    real_charge = app.state.demo_payments.charge
+
+    async def gated_charge(request):
+        charge_started.set()
+        await release_charge.wait()
+        return await real_charge(request)
+
+    app.state.demo_payments.charge = gated_charge
+    try:
+        approve_task = asyncio.create_task(
+            client.post(f"/v1/agent/intents/{pending['id']}/approve", headers=h))
+        await asyncio.wait_for(charge_started.wait(), timeout=5)
+        propose_task = asyncio.create_task(propose(client, h, "Eggs", execution="agora", amount_cents=899))
+        await asyncio.sleep(0.2)  # propose should block on the household lock held by approve
+        assert not propose_task.done(), "propose must wait while approve holds the household lock"
+        release_charge.set()
+        approve, auto = await asyncio.gather(approve_task, propose_task)
+    finally:
+        release_charge.set()
+        app.state.demo_payments.charge = real_charge
+
+    assert approve.status_code == 200, approve.text
+    assert auto.status_code == 201, auto.text
+    assert approve.json()["status"] == "succeeded"
+    assert auto.json()["status"] != "succeeded"
+    assert auto.json()["decision"] in ("deny", "needs_approval")
+    assert (await client.get("/v1/spend", headers=h)).json()["total_cents"] == 899
+
+
 async def test_idempotent_retries_never_double_charge(client, database_url, app):
     h = await fresh(client)
     await flag_demo(app, client, h)
@@ -326,6 +393,56 @@ async def test_idempotent_retries_never_double_charge(client, database_url, app)
     assert order["payment_provider"] == "simulated" and order["payment_brand"] == "visa"
     assert order["payment_last4"] == "4242" and order["payment_ref"].startswith("sim_ch_")
     assert order["channel"] == "agent"
+
+
+async def test_propose_checkout_retry_after_post_charge_rollback_does_not_double_charge(client, app):
+    """Charge keys for propose→agora must outlive a rolled-back request transaction.
+
+    The provider is called inside ``db.scoped``'s transaction. If anything fails after a successful charge
+    (claim, crash, etc.), the intent INSERT rolls back. Binding the provider key to the DB intent ID would
+    mint a new key on retry and double-charge; binding it to the client Idempotency-Key does not.
+    """
+    from unittest.mock import patch
+
+    from app import idempotency
+
+    h = await fresh(client)
+    await flag_demo(app, client, h)
+    await mandate(client, h)
+
+    seen_keys: list[str] = []
+    real_charge = app.state.demo_payments.charge
+
+    async def tracking_charge(request):
+        seen_keys.append(request.idempotency_key)
+        return await real_charge(request)
+
+    app.state.demo_payments.charge = tracking_charge
+    real_claim = idempotency.claim
+    calls = {"n": 0}
+
+    async def boom_once_claim(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("simulated failure after provider charge, before commit")
+        return await real_claim(*args, **kwargs)
+
+    key = idem()
+    try:
+        with patch.object(idempotency, "claim", boom_once_claim):
+            first = await propose(client, h, "Butter", key=key, execution="agora")
+        assert first.status_code == 500
+        retry = await propose(client, h, "Butter", key=key, execution="agora")
+    finally:
+        app.state.demo_payments.charge = real_charge
+
+    assert retry.status_code == 201, retry.text
+    body = retry.json()
+    assert body["status"] == "succeeded" and body["order_id"]
+    assert len(seen_keys) == 2 and len(set(seen_keys)) == 1
+    assert seen_keys[0].startswith("agora-propose-")
+    intents = (await client.get("/v1/agent/intents", headers=h)).json()
+    assert len(intents) == 1 and intents[0]["id"] == body["id"]
 
     # An identical request while one is still pending is refused outright.
     await client.patch("/v1/me/settings", headers=h, json={"autonomy_level": "buy_with_approval"})

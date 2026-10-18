@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager, suppress
@@ -8,35 +9,49 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.auth import TokenVerifier
 from app.config import Settings, get_settings
 from app.db import Database
 from app.errors import Problem, handle_problem, handle_validation, problem_response
 from app.google_calendar import GoogleCalendar
+from app.item_images import ItemImageService
 from app.jobs import Worker
-from app.payments import make_payment_provider
+from app.migrate import migration_status
+from app.notifications import NotificationService
+from app.payments import SimulatedPaymentProvider, make_payment_provider
 from app.pipeline import Pipeline
+from app.price_search import PriceSearchProvider
 from app.routers import (
     account,
     agent,
     audit,
     budgets,
     calendar,
+    demo,
     events,
     forecasts,
     inventory,
+    item_images,
     lists,
     merchants,
+    notifications,
     scans,
+    trips,
+    watches,
     wishlist,
 )
 from app.routers.events import Broadcaster
+from app.shopping import ShoppingRefresher
 from app.storage import make_storage
 from app.vision.providers import make_provider
 from app.vision.service import VisionService
+from app.watch_ops import WatchService
 
 log = logging.getLogger("agora.http")
+# The git commit this process runs: set by Render for Git-backed services, or AGORA_GIT_COMMIT elsewhere.
+RELEASE_COMMIT = os.environ.get("RENDER_GIT_COMMIT") or os.environ.get("AGORA_GIT_COMMIT") or None
 
 
 def _provider(kind: str, settings: Settings, client: httpx.AsyncClient):
@@ -63,6 +78,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db = Database(settings.database_url.get_secret_value(), settings.db_pool_min, settings.db_pool_max,
                       pgbouncer=settings.db_pgbouncer)
         await db.connect()
+        async with db.raw() as conn:
+            app.state.migrations = await migration_status(conn, db.timescale)
         client = httpx.AsyncClient(follow_redirects=False)
         pipeline = build_pipeline(settings, db, client)
         broadcaster = Broadcaster(db)
@@ -71,11 +88,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.storage, app.state.broadcaster = pipeline.storage, broadcaster
         app.state.calendar = GoogleCalendar(settings, db, client)
         app.state.payments = make_payment_provider(settings)
+        # Process-scoped simulator for the demo account only. Must outlive a single request so provider
+        # idempotency keys still dedupe after a rolled-back propose→checkout transaction.
+        app.state.demo_payments = SimulatedPaymentProvider()
         app.state.verifier = TokenVerifier(settings)
-        app.state.worker = Worker(db, pipeline.handlers, settings.worker_concurrency)
+        app.state.shopping = ShoppingRefresher(db)
+        app.state.watches = WatchService(db, settings, PriceSearchProvider(settings, client))
+        app.state.images = ItemImageService(db, PriceSearchProvider(settings, client))
+        app.state.notifications = NotificationService(db, settings)
+        app.state.worker = Worker(db, {**pipeline.handlers, **app.state.shopping.handlers,
+                                      **app.state.watches.handlers, **app.state.notifications.handlers,
+                                      **app.state.images.handlers},
+                                  settings.worker_concurrency)
         worker_task = None
         if settings.run_worker_in_process:
             await pipeline.forecaster.start()
+            await app.state.shopping.start()
+            await app.state.watches.start()
+            await app.state.notifications.start()
+            await app.state.images.start()
             worker_task = asyncio.create_task(app.state.worker.run())
         log.info("startup env=%s timescale=%s vision=%s/%s auth=%s", settings.env, db.timescale,
                  settings.vision_provider, settings.vision_fallback, settings.auth_mode)
@@ -88,6 +119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 with suppress(asyncio.CancelledError):
                     await worker_task
             await broadcaster.stop()
+            await app.state.notifications.close()
             await client.aclose()
             await db.close()
 
@@ -98,7 +130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     if settings.cors_origins:
         app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=False,
-                           allow_methods=["GET", "POST", "PATCH", "DELETE"],
+                           allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
                            allow_headers=["Authorization", "Content-Type", "Idempotency-Key"])
 
     max_body = settings.max_video_bytes + 1024 * 1024
@@ -130,14 +162,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"ok": True}
 
     @app.get("/readyz", tags=["ops"])
-    async def readyz(request: Request) -> dict:
+    async def readyz(request: Request) -> JSONResponse:
+        """Health check for Render and the deploy pipeline. Reports the running commit (Render sets
+        RENDER_GIT_COMMIT) and fails while any migration this build expects is missing, so a release whose
+        schema didn't apply never receives traffic."""
         async with request.app.state.db.raw() as conn:
             await conn.fetchval("SELECT 1")
-        return {"ok": True, "timescale": request.app.state.db.timescale, "version": app.version}
+        migrations = request.app.state.migrations
+        body = {"ok": not migrations["pending"], "timescale": request.app.state.db.timescale,
+                "version": app.version, "commit": RELEASE_COMMIT, "migrations": migrations}
+        return JSONResponse(body, status_code=200 if body["ok"] else 503)
 
     for router in (account.router, inventory.router, merchants.router, scans.router, events.router,
                    audit.router, calendar.router, wishlist.router, forecasts.router, lists.router,
-                   agent.router, budgets.router):
+                   agent.router, budgets.router, demo.router, trips.router, watches.router, notifications.router,
+                   item_images.router):
         app.include_router(router)
     return app
 

@@ -1,0 +1,130 @@
+name: deploy
+
+# Continuous delivery for the API on Render. Every green `backend` run on main releases that commit:
+#   1. skip if nothing under backend/ or render.yaml changed since the live release (saves Render build minutes)
+#   2. ask Render to build and deploy that exact commit; new migrations apply on boot
+#   3. Render only switches traffic once the new instance passes /readyz. If the build, the migrations or
+#      startup fail, the previous release keeps serving with no downtime and this job goes red
+#   4. read-only smoke checks against production; if they fail, roll back to the previous release
+#      automatically and go red
+# Anyone with write access can also run it by hand (Actions > deploy > Run workflow, or `gh workflow run`):
+#   deploy a ref · roll back · status · restart. See docs/deployment.md.
+
+# The target commit is in the title so the keep-warm monitor can tell which commit a run released.
+run-name: "release ${{ github.event.workflow_run.head_sha || inputs.ref || 'main' }} (${{ inputs.action || 'deploy' }})"
+
+on:
+  workflow_run:
+    workflows: [backend]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        type: choice
+        options: [deploy, rollback, status, restart]
+        default: deploy
+      ref:
+        description: "deploy: commit/branch to release (default main). rollback: optional commit to return to"
+        required: false
+        default: ""
+      auto:
+        description: "Started by the keep-warm monitor (honours the deploy freeze)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+  deployments: write
+
+# One release at a time. A newer merge waits for the running release instead of cancelling it midway,
+# and pending older ones are dropped, so a burst of merges builds only the latest.
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+env:
+  RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID || 'srv-dba2ram1egvs739549ug' }}
+  AGORA_API_URL: ${{ vars.AGORA_API_URL || 'https://agora-api-yq3m.onrender.com' }}
+
+jobs:
+  release:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: production
+      url: ${{ vars.AGORA_API_URL || 'https://agora-api-yq3m.onrender.com' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve the commit
+        id: target
+        env:
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          REF: ${{ inputs.ref }}
+        run: |
+          if [ -n "$RUN_SHA" ]; then sha="$RUN_SHA"
+          elif [ -n "$REF" ]; then sha=$(git rev-parse --verify "origin/$REF^{commit}" 2>/dev/null || git rev-parse --verify "$REF^{commit}")
+          else sha=$(git rev-parse origin/main); fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Target: $sha ($(git log -1 --format=%s "$sha"))"
+      - name: Deploy freeze
+        if: github.event_name == 'workflow_run' || inputs.auto
+        run: |
+          if git cat-file -e "${{ steps.target.outputs.sha }}:.github/deploy-freeze" 2>/dev/null; then
+            echo "::notice::Automatic releases are frozen (.github/deploy-freeze exists on main). Manual runs still work."
+            echo "### Frozen: \`.github/deploy-freeze\` exists, so this merge was not released." >> "$GITHUB_STEP_SUMMARY"
+            echo "FROZEN=1" >> "$GITHUB_ENV"
+          fi
+      - name: Check configuration
+        id: config
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "managed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Managed releases are off: the RENDER_API_KEY repository secret is missing. Render's own auto-deploy (if enabled) is in charge, without automatic rollback. See docs/deployment.md#one-time-setup."
+            { echo "### Managed releases not configured"; echo; echo "Add the \`RENDER_API_KEY\` repository secret (docs/deployment.md#one-time-setup)."; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "managed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Release
+        if: >-
+          env.FROZEN != '1' && steps.config.outputs.managed == 'true' &&
+          (github.event_name != 'workflow_dispatch' || inputs.action == 'deploy')
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          AGORA_DEMO_PASSWORD: ${{ secrets.AGORA_DEMO_PASSWORD }}
+        run: >-
+          python .github/scripts/render_deploy.py deploy --commit "${{ steps.target.outputs.sha }}"
+          --auto-rollback --paths backend render.yaml
+      - name: Roll back
+        if: steps.config.outputs.managed == 'true' && inputs.action == 'rollback'
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          AGORA_DEMO_PASSWORD: ${{ secrets.AGORA_DEMO_PASSWORD }}
+          TO: ${{ inputs.ref }}
+        run: python .github/scripts/render_deploy.py rollback ${TO:+--to-commit "$TO"}
+      - name: Status
+        if: steps.config.outputs.managed == 'true' && inputs.action == 'status'
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          AGORA_DEMO_PASSWORD: ${{ secrets.AGORA_DEMO_PASSWORD }}
+        run: python .github/scripts/render_deploy.py status
+      - name: Restart
+        if: steps.config.outputs.managed == 'true' && inputs.action == 'restart'
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          AGORA_DEMO_PASSWORD: ${{ secrets.AGORA_DEMO_PASSWORD }}
+        run: python .github/scripts/render_deploy.py restart
+      - name: Health only (not configured)
+        if: steps.config.outputs.managed != 'true'
+        env:
+          AGORA_DEMO_PASSWORD: ${{ secrets.AGORA_DEMO_PASSWORD }}
+        run: python .github/scripts/render_deploy.py smoke --base-url "$AGORA_API_URL" --password-env AGORA_DEMO_PASSWORD

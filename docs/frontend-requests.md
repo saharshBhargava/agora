@@ -1,4 +1,18 @@
-# Frontend requests
+# Frontend implementation and remaining requests
+
+Read [current state](current-state.md) before using this backlog. It separates live APIs, implemented UI,
+simulations and unimplemented requirements. Do not treat a requested screen as already shipped.
+
+## Demo sign-in is implemented
+
+Pull main and rebuild. Welcome has a username/password form: username `demo`, password shared privately
+from Render `AGORA_DEMO_PASSWORD`. Google is optional. No external provider keys are needed for the
+sample account. Chat, captions and capture recognition use fixed sample results; Calendar uses private
+persisted Agora events. See [the contract](api/demo-integrations.md) and [frontend handoff](frontend-handoff.md).
+Do not replace this with a mandatory Google gate or send sample-account media to a real model provider.
+Ordinary-account Google/model configuration and existing feature requests below still apply.
+
+## Remaining frontend requests
 
 Features the backend already supports and that are waiting for a UI. Each section links to its API contract.
 Add new sections at the end.
@@ -8,8 +22,9 @@ Resuming older work: read the [PR integration handoff](pr-handoff.md) and sync `
 
 ## Requested frontend features: wishlist
 
-**Backend status:** done. **API contract:** [docs/api/wishlist.md](api/wishlist.md). **For:** iOS (desktop
-can follow the same layout).
+**Status:** backend and iOS implemented. **API contract:** [docs/api/wishlist.md](api/wishlist.md).
+Home opens Wishlist and Suggested for you; `Agora/Shopping/` contains the shared store, views, model-backed
+idea service and chat tools. Desktop can follow the same contract.
 
 The wishlist is a priority queue that both the user and the on-device agent add to. Agent suggestions wait
 for an explicit decision, and the user can rate them with a thumbs up or down.
@@ -131,7 +146,8 @@ Send `PATCH /v1/wishlist/{id}` with only the fields that changed.
 
 ### 7. Live refresh
 
-- The app already subscribes to `GET /v1/events` (SSE). On an event with `type == "wishlist.updated"`,
+- The current iOS shopping store refreshes on foreground, local mutations and every 30 seconds while active.
+  A future shared `GET /v1/events` (SSE) subscriber can replace polling. On `type == "wishlist.updated"`,
   refetch the wishlist and suggestions. The event carries only the item `id`, so you can refetch just
   `GET /v1/wishlist/{id}` if you prefer.
 - This keeps two household members' phones in sync, and makes agent suggestions appear without a manual
@@ -152,19 +168,16 @@ Send `PATCH /v1/wishlist/{id}` with only the fields that changed.
 
 ## Requested frontend feature: offline demo fallback (iOS, small)
 
+**Status:** done on iOS. `AgoraClient.validOrigin` accepts `http://localhost`, `http://127.0.0.1`,
+`http://*.local`, and private LAN IPs in **DEBUG** builds only; Release stays HTTPS-only.
+`Info.plist` already sets `NSAllowsLocalNetworking` (and local HTTP exceptions). Simulator:
+`AGORA_API_BASE_URL = http:/$()/localhost:8000`. Phone on the same hotspot: Mac LAN IP or `.local` name.
+
 **Why:** if venue internet and hosting both fail, the backend can still run on the demo Mac
-(`uv run python -m app.tools.local_demo`, see SETUP.md, Plan B). Today `AgoraAPIClient` only accepts
-`https://` origins, so the app can reach a laptop backend only through a tunnel, which needs internet.
+(`uv run python -m app.tools.local_demo`, see SETUP.md, Plan B) without requiring a tunnel.
 
-**Request (DEBUG builds only):**
-- In `AgoraAPIClient.validOrigin`, also accept `http://localhost`, `http://127.0.0.1`, and
-  `http://<mac-name>.local` / private LAN IPs when compiled with `#if DEBUG`. Release builds stay HTTPS-only.
-- Add `NSAppTransportSecurity > NSAllowsLocalNetworking = YES` to the Debug Info.plist, so ATS permits those
-  local addresses.
-- The simulator then works with `AGORA_API_BASE_URL = http:/$()/localhost:8000`. A phone on the same hotspot
-  works with the Mac's `.local` name.
-
-Google sign-in, Calendar and Gemini chat still need internet, so this only covers inventory, scans (with replay
+Ordinary-account Google sign-in, Calendar and real model chat still need internet. The password demo uses
+its configured Agora API for login, Calendar and data, and built-in model responses. This fallback covers inventory, scans (with replay
 fixtures), merchants and the wishlist.
 
 ---
@@ -345,6 +358,12 @@ explains why it thinks so, and turns that into a shopping list per store in one 
 
 ### 4. Lists tab
 
+Implemented in the native **Home → Shopping lists & trips** screen: **New list** accepts a name and
+optional store using the shared store picker. Creating it opens the saved checklist; **Add item** accepts
+a name, positive quantity, optional unit and notes. These use the existing authenticated list APIs, and
+manual lists with unchecked items participate in reviewed trip planning. List history, editing and
+inventory autocomplete below remain follow-up work.
+
 - `GET /v1/lists` (open lists). Show **in the order returned** (most urgent trip first).
 - Each list card: `name`, store (`merchant.name` + locality), `open_count`, and "Needed by Thu" from
   `needed_by`. Generated lists can carry a small "Auto" tag (`source == "generated"`).
@@ -383,6 +402,100 @@ explains why it thinks so, and turns that into a shopping list per store in one 
 
 ### Out of scope for this request
 
-- Scheduling the trip in Google Calendar (P3; will use the list's `needed_by` as the deadline).
+- Scheduling is available from Home → Plan shopping trips; see the replenishment-to-Calendar section below.
 - Checkout from a list, and turning ticked lines into purchases/restocks (receipts, P1 follow-up).
 - Price-drop lines (`reason: "price_drop"` is reserved).
+
+---
+
+## Six-hour replenishment refresh and shopping ideas
+
+**Status:** replenishment scheduling, wishlist management, suggestions and reviewed price-watch UI are
+implemented. User-entered targets stay distinct from verified source offers; unsupported merchant evidence
+cannot trigger a matching-price claim. See [price watches](api/price-watches.md).
+See [backend refresh design](backend-spec.md#45-prices-deals-small-businesses).
+
+- Replenishment checks run through backend jobs at 00:00, 06:00, 12:00 and 18:00 UTC, including while the
+  app is closed when the worker is available. Missed intervals are coalesced when work resumes.
+- Suggested for you shows last successful replenishment check, next scheduled check and failures separately.
+  **Check stock** invokes `POST /v1/wishlist/refresh` with a stable key for retries.
+- **Find ideas** uses the model assigned to Shopping suggestions in Settings, with structured output and
+  inventory evidence. It sends inventory names/quantities and feedback to that connection, never media or
+  Calendar credentials. It runs on demand; it is not the six-hour backend job.
+- Accept, reject with a reason, snooze, feedback, edit, pin, priorities, mark purchased and remove all use
+  existing wishlist endpoints. Failed refreshes retain previous results; account/household switches clear
+  shopping state and discard stale responses.
+- Price-watch checks run every six hours plus initial/manual checks; they use server credentials and durable
+  jobs independently of Find ideas. The active wishlist row opens **Set up price watch**. Confirm product,
+  per-item target, optional total, quantity, condition, fulfillment and alerts before activating.
+- The wishlist toolbar opens **Price watches** and **Offer inbox**. Detail shows last successful/next check,
+  failures vs no matches, explicit verification gaps, current vs historical offers, evidence and retailer link.
+- Push permission is requested after explicit opt-in; denial or unavailable APNs does not hide the inbox.
+  Alert taps open the watch after authenticated loading. Account/household changes clear watch/inbox state.
+- Research can refine searches and follow source links within server-enforced budgets. When it reports
+  `interaction_urls`, the latest confirmed run shows **Needs browser review**. An explicit tap opens the
+  shared browser privately and selects Chat; no model action or purchase starts automatically.
+
+## Replenishment to Calendar
+
+**Status:** implemented in iOS and the backend. Contract: [replenishment trips](api/replenishment-trips.md).
+
+Home's **Plan shopping trips** and **Plan a restock trip** open the store lists and trip planner. The planner
+generates lists from the next seven days of run-outs, including preferred/last-purchased stores, then loads
+all existing open lists. Users choose a 1–14-day Calendar search window, daily shopping hours, and a duration
+including travel. The earliest deadlines are planned first, in non-overlapping free Calendar slots. A trip
+that would finish after its list's deadline has a visible warning; unavailable slots stay unscheduled.
+Store opening hours and travel routes are not inferred.
+
+**Review trip** shows the exact title, time, timezone, store and item notes. **Add to Calendar** checks
+availability again, reserves the reviewed list version on the backend, creates the event, and persists its
+outcome. Ordinary accounts use the primary Google Calendar directly; the designated account uses its private
+Agora Calendar. Planning alone creates no Calendar events. No invitations are sent.
+
+Saved trips appear on Home and in Shopping trips after app restart. A reserved trip can be reviewed again
+to finish the same saved request; recovery first looks for the original event and keeps its deterministic
+identity. Uncertain outcomes offer **Check Calendar status**, which only reads the provider and never
+creates another event. When that read finds no matching event—or a reserved slot can no longer finish—
+**Release reservation** reports `failed` so the list can be planned again. Do not auto-release on
+timeouts. Account or household switches invalidate reviews and pending local state.
+
+Store lists can be opened and items checked/unchecked with their replenishment explanations visible.
+This does not increment inventory or record a purchase. Existing wishlist and shopping suggestion flows
+remain separate. Trip/list data refreshes on foreground, local changes and periodic polling; the backend
+also publishes `trip.updated` for future SSE clients.
+
+Trip reservations and private Calendar creation return `409 duplicate_request` if another operation wins
+the same request key concurrently; the losing write is rolled back. Preserve the original key on retry
+and reload trips to recover saved state. A key already used for different input returns
+`422 idempotency_key_reused`.
+
+Price-watch capability responses now include `discovery_status` (`available`, `model_not_configured`,
+`search_not_configured`). The watch UI distinguishes model setup from web-provider setup and does not
+interpret a failed capability request or a service 404 as unavailable retailer discovery. Scheduled
+research uses server model/provider settings; foreground model credentials remain on the phone.
+
+## Automatic item images
+
+The image API supports inventory, wishlist and list descriptors, product-image candidates and private
+photos; see [the contract](api/item-images.md). Native source in the shared workspace integrates these
+across item views. Render the server-selected `asset` for both `exact` and `best_match`; do not require
+a confirmation step. Keep titled alternatives in **Change image**. All item names are searchable, with optional details.
+A new native build is required for the updated editor and service-unavailable/retry messages.
+
+
+## Chat additions MVP — implemented locally, October 18, 2026
+
+Chat can add items to existing shopping lists, the active wishlist and new inventory entries. Explicit
+requests save immediately; ambiguous destinations are clarified and duplicates leave quantities unchanged.
+Shared screens update after confirmed saves. Existing suggestions remain a separate acceptance flow.
+See [chat additions](api/chat-additions.md) for argument limits, demo examples and retry behavior.
+List creation from chat, existing-stock changes, browser/photo extraction and undo remain outside this MVP.
+
+
+## Automatic-watch rollout compatibility
+
+The watch-list response advertises `automatic_watches:true` when wishlist saves and startup backfills
+create watches. Native clients must not show “Preparing automatic price checks” indefinitely for an absent
+watch: distinguish unsupported automatic checks (flag absent/false), a failed/unloaded request, and a
+missing watch after a successful response. The updated local native code implements these states.
+See [price watches](api/price-watches.md).

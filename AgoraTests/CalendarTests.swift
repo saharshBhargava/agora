@@ -23,11 +23,12 @@ private final class FakeGoogleAuthorization: GoogleCalendarAuthorizing {
     var account: GoogleCalendarAccount? = GoogleCalendarAccount(id: "alice", email: "alice@example.com", scopes: GoogleCalendarAuthorization.scopes)
     var accessTokenCalls = 0
     var idTokenCalls = 0
+    var restoreCalls = 0
     var didSignOut = false
     var didDisconnect = false
     var connectionError: Error?
     var holdTokenRefresh = false
-    func restore() async throws -> GoogleCalendarAccount? { account }
+    func restore() async throws -> GoogleCalendarAccount? { restoreCalls += 1; return account }
     func connect() async throws -> GoogleCalendarAccount {
         if let connectionError { throw connectionError }
         return account!
@@ -305,5 +306,132 @@ final class CalendarAgentTests: XCTestCase {
         let api = AgoraClient(calendar: connection, baseURL: URL(string: "https://api.example.com"), http: http)
         do { _ = try await api.fetch("v1/inventory", as: [InventoryItem].self); XCTFail("Expected error") }
         catch { XCTAssertTrue(connection.connected); XCTAssertEqual(connection.email, "alice@example.com") }
+    }
+}
+
+
+@MainActor
+private final class MemoryDemoSessions: DemoSessionStoring {
+    var session: DemoSession?
+    func load() throws -> DemoSession? { session }
+    func save(_ session: DemoSession?) throws { self.session = session }
+}
+
+@MainActor
+final class DemoAccessTests: XCTestCase {
+    private func session() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [CalendarURLProtocol.self]
+        return URLSession(configuration: config)
+    }
+    private func installLogin(profileStatus: Int = 200) {
+        CalendarURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.host, "api.example.com", "No Google/model request is permitted")
+            if request.url?.path == "/v1/dev/login" {
+                let body = CalendarURLProtocol.body(request)
+                XCTAssertEqual(body["handle"] as? String, "demo")
+                XCTAssertEqual(body["password"] as? String, "sample-password")
+                XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+                return (200, ["access_token": "sample-session", "expires_at": Date().addingTimeInterval(3600).timeIntervalSince1970])
+            }
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sample-session")
+            return (profileStatus, ["id": "11111111-2222-3333-4444-555555555555", "display_name": "Alex Rivera"])
+        }
+    }
+    func testPasswordLoginAndRestoreNeedNoGoogleAndUseSessionForAPI() async throws {
+        installLogin()
+        let auth = FakeGoogleAuthorization(); auth.configurationIssue = "No Google configuration"
+        let store = MemoryDemoSessions(); let http = session()
+        let origin = URL(string: "https://api.example.com")!
+        let connection = CalendarConnection(authorization: auth, http: http, demoBaseURL: origin, sessionStore: store)
+        await connection.connectDemo(handle: "demo", password: "sample-password")
+        XCTAssertTrue(connection.connected); XCTAssertTrue(connection.isDemoAccount)
+        XCTAssertNotNil(store.session); XCTAssertEqual(auth.idTokenCalls, 0); XCTAssertEqual(auth.accessTokenCalls, 0)
+        let bearer = try await connection.apiToken(for: connection.accountID!)
+        XCTAssertEqual(bearer, "sample-session")
+        let api = AgoraClient(calendar: connection, baseURL: origin, http: http)
+        _ = try await api.request("v1/me")
+        let restored = CalendarConnection(authorization: auth, http: http, demoBaseURL: origin, sessionStore: store)
+        await restored.refresh()
+        XCTAssertTrue(restored.isDemoAccount); XCTAssertTrue(restored.connected)
+        await restored.signOut()
+        XCTAssertNil(store.session); XCTAssertFalse(restored.connected); XCTAssertFalse(restored.isDemoAccount)
+    }
+    func testExpiredOrDifferentOriginSessionDoesNotFallBackToGoogle() async {
+        for origin in ["https://api.example.com", "https://another.example.com"] {
+            let auth = FakeGoogleAuthorization(); let store = MemoryDemoSessions()
+            store.session = DemoSession(token: "expired", expiresAt: Date().addingTimeInterval(-60),
+                accountID: "agora:11111111-2222-3333-4444-555555555555", origin: origin)
+            CalendarURLProtocol.handler = { _ in XCTFail("Expired session must not make a network request"); return (500, [:]) }
+            let connection = CalendarConnection(authorization: auth, http: session(),
+                demoBaseURL: URL(string: "https://api.example.com"), sessionStore: store)
+            await connection.refresh()
+            XCTAssertFalse(connection.connected); XCTAssertFalse(connection.isDemoAccount)
+            XCTAssertEqual(auth.restoreCalls, 0); XCTAssertEqual(auth.idTokenCalls, 0)
+        }
+    }
+    func testNonDemoIdentityCannotEnableBuiltinProviders() async {
+        installLogin(profileStatus: 403)
+        let store = MemoryDemoSessions()
+        let connection = CalendarConnection(authorization: FakeGoogleAuthorization(), http: session(),
+            demoBaseURL: URL(string: "https://api.example.com"), sessionStore: store)
+        await connection.connectDemo(handle: "demo", password: "sample-password")
+        XCTAssertFalse(connection.connected); XCTAssertFalse(connection.isDemoAccount); XCTAssertNil(store.session)
+    }
+    func testBuiltinFeaturesIgnoreMediaAndConfiguredRealModelsAndStopAfterSignOut() async throws {
+        installLogin()
+        let connection = CalendarConnection(authorization: FakeGoogleAuthorization(), http: session(),
+            demoBaseURL: URL(string: "https://api.example.com"), sessionStore: MemoryDemoSessions())
+        await connection.connectDemo(handle: "demo", password: "sample-password")
+        let suite = "demo-model-tests-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(keychainService: suite, defaults: defaults)
+        settings.demoCalendar = connection
+        let client = try settings.client(for: .inventory)
+        XCTAssertEqual(client.identity.provider, .builtin)
+        let suggestionClient = try settings.client(for: .suggestions)
+        let itemID = UUID()
+        let context = "{\"inventory\":[{\"id\":\"\(itemID.uuidString)\"}],\"feedback\":{}}"
+        let ideas = try await suggestionClient.generate(ModelRequest(instructions: "", messages: [
+            .init(role: .user, content: [.text(context)])]), onEvent: { _ in })
+        XCTAssertEqual(try SuggestionService.decode(ideas.text, inventoryIDs: [itemID]).count, 1)
+
+        let request = ModelRequest(instructions: "", messages: [.init(role: .user, content: [.media(URL(fileURLWithPath: "/nonexistent-private-photo"), kind: .image)])])
+        let response = try await client.generate(request) { _ in }
+        XCTAssertEqual(try InventoryRecognitionContract.decode(response.text).count, 3)
+        let caption = try await settings.client(for: .captions).generate(request) { _ in }
+        XCTAssertFalse(caption.text.isEmpty)
+        let chat = try settings.client(for: .chat)
+        let chatRequest = ModelRequest(instructions: "", messages: [.init(role: .user, content: [.text("Schedule a grocery trip")])],
+            tools: try CalendarCall.schemas.map { try ModelToolDefinition(legacy: $0) })
+        let reply = try await chat.generate(chatRequest) { _ in }
+        try validateModelResponse(reply.message, request: chatRequest)
+        XCTAssertEqual(reply.message.toolCalls.first?.name, "calendar_create_event")
+        _ = try CalendarCall(reply.message.toolCalls.first!.raw)
+        await connection.signOut()
+        do { _ = try await client.generate(request) { _ in }; XCTFail("A stale client must not simulate for another account") }
+        catch { XCTAssertFalse(connection.connected) }
+        XCTAssertNotEqual(try? settings.client(for: .chat).identity.provider, .builtin)
+    }
+    func testCalendarUsesOnlyFirstPartyHostAndStableIdempotencyKey() async throws {
+        installLogin()
+        let auth = FakeGoogleAuthorization()
+        let connection = CalendarConnection(authorization: auth, http: session(),
+            demoBaseURL: URL(string: "https://api.example.com"), sessionStore: MemoryDemoSessions())
+        await connection.connectDemo(handle: "demo", password: "sample-password")
+        let call = try CalendarCall(["name": "calendar_create_event", "args": CalendarToolTests.args])
+        let taskID = UUID(); let key = try call.requestKey(taskID: taskID)
+        CalendarURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.host, "api.example.com")
+            XCTAssertEqual(request.url?.path, "/v1/demo/calendar/events")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sample-session")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Idempotency-Key"), key)
+            XCTAssertEqual(CalendarURLProtocol.body(request)["confirmed"] as? Bool, true)
+            return (201, ["created": true, "id": "22222222-3333-4444-5555-666666666666"])
+        }
+        _ = try await connection.execute(call, taskID: taskID)
+        _ = try await connection.execute(call, taskID: taskID)
+        XCTAssertEqual(auth.accessTokenCalls, 0); XCTAssertEqual(auth.idTokenCalls, 0)
     }
 }

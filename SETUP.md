@@ -6,14 +6,19 @@ free plans explicitly and check the provider's displayed terms before creating r
 URL from step 2. Public frontend configuration and a message to copy to teammates are in
 [docs/frontend-handoff.md](docs/frontend-handoff.md).
 
+**The team API is now live at [https://agora-api-yq3m.onrender.com](https://agora-api-yq3m.onrender.com/docs).**
+Readiness, demo API sign-in and authenticated data endpoints were verified October 17, 2026. Frontend
+developers can pull `main` and rebuild: the public URL is already set in `Config/Agora.xcconfig`. The steps
+below explain recreating the deployment and obtaining the optional credentials.
+
 | # | Account | Needed for | Required? |
 |---|---|---|---|
 | 1 | [Tiger Cloud](https://console.cloud.timescale.com) | Database (Postgres + TimescaleDB) | Yes |
 | 2 | [Render](https://render.com) | Hosting the API | Yes |
-| 3 | The team's existing Google Cloud project (Saharsh's) | Google sign-in + Calendar on the phone | Already set up; just add test users |
-| 4 | [Google AI Studio](https://aistudio.google.com/apikey) | Gemini key for real fridge/pantry recognition | Recommended |
+| 3 | The team's existing Google Cloud project (Saharsh's) | Real Google sign-in + Calendar | Optional for demo login |
+| 4 | [Google AI Studio](https://aistudio.google.com/apikey) | Gemini key for real inference on ordinary accounts | Optional for demo login |
 | 5 | Perceptron (ask at their sponsor table) | Perceptron vision instead of Gemini | Optional |
-| 6 | A new Gmail account for the demo (step 3b) | Signing in to the pre-filled demo account from the iOS app | Yes, for demos |
+| 6 | Demo username/password (step 3b) | Signing in to the pre-filled account in iOS or API | Already generated in Render |
 
 **What to send back to Kedar's coding session when you're done:** just the Render URL (it's public, not a secret).
 With it, the deploy can be smoke-tested end to end and the keep-warm job pointed at it. Never send the Tiger
@@ -92,12 +97,12 @@ Everything else is preset in `render.yaml`:
 
 If an optional blank value prevents Blueprint creation, remove that optional variable from the creation
 form and add it later under the service's **Environment** tab. Do not use made-up keys. Missing vision keys
-allow startup but only recorded replay photos can be processed. For an existing Blueprint, add new secret
+allow startup. The designated account uses built-in recognition; ordinary accounts can process only recorded replay photos until configured. For an existing Blueprint, add new secret
 variables directly in **Environment**: `sync: false` only prompts during initial creation.
 
-## 3. Google sign-in + Calendar (about 2 min)
+## 3. Google sign-in + Calendar (optional; ordinary accounts)
 
-The phone signs in with Google and talks to Google Calendar directly. The backend only checks the Google ID
+For ordinary accounts, the phone signs in with Google and talks to Google Calendar directly. The backend checks the Google ID
 token the phone sends for inventory calls. The Google Cloud project and iOS OAuth client already exist; their
 public IDs are in `Config/Agora.xcconfig`, and `render.yaml` uses the same client ID. While the OAuth app is in
 **Testing**, only listed accounts can sign in, so:
@@ -118,21 +123,23 @@ The backend has one designated **demo account**, pre-filled with about a month o
 - preferred stores
 - wishlist items and agent suggestions (pending, accepted, snoozed, rejected), with thumbs feedback
 
-From the UI it looks exactly like a real, well-used account; nothing in the app says it's a demo. Anything
-simulated (payments, once they exist) is switched on only for this account, and real accounts never get fake
-data or fake behaviour. One account, two ways in:
+Use **username `demo`** and the password in Render → `agora-api` → **Environment** →
+`AGORA_DEMO_PASSWORD` → **Show secret**. Share this password privately with frontend testers.
+The generated password is not committed to Git. It is unrelated to a Google or Tiger password.
 
-1. **From the iOS app (for demos):**
-   - Create a fresh Gmail account that looks like a real person's, e.g. `alex.rivera.agora@gmail.com`. You need
-     to make it yourself.
-   - Ask Saharsh to add it under **Test users** (step 3).
-   - In Render, set `AGORA_DEMO_GOOGLE_EMAILS` to that address and save. Render redeploys.
+1. **iOS:** pull main, rebuild, enter those credentials on Welcome, then tap **Sign in to demo**.
+   No Google account, OAuth test-user enrollment, Gemini key, Perceptron key or local model server is needed.
+2. **API:** `POST /v1/dev/login` with `{"handle":"demo","password":"<AGORA_DEMO_PASSWORD>"}`.
+   Use the returned `access_token` as a Bearer token. `expires_at` is Unix seconds. Sign in again on expiry.
+3. **Google (optional):** set `AGORA_DEMO_GOOGLE_EMAILS` to a verified Google address, enroll it as an OAuth
+   test user and choose the Google button. The backend maps it to the same populated account.
 
-   Signing in with that Google account on the phone now opens the demo account. Its credentials are that
-   Gmail address and the password you chose for it.
-2. **From curl, the API docs page or a desktop build:** `POST /v1/dev/login` with
-   `{"handle": "demo", "password": "<AGORA_DEMO_PASSWORD>"}`. The password is in Render, under the service's
-   **Environment** tab, generated for you. Treat it like any password.
+The designated account uses built-in sample chat, captions and grocery recognition. These are repeatable
+fixtures, not real inference on the supplied media. Media stays on-device in the native sample flow.
+Calendar availability and approved events use a private Agora calendar (migration `0013`); events persist
+in Tiger and never create Google events or invitations. Checkout remains simulated. Even when real backend
+vision keys are present, demo uploads select the built-in provider. Only the server-owned `users.is_demo`
+flag enables these behaviors. Ordinary accounts retain real configured providers.
 
 Inside the app, the account is "Alex Rivera" (handle `alexrivera`). To start fresh after rehearsals (this wipes
 only the demo account and recreates it), run from `backend/`:
@@ -143,15 +150,119 @@ uv run python -m app.tools.demo reset --database-url "<tiger url>"
 
 Teammates' own Google accounts stay ordinary, empty accounts: use them to show "a new user" if you want.
 
-## 4. Gemini key (about 2 min)
+## 4. Gemini key (optional; ordinary accounts only)
 
 1. Open [Google AI Studio > API keys](https://aistudio.google.com/apikey), select or create a Google Cloud
    project, then **Create API key**. Copy the key privately. Check the project's available quota/billing.
 2. Render, then **Environment**: set `AGORA_GEMINI_API_KEY` and save. Backend scans now use Gemini vision. Without a key
    they only work for pre-recorded replay fixtures, and the server logs a warning instead of crashing.
-3. The iOS chat agent uses a key entered in the app's **Settings** tab. Use a separate tester key/project so
+3. The iOS Gemini connection uses a key entered in **Settings → Connected accounts**, or its connection
+   editor in **Settings → Models**. Chat, captions and Capture → inventory recognition call the selected
+   model directly from the device, then save reviewed inventory JSON metadata to the API. They do not
+   require the backend's vision key, which enables the separate `/v1/scans` server-processing flow.
+   Use a separate tester key/project so
    on-device usage does not consume the backend's quota or require sharing the backend credential. Do not
    embed a provider key in a distributed app binary; this Settings flow is for trusted demo testers.
+
+### Choose models in the iOS app
+
+Chat, captions and inventory recognition can each use Gemini or an OpenAI-compatible model. Backend vision
+configuration is separate from these direct app requests.
+
+1. Open **Settings → Models**. Existing Gemini settings migrate to the built-in connection and profile;
+   the Gemini key remains in Keychain and its current Settings key field continues to work.
+2. For a local model, start your server with a loaded model, then choose **Add connection**, select
+   **Local OpenAI-compatible**, enter a name and its base URL (for example `http://192.168.1.20:1234/v1`),
+   and save. Reopen the connection to save an optional server key and choose **Test connection and load models**.
+   Simulator `localhost` reaches your Mac; a physical iPhone needs the Mac's LAN IP (for example `192.168.x.x`)
+   and a server listening on that interface. Plain HTTP is accepted only for private/loopback destinations
+   (hostnames are resolved and checked); use HTTPS for remote servers. Prefer typing the LAN IP on a phone.
+3. Choose **Add model profile**, select that connection, and enter its exact model identifier or use
+   **Load available models**. Enable the capabilities your model/server supports. Chat requires tool calling;
+   photo captions require images; inventory also requires structured output. Streaming is optional. Local video input
+   uses sampled image frames without audio. Gemini can use native video via Google's Files API.
+4. Use the profile's capability probes to check actual requests, then save it. A successful model list only
+   confirms endpoint access; it does not verify tools, images, schemas or streaming.
+5. Set the **Default** profile and optionally assign different profiles to **Chat**, **Captions** and
+   **Inventory recognition**. **Use default** follows the global choice. A profile that cannot handle a
+   feature reports a configuration error; the app does not silently send the request to another provider.
+
+Changing the selected chat model/endpoint/key cancels active chat work and starts fresh provider context.
+Captions and confirmed inventory metadata keep their original provider/model labels when settings change.
+Local keys are isolated by connection and destination. Changing an endpoint requires saving its credential
+for that destination. Browser and Calendar tool validation and approval rules apply to both providers.
+
+## Price watches and remote alerts
+
+Every active wishlist item automatically starts price research, followed by six-hour checks. Targets are
+optional; source prices are shown even above the target. Watch settings refine product/fulfillment criteria
+and alerts. Enabled search providers can search and read retailer sources without a reasoning model;
+an optional model adds query refinement and interaction handoffs. Direct HTTPS product links also work.
+
+- Optional model: `AGORA_WATCH_MODEL_PROVIDER=gemini` uses `AGORA_WATCH_SEARCH_MODEL=gemini-2.5-flash` and
+  `AGORA_WATCH_SEARCH_API_KEY` (legacy name; falls back to `AGORA_GEMINI_API_KEY`). Alternatively set
+  `AGORA_WATCH_MODEL_PROVIDER=openai-compatible`, `AGORA_OPENAI_BASE_URL` and `AGORA_OPENAI_MODEL`
+  for a reachable tool-calling model; `AGORA_OPENAI_API_KEY` is optional for local servers.
+- Search: `AGORA_WATCH_SEARCH_PROVIDERS=["exa","parallel","firecrawl","keenable","tavily","brave"]`.
+  Exa, Parallel and Keenable have supported public routes enabled by `AGORA_WATCH_SEARCH_KEYLESS=true`.
+  No search key is required for those routes. Optional `AGORA_EXA_API_KEY`, `AGORA_PARALLEL_API_KEY`,
+  `AGORA_FIRECRAWL_API_KEY`, `AGORA_KEENABLE_API_KEY`, `AGORA_TAVILY_API_KEY` and `AGORA_BRAVE_API_KEY`
+  enable their authenticated APIs. Firecrawl, Tavily and Brave are skipped without their keys.
+  Use `AGORA_WATCH_SEARCH_KEYLESS=false` to restrict searches to configured credentials.
+
+The router rotates providers, falls back on errors, respects cooldowns, and returns the first successful
+response. Default limits include 12 provider attempts per watch run and 25 seconds per search call
+(`AGORA_WATCH_PROVIDER_REQUEST_BUDGET`, `AGORA_WATCH_SEARCH_TIMEOUT_S`). Public routes have provider
+quotas; production capacity may need keys. An optional `google` provider preserves grounded Google search
+when explicitly listed and a Gemini key is present. The model provider need not be Gemini.
+
+Phone model credentials do not power background searches. `discovery_status` reports `available` when
+a usable search route is configured and `search_not_configured` otherwise; APNs is independent.
+If `/v1/watches` returns 404, deploy the watch backend first; setting a key cannot add a missing endpoint.
+One bounded controller chooses searches, reads and foreground interaction handoffs from returned evidence.
+Search-source metadata establishes URLs; merchant Product/Offer structured data establishes prices. Unsupported pages,
+unverified variants, delivery regions, quantities, costs or deadlines cannot produce a qualifying alert.
+For delivery, use a supported published region such as `US`; pickup needs an exact supported store/region.
+See the full [watch contract](docs/api/price-watches.md) for coverage and limits.
+
+The inbox works without push setup. To enable APNs, configure these secrets in the backend environment:
+
+- `AGORA_APNS_ENABLED=true`
+- `AGORA_APNS_KEY_ID` and `AGORA_APNS_TEAM_ID` from the Apple developer account
+- `AGORA_APNS_PRIVATE_KEY`: the contents of the APNs `.p8` signing key, preserving PEM newlines
+- `AGORA_APNS_TOPIC=dev.agora.browserchat` (change only if the app bundle identifier changes)
+
+For remote push, set `AGORA_CODE_SIGN_ENTITLEMENTS = Agora/Agora.entitlements` in your untracked
+`Config/Local.xcconfig`, then enable Push Notifications for that App ID and its signing profile.
+The default build omits this capability so Personal Team signing can run watches and the offer inbox
+without a paid Apple membership. The optional entitlement uses
+development/sandbox for Debug and production for Release. Users explicitly enable alerts when reviewing
+a watch, then approve the iOS notification permission prompt. A device registration response distinguishes
+configured server delivery from an unavailable push service. Device registrations transfer to the current
+signed-in account; sign-out unregisters the device and removes delivered notifications.
+
+Default service limits are 25 active watches per household, five pages, three search requests and eight
+model turns per check attempt, 90 seconds per attempt,
+600 reserved search attempts per household per rolling day (three reserved per check), 30 user-triggered
+checks per household/hour, and a five-minute manual-check cooldown per watch. Each user also has a 20-alert
+daily ceiling; each subscription can choose a lower per-watch cap and quiet hours. Configure `AGORA_WATCH_*`
+limits as described in `backend/.env.example`.
+
+The six-hour worker coalesces missed intervals. Render's free sleeping service cannot guarantee timely
+unattended checks; use continuously available hosting when that guarantee matters. No hosting plan change
+is applied by this code. The designated demo account has realistic watches, offers, inbox history and
+simulated delivery; it never calls search providers or APNs.
+
+Local verification: run this from `backend/` to start an isolated worker/API on port 18767:
+
+```sh
+AGORA_TEST_DATABASE_URL=postgresql://localhost/postgres uv run python -m tests.support.ios_watch_server
+```
+
+Run
+`AgoraTests/WatchLiveTests` on the simulator. It exercises real auth, API, database, worker, inbox/read,
+session restore and criteria invalidation through the designated account. `test_watch_pipeline.py` exercises
+the ordinary-account pipeline with only external HTTP discovery, merchant and APNs boundaries mocked.
 
 ## 5. Perceptron (optional)
 
@@ -159,12 +270,43 @@ If the Perceptron sponsor gives you a key, set these in Render: `AGORA_PERCEPTRO
 `AGORA_VISION_PROVIDER=perceptron`, `AGORA_VISION_FALLBACK=gemini`. If Perceptron errors or times out,
 Gemini takes over for that frame automatically.
 
+### Local OpenAI-compatible vision (optional)
+
+Backend scans can use a vision model served by LM Studio, llama.cpp or another server implementing
+`POST /v1/chat/completions` with image input and JSON-schema structured output. Load the model, start its
+server, and configure the backend (for example in `backend/.env`):
+
+```dotenv
+AGORA_VISION_PROVIDER=openai-compatible
+AGORA_OPENAI_BASE_URL=http://localhost:1234/v1
+AGORA_OPENAI_MODEL=your-loaded-vision-model
+AGORA_VISION_FALLBACK=none
+# AGORA_OPENAI_API_KEY=only-if-your-server-requires-one
+```
+
+The base URL includes `/v1`; the backend appends `/chat/completions`. The model ID is the exact identifier
+loaded by your server. The connection sends inline JPEGs and requires schema output; a text-only model
+or a server without these capabilities reports an error. No cloud provider is substituted unless you
+explicitly set `AGORA_VISION_FALLBACK`. Redirects are blocked, keys are optional, and endpoint URLs must
+omit embedded credentials, queries and fragments. Use HTTPS outside a trusted local network.
+
+`localhost` refers to the backend host. A Render container cannot reach a laptop's loopback server; run
+the backend and model on the same machine, or configure an address reachable from that backend.
+The optional variables are documented beside the existing provider settings in `render.yaml`; its
+Gemini defaults stay suitable for the hosted demo. See [LM Studio's OpenAI-compatible API](https://lmstudio.ai/docs/developer/openai-compat)
+and [structured output](https://lmstudio.ai/docs/developer/openai-compat/structured-output).
+
 ## 6. Point the iOS app at it
 
-Copy `Config/Local.xcconfig.example` to `Config/Local.xcconfig` (gitignored) and set:
+The shared `Config/Agora.xcconfig` now points to the live team API. Pull `main` and rebuild. If an existing
+`Config/Local.xcconfig` overrides `AGORA_API_BASE_URL` with an old address, remove that override or replace it
+with the live address below.
+
+Only when overriding the shared server, copy `Config/Local.xcconfig.example` to `Config/Local.xcconfig`
+(gitignored) and set:
 
 ```xcconfig
-AGORA_API_BASE_URL = https:/$()/<your-service>.onrender.com
+AGORA_API_BASE_URL = https:/$()/agora-api-yq3m.onrender.com
 ```
 
 The `$()` is intentional: it stops xcconfig from treating `//` as a comment. The example leaves Google
@@ -184,14 +326,14 @@ connecting a web frontend.
 First check readiness (on Windows use `curl.exe`; replace the host):
 
 ```bash
-curl -s https://<your-service>.onrender.com/readyz
+curl -s https://agora-api-yq3m.onrender.com/readyz
 ```
 
 Then test authentication and data. In PowerShell, this prompts for the password instead of saving it in
 shell history, and does not print the token:
 
 ```powershell
-$api = "https://<your-service>.onrender.com"
+$api = "https://agora-api-yq3m.onrender.com"
 $demoCredential = Get-Credential -UserName demo -Message "Use AGORA_DEMO_PASSWORD from Render"
 $loginBody = @{ handle = "demo"; password = $demoCredential.GetNetworkCredential().Password } | ConvertTo-Json
 $session = Invoke-RestMethod "$api/v1/dev/login" -Method Post -ContentType "application/json" -Body $loginBody
@@ -205,8 +347,9 @@ Open `<origin>/docs` to inspect request/response schemas. Protected endpoints cu
 Authorization header directly and do not expose a Swagger Authorize control; use the PowerShell example
 above for authenticated testing. `/v1/me` should identify Alex Rivera and `/v1/inventory` should contain
 seeded items. An unauthenticated request to `/v1/me` should return 401.
-Finally sign in on the phone with the demo Gmail and approve Calendar. Verify inventory, a real photo scan
-(requires the vision key), and a Calendar event. Calendar traffic goes directly from the phone to Google.
+Finally rebuild the phone app, enter username `demo` and the Render demo password, and tap **Sign in to demo**.
+Verify inventory, sample capture recognition, and an approved Agora Calendar event. Google and real model
+credentials are needed only when separately testing ordinary accounts.
 
 ## 8. Keep it alive until the demo
 
@@ -215,7 +358,7 @@ Finally sign in on the phone with the demo Gmail and approve Calendar. Verify in
 | Render free server **sleeps** after 15 idle min (first request then takes ~1 min) | Certain, unless pinged | `keep-warm` workflow (below) + an uptime monitor + opening `/healthz` 5 min before presenting |
 | Render **restarts** the free server at any time | Occasional | Harmless: all state is in the database, and in-flight scans resume from the job queue |
 | Render **monthly hours** (750) or bandwidth run out | Very unlikely in a day | Plan B below |
-| A last-minute merge to `main` **auto-deploys a bad build** | Real: other sessions are merging PRs | Freeze deploys (below) |
+| A last-minute merge to `main` **releases a bad build** | Lower now: failed builds never go live, and smoke failures roll back automatically | Freeze releases (below) |
 | Tiger free service **storage** limit is reached | Depends on testing volume | Tiger can become read-only; `/readyz` only checks connectivity, so also test a write; snapshot + Plan B |
 | Tiger free service **pauses or misbehaves** (free plan is beta; idle behaviour isn't documented) | Unlikely | Keep-warm pings also hit the database; snapshot + Plan B |
 | **Gemini quota** runs out (check current limits in AI Studio; each scan frame can invoke the provider) | Depends on testing volume | Separate projects per use (below); replay fixtures; the cache avoids repeated provider calls for processed photos |
@@ -240,8 +383,9 @@ Finally sign in on the phone with the demo Gmail and approve Calendar. Verify in
 3. **Record the demo scans once** with a real key, then make them replayable offline. From `backend/`:
    `AGORA_DATABASE_URL=<tiger url> uv run python -m app.tools.export_replay`, then commit `backend/seed/replay/`.
    Setting `AGORA_VISION_PROVIDER=replay` then gives identical results for those photos with no API calls.
-4. **Freeze 2–3 hours before presenting.** Render service, then **Settings > Auto-Deploy: Off**. Note the commit
-   on the **Events** tab, and tag it so you can always go back:
+4. **Freeze 2–3 hours before presenting.** Commit an empty `.github/deploy-freeze` file to main (anyone can).
+   Automatic releases then pause; manual `gh workflow run deploy.yml -f action=deploy` still works. Delete the
+   file to resume. Tag the live commit (`/readyz` shows it) so you can always go back:
 
    ```bash
    git tag demo-ready <commit> && git push origin demo-ready
@@ -296,7 +440,7 @@ Which command to use, by what failed:
 | Render only (database still up) | `uv run python -m app.tools.local_demo --tunnel --database-url "<tiger url>"` | Everything, live |
 | Render **and** Tiger | `uv run python -m app.tools.local_demo --tunnel --import-snapshot ../demo-snapshot.zip` | Everything up to your last snapshot |
 | Venue wifi | Use a phone hotspot for the laptop and phone, then either command above | Same |
-| No internet at all | Google sign-in, Calendar and Gemini chat can't work on any setup. Scans and inventory work locally with replay fixtures (`AGORA_VISION_PROVIDER=replay`). The iOS app currently only accepts HTTPS backends, so show this via `http://localhost:8000/docs` or the backup video | Seeded data + replayed scans |
+| No internet at all | Google sign-in, Calendar and Gemini need internet. Previously configured local model profiles can still generate captions/recognition or chat on a reachable local server, while network tools remain unavailable. Backend scans can use local vision or replay (`AGORA_VISION_PROVIDER=replay`); inventory saves still need a reachable backend and valid authentication. For backup, use `http://localhost:8000/docs` or a recorded video | Local models and seeded/replayed inventory |
 
 Each `--tunnel` run gets a new URL. Rebuild the iOS app after starting it (the script updates the config for you).
 

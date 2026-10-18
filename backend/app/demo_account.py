@@ -1,7 +1,7 @@
 """The demo account: one designated account, pre-filled with realistic history for every feature.
 
 How you get in (all map to the same account):
-- iOS: sign in with Google using an address listed in AGORA_DEMO_GOOGLE_EMAILS.
+- iOS: use the username/password form; Google is an optional alternative.
 - curl / desktop / API docs: POST /v1/dev/login {"handle": "demo", "password": <AGORA_DEMO_PASSWORD>}.
 
 Isolation rules:
@@ -28,7 +28,8 @@ from app.config import Settings
 from app.core.wishlist import title_key
 from app.db import Database, audit
 from app.forecasting import refresh
-from app.inventory_ops import sync_purchase_origins
+from app.inventory_ops import create_item, record_observation, sync_purchase_origins
+from app.item_images import seed_demo_images
 from app.seed import seed_catalog, seed_household
 
 DEMO_SUBJECT = "demo:primary"
@@ -51,7 +52,14 @@ async def ensure_demo_account(db: Database, settings: Settings) -> UUID:
         existing = await conn.fetchval("SELECT id FROM users WHERE auth_subject = $1", DEMO_SUBJECT)
     if existing:
         await _forecasts_and_lists(db, existing)
+        await _manual_lists(db, existing)
+        await _chat_additions(db, existing)
         await _commerce(db, existing)
+        await _calendar(db, existing)
+        await _trips(db, existing)
+        await _shopping_refresh(db, existing)
+        await _price_watches(db, existing)
+        await seed_demo_images(db, existing)
         return existing
     user_id = await ensure_user(db, DEMO_SUBJECT, VISIBLE_HANDLE, settings.demo_display_name)
     async with db.system() as conn:
@@ -99,14 +107,17 @@ async def _seed(db: Database, user_id: UUID) -> None:
         stores = [merchants["PCC Community Markets"], merchants["Safeway"], merchants["QFC"], market]
 
         await _detections_and_purchases(conn, household_id, user_id, stores, rng)
-        # Include a recent reviewed camera capture alongside the server-recognized history.
-        capture_id = await conn.fetchval(
-            "SELECT id FROM scans WHERE household_id = $1 ORDER BY captured_at DESC LIMIT 1", household_id)
-        if capture_id:
+        # Include recent reviewed captures from both supported client model connections.
+        captures = await conn.fetch(
+            "SELECT id FROM scans WHERE household_id = $1 ORDER BY captured_at DESC LIMIT 2", household_id)
+        for capture, (provider, model) in zip(captures, (
+                ("gemini-client", "gemini-flash-latest"),
+                ("openai-compatible-client", "Qwen2.5-VL-7B-Instruct")), strict=False):
+            capture_id = capture["id"]
             await conn.execute(
-                """UPDATE scans SET provider = 'gemini-client', model = 'gemini-flash-latest',
+                """UPDATE scans SET provider = $2, model = $3,
                           frame_keys = '{}', frame_hashes = '{}', raw_video_key = NULL,
-                          media_deleted_at = now() WHERE id = $1""", capture_id)
+                          media_deleted_at = now() WHERE id = $1""", capture_id, provider, model)
             await conn.execute(
                 """UPDATE scan_detections SET bbox = NULL, frame_index = NULL, count = 1,
                           fill_fraction = NULL, auto_accepted = false WHERE scan_id = $1""", capture_id)
@@ -121,7 +132,14 @@ async def _seed(db: Database, user_id: UUID) -> None:
         await audit(conn, "demo.ready", actor_type="system", household_id=household_id, target_type="user",
                     target_id=user_id)
     await _forecasts_and_lists(db, user_id)
+    await _manual_lists(db, user_id)
+    await _chat_additions(db, user_id)
     await _commerce(db, user_id)
+    await _calendar(db, user_id)
+    await _trips(db, user_id)
+    await _shopping_refresh(db, user_id)
+    await _price_watches(db, user_id)
+    await seed_demo_images(db, user_id)
 
 
 async def _commerce(db: Database, user_id: UUID) -> None:
@@ -185,6 +203,53 @@ async def _forecasts_and_lists(db: Database, user_id: UUID) -> None:
                  merchant_id, created_by) VALUES ($1, $2, $3, $4, 'manual', 'user', $5, $6)""",
             [(list_id, household_id, 'Sourdough bread', 1, merchant, user_id),
              (list_id, household_id, 'Honeycrisp apples', 4, merchant, user_id)])
+
+
+async def _manual_lists(db: Database, user_id: UUID) -> None:
+    """Show a hand-written list with quantities and notes; preserve edits on subsequent sign-ins."""
+    async with db.scoped(user_id) as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo.features'), hashtext($1))", str(user_id))
+        household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
+        # The audit marker survives list renames/archiving, so backfills do not recreate it.
+        if await conn.fetchval("SELECT 1 FROM audit_log WHERE household_id = $1 AND action = 'demo.manual_list'",
+                               household_id):
+            return
+        merchant = await conn.fetchval("SELECT id FROM merchants WHERE name = 'Target' LIMIT 1")
+        list_id = await conn.fetchval(
+            """INSERT INTO shopping_lists (household_id, name, merchant_id, source, created_by)
+               VALUES ($1, 'Household essentials', $2, 'user', $3) RETURNING id""", household_id, merchant, user_id)
+        await conn.executemany(
+            """INSERT INTO shopping_list_items (list_id, household_id, title, quantity, unit, note, reason,
+                 added_by, merchant_id, created_by) VALUES ($1, $2, $3, $4, $5, $6, 'manual', 'user', $7, $8)""",
+            [(list_id, household_id, 'Dish soap', 2, 'bottles', 'Unscented refill bottles', merchant, user_id),
+             (list_id, household_id, 'Kitchen sponges', 1, 'pack', 'Non-scratch for the pans', merchant, user_id)])
+        await audit(conn, 'demo.manual_list', actor_type='system', household_id=household_id,
+                    target_type='shopping_list', target_id=list_id)
+
+
+async def _chat_additions(db: Database, user_id: UUID) -> None:
+    """Examples for chat's three destinations, backfilled once without overwriting user edits."""
+    async with db.scoped(user_id) as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo.features'), hashtext($1))", str(user_id))
+        household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
+        if await conn.fetchval("SELECT 1 FROM audit_log WHERE household_id = $1 AND action = 'demo.chat_additions'",
+                               household_id):
+            return
+        item_id = await create_item(conn, household_id, user_id, "Brown rice", category="pantry",
+                                    unit="bag", tracking="manual")
+        await record_observation(conn, household_id, item_id, datetime.now(UTC), 1, "manual", user_id=user_id)
+        await conn.execute(
+            """INSERT INTO wishlist_items (household_id, title, normalized_title, quantity, source, status, created_by)
+               VALUES ($1, 'Electric kettle', $2, 1, 'user', 'active', $3)""",
+            household_id, title_key("Electric kettle"), user_id)
+        list_id = await conn.fetchval(
+            """INSERT INTO shopping_lists (household_id, name, source, created_by)
+               VALUES ($1, 'Weekend groceries', 'user', $2) RETURNING id""", household_id, user_id)
+        await conn.execute(
+            """INSERT INTO shopping_list_items
+                   (list_id, household_id, title, quantity, unit, reason, added_by, created_by)
+               VALUES ($1, $2, 'Rolled oats', 1, 'bag', 'manual', 'user', $3)""", list_id, household_id, user_id)
+        await audit(conn, "demo.chat_additions", actor_type="system", household_id=household_id)
 
 
 async def _detections_and_purchases(conn: asyncpg.Connection, household_id: UUID, user_id: UUID,
@@ -260,3 +325,152 @@ async def _wishlist(conn: asyncpg.Connection, household_id: UUID, user_id: UUID,
         await conn.execute(
             """INSERT INTO wishlist_feedback (wishlist_item_id, household_id, user_id, rating, reason_code)
                VALUES ($1, $2, $3, $4, $5)""", item_id, household_id, user_id, rating, reason)
+
+
+async def _calendar(db: Database, user_id: UUID) -> None:
+    """Backfill a private calendar without changing existing rehearsed events."""
+    async with db.scoped(user_id) as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo.calendar'), hashtext($1))", str(user_id))
+        if await conn.fetchval("SELECT 1 FROM calendar_events WHERE user_id = $1 LIMIT 1", user_id):
+            return
+        household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
+        tomorrow = (datetime.now(UTC) + timedelta(days=1)).replace(hour=17, minute=0, second=0, microsecond=0)
+        for offset, title, duration in ((0, "Team planning", 1), (3, "Lunch with Maya", 1),
+                                         (24, "Weekly grocery trip", 1)):
+            start = tomorrow + timedelta(hours=offset)
+            await conn.execute(
+                """INSERT INTO calendar_events (user_id, household_id, title, starts_at, ends_at, timezone)
+                   VALUES ($1,$2,$3,$4,$5,'Etc/UTC')""", user_id, household_id, title,
+                start, start + timedelta(hours=duration))
+
+
+async def _trips(db: Database, user_id: UUID) -> None:
+    """Link a real shopping list to its private Calendar event without rewriting history."""
+    async with db.scoped(user_id) as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo.trips'), hashtext($1))", str(user_id))
+        if await conn.fetchval("SELECT 1 FROM replenishment_trips WHERE user_id = $1", user_id):
+            return
+        lst = await conn.fetchrow(
+            """SELECT * FROM shopping_lists WHERE household_id = ANY(app_household_ids())
+               AND status = 'open' ORDER BY created_at LIMIT 1""")
+        if lst is None:
+            return
+        event = await conn.fetchrow(
+            """SELECT * FROM calendar_events WHERE user_id = $1 AND household_id = $2
+               AND title = 'Weekly grocery trip' ORDER BY starts_at DESC LIMIT 1""", user_id, lst["household_id"])
+        if event is None:
+            start = (datetime.now(UTC) + timedelta(days=2)).replace(hour=18, minute=0, second=0, microsecond=0)
+            event = await conn.fetchrow(
+                """INSERT INTO calendar_events (user_id, household_id, title, description, location,
+                     starts_at, ends_at, timezone)
+                   VALUES ($1,$2,'Weekly grocery trip','Pick up bread and apples.','PCC Community Markets',
+                     $3,$4,'Etc/UTC') RETURNING *""", user_id, lst["household_id"], start, start + timedelta(hours=1))
+        await conn.execute(
+            """INSERT INTO replenishment_trips (household_id, list_id, user_id, list_name, list_updated_at,
+                 starts_at, ends_at, start_text, end_text, timezone, title, description, location, status, event_id)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'scheduled',$14)""",
+            lst["household_id"], lst["id"], user_id, lst["name"], lst["updated_at"],
+            event["starts_at"], event["ends_at"], event["starts_at"].isoformat(), event["ends_at"].isoformat(),
+            event["timezone"], event["title"], event["description"], event["location"], str(event["id"]))
+
+
+async def _shopping_refresh(db: Database, user_id: UUID) -> None:
+    from app.shopping import next_refresh
+
+    now = datetime.now(UTC)
+    async with db.scoped(user_id) as conn:
+        household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
+        await conn.execute(
+            """INSERT INTO wishlist_refresh_state (household_id, last_refreshed_at, next_refresh_at, generated_count)
+               VALUES ($1, $2, $3, 1) ON CONFLICT (household_id) DO NOTHING""",
+            household_id, now - timedelta(hours=1), next_refresh(now))
+        # Bring earlier demo evidence into the same readable shape as new suggestions.
+        await conn.execute(
+            """UPDATE wishlist_items SET rationale = 'Try an alternative to the milk already in your inventory.',
+                      evidence = '[{"kind":"other","detail":"You keep milk in the fridge."}]'::jsonb
+               WHERE household_id = $1 AND title = 'Oat milk' AND evidence @> '[{"type":"consumption"}]'::jsonb""",
+            household_id)
+
+
+async def _price_watches(db: Database, user_id: UUID) -> None:
+    """Preserve history and add watches for every active demo wishlist item, including untargeted items."""
+    from app.watch_ops import sync_wishlist_watch
+
+    await _price_watch_history(db, user_id)
+    async with db.scoped(user_id) as conn:
+        rows = await conn.fetch("SELECT id FROM wishlist_items WHERE status='active' ORDER BY household_id,id")
+        for row in rows:
+            await sync_wishlist_watch(conn, row['id'], user_id)
+        # The shared-browser fallback is for ordinary accounts only, including on additive demo backfills.
+        await conn.execute(
+            "UPDATE watch_runs SET browser_state='none',browser_urls='[]',browser_prices='[]',"
+            "browser_token=NULL,browser_user_id=NULL,browser_expires_at=NULL "
+            "WHERE user_id=$1 AND browser_state<>'none'", user_id)
+
+
+async def _price_watch_history(db: Database, user_id: UUID) -> None:
+    """Backfill a confirmed skillet watch and its previous observation without external effects."""
+    from app.price_search import Offer
+    from app.watch_schemas import WatchCriteria
+
+    now = datetime.now(UTC)
+    async with db.scoped(user_id) as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo.watches'), hashtext($1))", str(user_id))
+        if await conn.fetchval('SELECT 1 FROM price_watches WHERE created_by=$1', user_id):
+            return
+        item = await conn.fetchrow("SELECT * FROM wishlist_items WHERE title='Cast iron skillet' "
+                                   "AND status='active' ORDER BY created_at LIMIT 1")
+        if not item:
+            return
+        household_id = item['household_id']
+        checked = now-timedelta(hours=1)
+        criteria = WatchCriteria(query='Lodge 12 inch cast iron skillet',
+                                 required_terms=['Lodge', '12 inch', 'skillet'],
+                                 excluded_terms=['lid only'], target_price_cents=3999, quantity=1,
+                                 product_url='https://www.lodgecastiron.com/product/round-cast-iron-classic-skillet',
+                                 fulfillment='delivery', location='Seattle, WA 98107').model_dump(mode='json')
+        watch_id = await conn.fetchval(
+            """INSERT INTO price_watches(household_id,wishlist_item_id,created_by,criteria,confirmed_at,
+               last_checked_at,last_successful_at,next_check_at,last_result)
+               VALUES($1,$2,$3,$4,$5,$5,$5,$6,'matched') RETURNING id""",
+            household_id, item['id'], user_id, criteria, checked, now+timedelta(hours=5))
+        await conn.execute(
+            """INSERT INTO watch_subscriptions(watch_id,household_id,user_id,push_enabled,quiet_start_hour,
+               quiet_end_hour,timezone,last_notified_at) VALUES($1,$2,$3,true,22,8,'America/Los_Angeles',$4)""",
+            watch_id, household_id, user_id, checked)
+        run_id = await conn.fetchval(
+            """INSERT INTO watch_runs(household_id,watch_id,user_id,criteria_version,status,trigger,created_at,
+               started_at,finished_at,offer_count,match_count) VALUES($1,$2,$3,1,'succeeded','scheduled',$4,$4,$4,1,1)
+               RETURNING id""", household_id, watch_id, user_id, checked)
+        listing_id = await conn.fetchval(
+            """INSERT INTO watch_listings(household_id,watch_id,url,merchant)
+               VALUES($1,$2,$3,'Lodge Cast Iron') RETURNING id""", household_id, watch_id, criteria['product_url'])
+        offer = Offer(url=criteria['product_url'], title=criteria['query'], merchant='Lodge Cast Iron',
+                      price_cents=2999, available=True, available_quantity=12, shipping_cents=0, tax_cents=300,
+                      fees_cents=0, condition='new', fulfillment='delivery', location=criteria['location'],
+                      observed_at=checked, arrives_by=now+timedelta(days=2),
+                      evidence='Product page: 12 inch skillet, in stock, $29.99.').model_dump(mode='json')
+        observation_id = await conn.fetchval(
+            """INSERT INTO watch_observations(household_id,watch_id,listing_id,run_id,criteria_version,
+               offer,observed_at,eligible,reason) VALUES($1,$2,$3,$4,1,$5,$6,true,'confirmed_criteria_met')
+               RETURNING id""",
+            household_id, watch_id, listing_id, run_id, offer, checked)
+        match_id = await conn.fetchval(
+            """INSERT INTO watch_matches(household_id,watch_id,observation_id,criteria_version,fingerprint,title,
+               url,merchant,unit_price_cents,total_price_cents,currency,quantity,shipping_cents,tax_cents,
+               fulfillment,location,condition,observed_at,matched_at,evidence,reason)
+               VALUES($1,$2,$3,1,'skillet-2999',$4,$5,'Lodge Cast Iron',2999,3299,'USD',1,0,300,'delivery',
+                 $6,'new',$7,$7,$8,'Matches your confirmed size, price and delivery preferences.') RETURNING id""",
+            household_id, watch_id, observation_id, criteria['query'], criteria['product_url'], criteria['location'],
+            checked, ['12 inch cast iron skillet; new; in stock.'])
+        notification_id = await conn.fetchval(
+            """INSERT INTO notifications(household_id,user_id,watch_id,match_id,title,body,created_at)
+               VALUES($1,$2,$3,$4,'Your skillet meets your target',
+                 'Lodge 12 inch cast iron skillet is $29.99, below your $39.99 target. Review the offer.',$5)
+               RETURNING id""", household_id, user_id, watch_id, match_id, checked)
+        await conn.execute(
+            """INSERT INTO notification_outbox(household_id,user_id,notification_id,status,attempts,delivered_at)
+               VALUES($1,$2,$3,'sent',1,$4)""", household_id, user_id, notification_id, checked)
+        await conn.execute(
+            """INSERT INTO push_devices(user_id,token,environment) VALUES($1,$2,'sandbox')
+               ON CONFLICT(token,environment) DO NOTHING""", user_id, 'a'*64)

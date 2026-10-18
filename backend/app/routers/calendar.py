@@ -9,6 +9,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validato
 
 from app.auth import CurrentUser, Principal, current_principal, ensure_user
 from app.db import audit
+from app.demo_account import is_demo_user
 from app.errors import Problem
 from app.google_calendar import CALENDAR_SCOPES, SCOPES, challenge, digest
 from app.idempotency import key_from, request_hash
@@ -238,6 +239,11 @@ async def disconnect(request: Request, user: Principal = CurrentUser):
 
 @router.post("/calendar/freebusy")
 async def freebusy(body: TimeWindow, request: Request, user: Principal = CurrentUser):
+    async with request.app.state.db.scoped(user.user_id) as conn:
+        demo = await is_demo_user(conn, user.user_id)
+    if demo:
+        from app.routers.demo import freebusy as simulated_freebusy
+        return await simulated_freebusy(body, request, user)
     service = request.app.state.calendar
     response = await service.calendar_request(
         user.user_id,
@@ -262,6 +268,11 @@ async def freebusy(body: TimeWindow, request: Request, user: Principal = Current
 
 @router.post("/calendar/events", status_code=201)
 async def create_event(body: EventIn, request: Request, user: Principal = CurrentUser):
+    async with request.app.state.db.scoped(user.user_id) as conn:
+        demo = await is_demo_user(conn, user.user_id)
+    if demo:
+        from app.routers.demo import create_event as simulated_create_event
+        return await simulated_create_event(body, request, user)
     if not body.confirmed:
         raise Problem(403, "approval_required", "Confirm the event in Agora before creating it.")
     key = key_from(request)

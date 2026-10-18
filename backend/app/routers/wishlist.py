@@ -9,19 +9,17 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Query, Request, Response
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
-from app import idempotency
+from app import idempotency, shopping
 from app.auth import CurrentUser, Principal
 from app.core.wishlist import (
-    REJECTION_WINDOW,
     FeedbackIndex,
     Outcome,
-    Rejection,
     ScoreInput,
     Tally,
     agent_context,
-    blocking_rejection,
     category_key,
     rank_key,
     score,
@@ -38,15 +36,18 @@ from app.schemas import (
     WishlistItem,
     WishlistItemIn,
     WishlistPatch,
+    WishlistRefreshIn,
+    WishlistRefreshOut,
     WishlistStatus,
     WishlistSuggestionIn,
 )
+from app.watch_ops import sync_wishlist_watch
+from app.wishlist_ops import _refuse_open_duplicate, _resolve_links, lock_household, propose
 
 router = APIRouter(prefix="/v1/wishlist", tags=["wishlist"])
 
 OPEN = ("suggested", "active", "snoozed")
 PENDING = ("suggested", "snoozed")
-MAX_PENDING_SUGGESTIONS = 50
 MAX_SNOOZE = timedelta(days=180)
 
 # A snooze ends by itself: once its time passes the item reads as a suggestion again, with no background job.
@@ -110,6 +111,10 @@ async def _load(conn: asyncpg.Connection, item_id: UUID) -> WishlistItem:
 
 
 async def _locked(conn: asyncpg.Connection, item_id: UUID) -> asyncpg.Record:
+    household_id = await conn.fetchval('SELECT household_id FROM wishlist_items WHERE id=$1', item_id)
+    if household_id is None:
+        raise not_found('wishlist item')
+    await lock_household(conn, household_id)
     row = await conn.fetchrow(f"SELECT w.*, {_STATUS} AS effective FROM wishlist_items w WHERE w.id = $1 FOR UPDATE",
                               item_id)
     if row is None:
@@ -120,30 +125,6 @@ async def _locked(conn: asyncpg.Connection, item_id: UUID) -> asyncpg.Record:
 def _require(row: asyncpg.Record, allowed: tuple[str, ...], action: str, hint: str = "") -> None:
     if row["effective"] not in allowed:
         raise Problem(409, "invalid_transition", f"Can't {action} an item that is {row['effective']}.{hint}")
-
-
-async def _resolve_links(conn: asyncpg.Connection, household_id: UUID, product_id: UUID | None,
-                         inventory_item_id: UUID | None, category: str | None) -> str | None:
-    """Check linked records belong to this household and borrow a category from them when none was given."""
-    if inventory_item_id is not None:
-        linked = await conn.fetchrow("SELECT category FROM inventory_items WHERE id = $1 AND household_id = $2",
-                                     inventory_item_id, household_id)
-        if linked is None:
-            raise not_found("inventory item")
-        category = category or linked["category"]
-    if product_id is not None:
-        product_category = await conn.fetchval("SELECT category FROM products WHERE id = $1", product_id)
-        if product_category is None:
-            raise not_found("product")
-        category = category or product_category
-    return category_key(category)
-
-
-async def _refuse_open_duplicate(conn: asyncpg.Connection, household_id: UUID, key: str) -> None:
-    if await conn.fetchval(
-            "SELECT 1 FROM wishlist_items WHERE household_id = $1 AND normalized_title = $2 AND status = ANY($3)",
-            household_id, key, list(OPEN)):
-        raise Problem(409, "already_on_wishlist", "That's already on the wishlist or waiting as a suggestion.")
 
 
 async def _changed(conn: asyncpg.Connection, row: asyncpg.Record, action: str, user: Principal,
@@ -198,13 +179,45 @@ async def get_agent_context(request: Request, household_id: UUID | None = None,
     return {"household_id": str(household_id), **context}
 
 
+@router.get("/refresh-status", response_model=WishlistRefreshOut)
+async def refresh_status(request: Request, household_id: UUID | None = None,
+                         user: Principal = CurrentUser) -> dict:
+    async with request.app.state.db.scoped(user.user_id) as conn:
+        household_id = await require_household(conn, household_id, user.user_id)
+        return await shopping.state(conn, household_id)
+
+
+@router.post("/refresh", response_model=WishlistRefreshOut)
+async def refresh_suggestions(body: WishlistRefreshIn, request: Request,
+                              user: Principal = CurrentUser) -> JSONResponse:
+    key = idempotency.key_from(request)
+    digest = idempotency.request_hash("wishlist.refresh", body.model_dump(mode="json"))
+    async with request.app.state.db.scoped(user.user_id) as conn:
+        household_id = await require_household(conn, body.household_id, user.user_id)
+        await lock_household(conn, household_id)
+        if (previous := await idempotency.lookup(conn, user.user_id, key, digest)) is not None:
+            return JSONResponse(previous, headers={"Idempotent-Replay": "true"})
+        result = jsonable_encoder(await shopping.refresh(conn, household_id, user.user_id))
+        await audit(conn, "wishlist.refresh_requested", actor_id=user.user_id, household_id=household_id)
+        if not await idempotency.claim(conn, user.user_id, key, digest, 200, result):
+            raise Problem(409, "duplicate_request", "This request is already being processed; retry shortly.")
+        return JSONResponse(result)
+
+
 # ---------------------------------------------------------------- the two ways in
 
 @router.post("", response_model=WishlistItem, status_code=201)
 async def add_item(body: WishlistItemIn, request: Request, user: Principal = CurrentUser) -> WishlistItem:
     """The user adds something themselves. It goes straight onto the active wishlist."""
+    if not body.title.strip():
+        raise Problem(422, "invalid_request", "Title cannot be blank.")
     async with request.app.state.db.scoped(user.user_id) as conn:
         household_id = await require_household(conn, body.household_id, user.user_id)
+        request_key, digest, previous = await idempotency.begin_optional_add(
+            conn, request, user.user_id, "wishlist.add", body.model_dump(mode="json"))
+        if previous is not None:
+            return WishlistItem.model_validate(previous)
+        await lock_household(conn, household_id)
         category = await _resolve_links(conn, household_id, body.product_id, body.inventory_item_id, body.category)
         key = title_key(body.title)
         await _refuse_open_duplicate(conn, household_id, key)
@@ -215,10 +228,14 @@ async def add_item(body: WishlistItemIn, request: Request, user: Principal = Cur
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'user', 'active', $13) RETURNING id""",
             household_id, body.title.strip(), key, body.notes, category, body.quantity, body.target_price_cents,
             body.needed_by, body.priority, body.pinned, body.product_id, body.inventory_item_id, user.user_id)
+        await sync_wishlist_watch(conn, item_id, user.user_id,
+                                  daily_cap=request.app.state.settings.watch_daily_check_cap)
         await audit(conn, "wishlist.item_added", actor_id=user.user_id, household_id=household_id,
                     target_type="wishlist_item", target_id=item_id, meta={"source": "user"})
         await notify(conn, household_id, "wishlist.updated", item_id)
-        return await _load(conn, item_id)
+        result = await _load(conn, item_id)
+        await idempotency.finish_optional_add(conn, user.user_id, request_key, digest, result.model_dump(mode="json"))
+        return result
 
 
 @router.post("/suggestions", response_model=WishlistItem, status_code=201)
@@ -233,45 +250,14 @@ async def suggest_item(body: WishlistSuggestionIn, request: Request, user: Princ
     now = datetime.now(UTC)
     async with request.app.state.db.scoped(user.user_id) as conn:
         household_id = await require_household(conn, body.household_id, user.user_id)
+        await lock_household(conn, household_id)
         if (previous := await idempotency.lookup(conn, user.user_id, key, digest)) is not None:
             return JSONResponse(previous, status_code=201, headers={"Idempotent-Replay": "true"})
-        category = await _resolve_links(conn, household_id, body.product_id, body.inventory_item_id, body.category)
-        tkey = title_key(body.title)
-
-        rejections = await conn.fetch(
-            """SELECT normalized_title, reject_reason, decided_at, target_price_cents FROM wishlist_items
-               WHERE household_id = $1 AND normalized_title = $2 AND status = 'rejected' AND decided_at > $3""",
-            household_id, tkey, now - REJECTION_WINDOW)
-        blocked = blocking_rejection(tkey, body.target_price_cents, [
-            Rejection(r["normalized_title"], r["reject_reason"], r["decided_at"], r["target_price_cents"])
-            for r in rejections], now)
-        if blocked is not None:
-            # Recorded (the transaction commits), so the user can see the agent tried and was held back.
-            await audit(conn, "wishlist.suggestion_blocked", actor_type="agent", actor_id=user.user_id,
-                        household_id=household_id, meta={"reason": "recently_rejected",
-                                                          "reject_reason": blocked.reason_code})
+        item_id = await propose(conn, household_id, user.user_id, body, now)
+        if item_id is None:
             return problem_response(request, 409, "recently_rejected",
                                     "This was rejected in the last 30 days. Check /v1/wishlist/agent-context "
                                     "before suggesting.")
-        await _refuse_open_duplicate(conn, household_id, tkey)
-        pending = await conn.fetchval(
-            "SELECT count(*) FROM wishlist_items WHERE household_id = $1 AND status = ANY($2)",
-            household_id, list(PENDING))
-        if pending >= MAX_PENDING_SUGGESTIONS:
-            raise Problem(409, "too_many_suggestions", "Too many suggestions are waiting for a decision.")
-
-        item_id = await conn.fetchval(
-            """INSERT INTO wishlist_items (household_id, title, normalized_title, category, quantity,
-                                           target_price_cents, needed_by, product_id, inventory_item_id, source,
-                                           status, confidence, rationale, evidence, created_by)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'agent', 'suggested', $10, $11, $12, $13) RETURNING id""",
-            household_id, body.title.strip(), tkey, category, body.quantity, body.target_price_cents, body.needed_by,
-            body.product_id, body.inventory_item_id, body.confidence, body.rationale.strip(),
-            [e.model_dump() for e in body.evidence], user.user_id)
-        await audit(conn, "wishlist.suggested", actor_type="agent", actor_id=user.user_id, household_id=household_id,
-                    target_type="wishlist_item", target_id=item_id,
-                    meta={"confidence": round(body.confidence, 2), "evidence": len(body.evidence)})
-        await notify(conn, household_id, "wishlist.updated", item_id)
         result = (await _load(conn, item_id)).model_dump(mode="json")
         if not await idempotency.claim(conn, user.user_id, key, digest, 201, result):
             raise Problem(409, "duplicate_request", "This request is already being processed; retry shortly.")
@@ -298,14 +284,23 @@ async def update_item(item_id: UUID, body: WishlistPatch, request: Request,
         _require(row, OPEN, "edit")
         if "title" in changes:
             changes["title"] = changes["title"].strip()
+            if not changes["title"]:
+                raise Problem(422, "invalid_request", "Title cannot be blank.")
             changes["normalized_title"] = title_key(changes["title"])
+            await _refuse_open_duplicate(conn, row["household_id"], changes["normalized_title"], exclude_id=item_id)
         if "category" in changes:
             changes["category"] = category_key(changes["category"])
         if not changes:
             return await _load(conn, item_id)
+        previous_status = await conn.fetchval(
+            'SELECT status FROM price_watches WHERE wishlist_item_id=$1', item_id)
         columns = ", ".join(f"{name} = ${i}" for i, name in enumerate(changes, start=2))  # names are fixed
         await conn.execute(f"UPDATE wishlist_items SET {columns}, updated_at = now() WHERE id = $1",
                            item_id, *changes.values())
+        await sync_wishlist_watch(conn, item_id, user.user_id,
+                                  changed_fields={name for name, value in changes.items() if row[name] != value},
+                                  previous_status=previous_status,
+                                  daily_cap=request.app.state.settings.watch_daily_check_cap)
         return await _changed(conn, row, "wishlist.item_updated", user,
                               {"fields": sorted(k for k in changes if k != "normalized_title")})
 
@@ -331,6 +326,8 @@ async def accept(item_id: UUID, request: Request, user: Principal = CurrentUser)
         await conn.execute(
             """UPDATE wishlist_items SET status = 'active', snoozed_until = NULL, accepted_at = now(),
                       decided_at = now(), decided_by = $2, updated_at = now() WHERE id = $1""", item_id, user.user_id)
+        await sync_wishlist_watch(conn, item_id, user.user_id,
+                                  daily_cap=request.app.state.settings.watch_daily_check_cap)
         return await _changed(conn, row, "wishlist.accepted", user)
 
 

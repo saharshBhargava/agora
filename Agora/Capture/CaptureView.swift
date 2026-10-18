@@ -42,7 +42,7 @@ struct CaptureView: View {
                         Button { pickingFiles = true } label: { Label("Files", systemImage: "folder") }
                             .buttonStyle(.bordered)
                     }.disabled(library.busy || requestingPermission)
-                    Text("New camera captures go directly to Gemini to identify items. Enter the purchase store while Gemini works.")
+                    Text("New camera captures go to your selected inventory model to identify items. Enter the purchase store while recognition runs.")
                         .font(.footnote).foregroundStyle(.secondary)
                     if library.busy { ProgressView("Saving media…").frame(maxWidth: .infinity) }
                     HStack {

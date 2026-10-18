@@ -18,13 +18,15 @@ private final class InventoryGoogle: GoogleCalendarAuthorizing {
 private final class InventoryHTTP: URLProtocol {
     static var handler: ((URLRequest) -> (Int, Any))!
     static var delay: TimeInterval = 0
+    /// When set, overrides `delay` per request (for racing writes against a slow refresh).
+    static var delayIf: ((URLRequest) -> TimeInterval)?
     private var stopped = false
     private let lock = NSLock()
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         let (status, value) = Self.handler(request)
-        let delay = Self.delay
+        let delay = Self.delayIf?(request) ?? Self.delay
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in
             lock.lock(); defer { lock.unlock() }
             guard !stopped else { return }
@@ -77,6 +79,7 @@ final class InventoryTests: XCTestCase {
         store = InventoryStore(api: api, calendar: calendar)
         let profile = profile, row = row
         InventoryHTTP.delay = 0
+        InventoryHTTP.delayIf = nil
         InventoryHTTP.handler = { request in
             if request.url!.path.hasSuffix("/me") { return (200, profile) }
             return (200, [row])
@@ -85,7 +88,7 @@ final class InventoryTests: XCTestCase {
         XCTAssertNil(store.error); XCTAssertEqual(store.items.count, 1)
     }
     override func tearDown() async throws {
-        http.invalidateAndCancel(); InventoryHTTP.handler = nil; InventoryHTTP.delay = 0
+        http.invalidateAndCancel(); InventoryHTTP.handler = nil; InventoryHTTP.delay = 0; InventoryHTTP.delayIf = nil
         store = nil; calendar = nil; auth = nil
     }
 
@@ -223,6 +226,29 @@ final class InventoryTests: XCTestCase {
         let found = try await store.merchants(search: "A&B + Market")
         let merchant = try await store.addMerchant(name: "A&B + Market", locality: "North")
         XCTAssertEqual(found.first, merchant)
+    }
+
+    func testAddLocationIsNotClobberedByInFlightRefresh() async throws {
+        let newID = UUID()
+        let staleProfile = profile
+        let row = row
+        InventoryHTTP.delayIf = { request in request.url!.path.contains("/locations") ? 0 : 0.25 }
+        InventoryHTTP.handler = { request in
+            if request.url!.path.contains("/locations") {
+                return (201, ["id": newID.uuidString, "name": "Garage freezer", "kind": "freezer"])
+            }
+            if request.url!.path.hasSuffix("/me") { return (200, staleProfile) }
+            return (200, [row])
+        }
+        let refresh = Task { await store.refresh() }
+        try await Task.sleep(for: .milliseconds(50))
+        let location = try await store.addLocation(name: "Garage freezer", kind: "freezer")
+        XCTAssertEqual(location.id, newID)
+        XCTAssertTrue(store.locations.contains(where: { $0.id == newID }))
+        await refresh.value
+        XCTAssertTrue(store.locations.contains(where: { $0.id == newID }),
+                      "A refresh that started before addLocation must not drop the new location")
+        XCTAssertEqual(store.locations.filter { $0.id == newID }.count, 1)
     }
 }
 

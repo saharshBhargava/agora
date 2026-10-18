@@ -47,7 +47,8 @@ def replay_dir(tmp_path_factory) -> Path:
 async def app(database_url, replay_dir, tmp_path_factory):
     settings = Settings(env="test", database_url=database_url, storage_dir=tmp_path_factory.mktemp("media"),
                         replay_dir=replay_dir, vision_provider="replay", vision_fallback="none",
-                        run_worker_in_process=False)
+                        run_worker_in_process=False, watch_search_api_key=None,
+                        gemini_api_key=None, watch_search_providers=[], apns_enabled=False)
     application = create_app(settings)
     async with application.router.lifespan_context(application):
         yield application

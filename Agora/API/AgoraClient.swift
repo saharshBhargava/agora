@@ -18,11 +18,22 @@ final class AgoraClient {
         self.http = http ?? URLSession(configuration: config, delegate: NoCredentialRedirect(), delegateQueue: nil)
     }
 
-    private static func validOrigin(_ url: URL?) -> Bool {
-        guard let url else { return false }
-        return url.scheme == "https" && url.host != nil
-            && url.user == nil && url.password == nil
-            && url.query == nil && url.fragment == nil
+    /// Release builds require HTTPS. DEBUG also allows plain HTTP to loopback, `*.local`, and private LAN IPs (Plan B laptop demo).
+    static func validOrigin(_ url: URL?) -> Bool {
+        guard let url,
+              let scheme = url.scheme?.lowercased(),
+              let host = url.host?.lowercased(), !host.isEmpty,
+              url.user == nil, url.password == nil,
+              url.query == nil, url.fragment == nil else { return false }
+        if scheme == "https" { return true }
+        #if DEBUG
+        guard scheme == "http" else { return false }
+        let name = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        if name == "localhost" || name.hasSuffix(".localhost") || name.hasSuffix(".local") { return true }
+        return OpenAICompatibleClient.isAllowedPrivateAddress(name)
+        #else
+        return false
+        #endif
     }
 
     /// Typed JSON (`Decodable`, snake_case). Preferred for inventory and similar list/detail routes.
@@ -47,6 +58,11 @@ final class AgoraClient {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid timestamp"))
         }
         return try decoder.decode(type, from: data)
+    }
+
+    /// Requests whose successful response has no JSON body (for example, DELETE feedback).
+    func send(_ path: String, method: String) async throws {
+        _ = try await perform(path, method: method, body: nil, key: nil, query: [])
     }
 
     /// JSON object responses (`{...}`).
@@ -89,12 +105,12 @@ final class AgoraClient {
             )
         }
         guard calendar.connected, let accountID = calendar.accountID else {
-            throw BrowserError("sign_in_required", "Sign in with Google to continue.")
+            throw BrowserError("sign_in_required", "Sign in to continue.")
         }
-        let token = try await calendar.authorization.idToken(for: accountID)
+        let token = try await calendar.apiToken(for: accountID)
         try Task.checkCancellation()
         guard calendar.accountID == accountID, calendar.connected else {
-            throw BrowserError("account_changed", "Your Google connection changed. Please try again.")
+            throw BrowserError("account_changed", "Your account changed. Please try again.")
         }
 
         var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
@@ -121,7 +137,7 @@ final class AgoraClient {
         }
         try Task.checkCancellation()
         guard calendar.accountID == accountID, calendar.connected else {
-            throw BrowserError("account_changed", "Your Google connection changed. Please try again.")
+            throw BrowserError("account_changed", "Your account changed. Please try again.")
         }
         guard let httpResponse = response as? HTTPURLResponse else {
             throw BrowserError("invalid_server_response")

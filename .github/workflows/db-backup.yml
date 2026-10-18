@@ -1,0 +1,50 @@
+name: db-backup
+
+# Daily encrypted backup of the production database, kept 14 days as a workflow artifact. Read-only:
+# one consistent snapshot, no migrations, no writes. The file is AES-256-GCM encrypted with the
+# AGORA_BACKUP_PASSPHRASE secret, so it is safe as an artifact on this public repository; without the
+# passphrase it is useless. Restore: docs/deployment.md#backups-and-restoring.
+# Needs the repository secrets AGORA_DATABASE_URL and AGORA_BACKUP_PASSPHRASE; skipped (with a notice) without.
+
+on:
+  schedule:
+    - cron: "17 9 * * *"   # once a day, 02:17 Pacific
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AGORA_DATABASE_URL: ${{ secrets.AGORA_DATABASE_URL }}
+      AGORA_BACKUP_PASSPHRASE: ${{ secrets.AGORA_BACKUP_PASSPHRASE }}
+    steps:
+      - name: Check configuration
+        id: config
+        run: |
+          if [ -z "$AGORA_DATABASE_URL" ] || [ -z "$AGORA_BACKUP_PASSPHRASE" ]; then
+            echo "::notice::Database backups are off: add the AGORA_DATABASE_URL and AGORA_BACKUP_PASSPHRASE secrets (docs/deployment.md#one-time-setup)."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.enabled == 'true'
+      - uses: astral-sh/setup-uv@v5
+        if: steps.config.outputs.enabled == 'true'
+      - name: Export (encrypted)
+        if: steps.config.outputs.enabled == 'true'
+        working-directory: backend
+        run: |
+          uv sync --frozen --no-dev
+          uv run --no-sync python -m app.tools.snapshot export "$RUNNER_TEMP/agora-db.snapshot"
+      - uses: actions/upload-artifact@v4
+        if: steps.config.outputs.enabled == 'true'
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: ${{ runner.temp }}/agora-db.snapshot
+          retention-days: 14
+          if-no-files-found: error

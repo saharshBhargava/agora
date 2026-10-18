@@ -5,6 +5,7 @@ instructions. Anything that doesn't validate is dropped rather than guessed at.
 """
 
 import json
+import math
 import re
 from dataclasses import asdict, dataclass
 from typing import Any, Protocol
@@ -94,9 +95,13 @@ def _text(value: Any, limit: int) -> str | None:
 def _num(value: Any, lo: float, hi: float) -> float | None:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
-    if value != value:  # NaN
+    try:
+        number = float(value)
+    except OverflowError:
         return None
-    return min(max(float(value), lo), hi)
+    if not math.isfinite(number):
+        return None
+    return min(max(number, lo), hi)
 
 
 def parse_items(payload: Any) -> list[RawDetection]:
@@ -115,7 +120,8 @@ def parse_items(payload: Any) -> list[RawDetection]:
         confidence = _num(item.get("confidence"), 0, 1)
         if not name or count is None or confidence is None:
             continue
-        category = item.get("category") if item.get("category") in CATEGORIES else "other"
+        category = item.get("category")
+        category = category if isinstance(category, str) and category in CATEGORIES else "other"
         box = item.get("box")
         if not (isinstance(box, list) and len(box) == 4 and all(_num(v, 0, 1000) is not None for v in box)):
             box = None

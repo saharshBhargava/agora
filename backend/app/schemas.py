@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 
 class Strict(BaseModel):
@@ -135,6 +135,11 @@ class ItemOut(BaseModel):
     last_purchased_from: MerchantRef | None = None
     last_purchased_on: date | None = None
 
+    @computed_field
+    @property
+    def image_path(self) -> str:
+        return f"v1/item-images/inventory/{self.id}"
+
 
 class ItemIn(Strict):
     household_id: UUID
@@ -168,7 +173,8 @@ class RecognitionIn(Strict):
     household_id: UUID
     captured_at: datetime
     media_kind: Literal["photos", "video"]
-    model: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9._-]+$")
+    provider: Literal["gemini", "openai-compatible", "builtin"] = "gemini"
+    model: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/ -]*$")
     location_id: UUID | None = None
     purchased_from_merchant_id: UUID | None = None
     purchased_on: PurchaseDate | None = None
@@ -498,6 +504,23 @@ class WishlistItem(BaseModel):
     decided_at: datetime | None
     completed_at: datetime | None
 
+    @computed_field
+    @property
+    def image_path(self) -> str:
+        return f"v1/item-images/wishlist/{self.id}"
+
+
+class WishlistRefreshIn(Strict):
+    household_id: UUID | None = None
+
+
+class WishlistRefreshOut(BaseModel):
+    household_id: UUID
+    last_refreshed_at: datetime | None
+    next_refresh_at: datetime
+    last_error: str | None
+    generated_count: int
+
 
 # ---------------------------------------------------------------- agent commerce
 
@@ -727,6 +750,11 @@ class ShoppingListItem(BaseModel):
     checked_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def image_path(self) -> str:
+        return f"v1/item-images/list/{self.id}"
 
 
 class ShoppingList(BaseModel):
