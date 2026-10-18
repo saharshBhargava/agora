@@ -8,9 +8,9 @@
 # Builds web and server first when their output is missing or older than the source (FORCE_BUILD=1
 # always rebuilds). Loads server/.env (GEMINI_API_KEY) without printing it. DEMO_PORT overrides 3000.
 # SIM_FAIL_CAPTURE=<names> passes through (see docs/dibs/README.md) to show a partly settled run.
-# Optional, in server/.env (values never printed): TEAM_API_BASE_URL (team household API origin) and
-# AGORA_DEMO_PASSWORD (its demo-account password) fill the wish page with the household's shopping list
-# and suggestions; without them it suggests from past runs.
+# Optional, in server/.env (values never printed): TEAM_API_BASE_URL (team household API origin) fills the
+# wish page with the signed-in person's household (their own token); AGORA_DEMO_PASSWORD (its demo-account
+# password) is only for requests with no token. Without them it suggests from past runs.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
