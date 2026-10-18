@@ -9,6 +9,16 @@ audit trail, seed data, and offline replay for demos.
 
 ## Run locally
 
+The fastest way, configured exactly like the hosted demo (Docker optional; falls back to an embedded
+Postgres):
+
+```bash
+cd backend && uv run python -m app.tools.local_demo --tunnel
+```
+
+See [SETUP.md](../SETUP.md) section 9 (Plan B) for running against the hosted database or a snapshot of it.
+The manual steps:
+
 ```bash
 cd backend
 docker compose up -d          # TimescaleDB on 127.0.0.1:5433 (same image family as Tiger Cloud)

@@ -11,6 +11,10 @@ steps in order: step 6 needs the URL from step 2.
 | 4 | [Google AI Studio](https://aistudio.google.com/apikey) | Gemini key for real fridge/pantry recognition | Recommended |
 | 5 | Perceptron (ask at their sponsor table) | Perceptron vision instead of Gemini | Optional |
 
+**What to send back to Kedar's coding session when you're done:** just the Render URL (it's public, not a secret).
+With it, the deploy can be smoke-tested end to end and the keep-warm job pointed at it. Never send the Tiger
+connection string or any API key; those only ever go into Render.
+
 Never paste keys into the repo, chat or Slack. They go only into Render's environment settings (and the iOS
 app's own Settings screen for the on-device Gemini key).
 
@@ -100,15 +104,94 @@ of fridge/pantry history. Use it for curl, the interactive docs at `https://<you
 or a desktop client without Google sign-in. Then, on the phone: sign in with Google and approve Calendar. Your
 Google account becomes its own Agora account, with sample history so Home isn't empty.
 
-## 8. Before judging
+## 8. Keep it alive until the demo
 
-- **Wake the server.** Render's free tier sleeps after about 15 idle minutes, and the first request then takes
-  about a minute. Open `/healthz` five minutes before you present. Optionally, point a free uptime monitor at
-  `/healthz` every 5 minutes to keep it awake all weekend.
-- **Make the scan demo wifi-proof.** Run your demo scans once with Gemini or Perceptron. Then, from a laptop, run
-  `cd backend` and `AGORA_DATABASE_URL=<tiger url> uv run python -m app.tools.export_replay`. Commit
-  `backend/seed/replay/`. If the venue network fails, set `AGORA_VISION_PROVIDER=replay` and the same photos
-  give the same results offline.
+| Risk over the next ~15 hours | Likelihood | What protects you |
+|---|---|---|
+| Render free server **sleeps** after 15 idle min (first request then takes ~1 min) | Certain, unless pinged | `keep-warm` workflow (below) + an uptime monitor + opening `/healthz` 5 min before presenting |
+| Render **restarts** the free server at any time | Occasional | Harmless: all state is in the database, and in-flight scans resume from the job queue |
+| Render **monthly hours** (750) or bandwidth run out | Very unlikely in a day | Plan B below |
+| A last-minute merge to `main` **auto-deploys a bad build** | Real: other sessions are merging PRs | Freeze deploys (below) |
+| Tiger free service **storage** (750 MiB) fills up | Very unlikely: photos are deleted after review, and the demo data is a few MB | `/readyz` keeps working; snapshot + Plan B |
+| Tiger free service **pauses or misbehaves** (free plan is beta; idle behaviour isn't documented) | Unlikely | Keep-warm pings also hit the database; snapshot + Plan B |
+| **Gemini free quota** runs out. Reported free limits vary (roughly 100–1,500 requests/day per project), and each photo in a scan is one request | **The most likely failure** if you test a lot | Separate keys per use (below); replay fixtures; the cache never re-bills the same photo |
+| Google test-user consent expires (7 days in Testing) | Not within a day | Sign in again |
+
+**Do these now:**
+
+1. **Keep it awake.** Two layers:
+   - Ask Saharsh (repo admin) to add the repository variable `AGORA_API_URL` = your Render URL, under
+     **Settings > Secrets and variables > Actions > Variables**. `.github/workflows/keep-warm.yml` then pings it
+     every 10 minutes. GitHub can delay scheduled runs, so also:
+   - Create a free uptime monitor (e.g. UptimeRobot, no card) on `https://<your-service>.onrender.com/healthz`
+     every 5 minutes.
+2. **Spread the Gemini quota.** Quotas are per Google Cloud project, so create keys in **different projects**:
+   - one for the backend (`AGORA_GEMINI_API_KEY` in Render)
+   - one for the iOS chat agent (app Settings)
+   - one spare that nobody uses until demo time
+
+   Test scans with 1–3 photos, not 12. If a key hits its limit, paste the spare into Render; it redeploys in
+   about a minute. As a last resort, set `AGORA_GEMINI_MODEL=gemini-flash-lite-latest` (higher free limits).
+3. **Record the demo scans once** with a real key, then make them replayable offline. From `backend/`:
+   `AGORA_DATABASE_URL=<tiger url> uv run python -m app.tools.export_replay`, then commit `backend/seed/replay/`.
+   Setting `AGORA_VISION_PROVIDER=replay` then gives identical results for those photos with no API calls.
+4. **Freeze 2–3 hours before presenting.** Render service, then **Settings > Auto-Deploy: Off**. Note the commit
+   on the **Events** tab, and tag it so you can always go back:
+
+   ```bash
+   git tag demo-ready <commit> && git push origin demo-ready
+   ```
+
+   Render only rolls back to the last two deploys, so the tag is your real undo button.
+5. **Snapshot the data** after your final rehearsal (and again before presenting). It includes everything you
+   created while testing:
+
+   ```bash
+   cd backend && uv run python -m app.tools.snapshot export ../demo-snapshot.zip --database-url "<tiger url>"
+   ```
+
+   Keep `demo-snapshot.zip` on two laptops. It's personal demo data, so don't commit it.
+6. **Record backup videos** of each flow early, while everything works.
+
+## 9. Plan B: run everything on a laptop
+
+If hosting fails, a laptop runs the identical backend: same code, migrations, demo accounts, Google sign-in
+and features. The iOS app talks to it as if it were the hosted server. Prepare one laptop (ideally the Mac you
+demo from) **today**, so Plan B is a single command later.
+
+One-time prep (macOS):
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+```bash
+brew install cloudflared
+```
+
+Docker Desktop is optional. Without it the script uses an embedded Postgres it downloads itself; that one has no
+TimescaleDB, and the app switches to its plain-SQL path automatically. Then clone the repo, and from
+`backend/`, run it once to check it works:
+
+```bash
+uv run python -m app.tools.local_demo --tunnel
+```
+
+It starts the database, runs migrations, seeds the demo accounts and starts the API on `http://localhost:8000`.
+`--tunnel` adds a public `https://….trycloudflare.com` URL (free, no account) and writes it into
+`Config/Local.xcconfig`. Rebuild the iOS app in Xcode and it uses the laptop. A `backend/.env` with
+`AGORA_GEMINI_API_KEY=...` enables real scans; without it, only replay fixtures work.
+
+Which command to use, by what failed:
+
+| What failed | Do this (from `backend/`) | Data you'll see |
+|---|---|---|
+| Render only (database still up) | `uv run python -m app.tools.local_demo --tunnel --database-url "<tiger url>"` | Everything, live |
+| Render **and** Tiger | `uv run python -m app.tools.local_demo --tunnel --import-snapshot ../demo-snapshot.zip` | Everything up to your last snapshot |
+| Venue wifi | Use a phone hotspot for the laptop and phone, then either command above | Same |
+| No internet at all | Google sign-in, Calendar and Gemini chat can't work on any setup. Scans and inventory work locally with replay fixtures (`AGORA_VISION_PROVIDER=replay`). The iOS app currently only accepts HTTPS backends, so show this via `http://localhost:8000/docs` or the backup video | Seeded data + replayed scans |
+
+Each `--tunnel` run gets a new URL. Rebuild the iOS app after starting it (the script updates the config for you).
 
 ## Troubleshooting
 
@@ -120,6 +203,8 @@ Google account becomes its own Agora account, with sample history so Home isn't 
 | Home says inventory isn't available | `AGORA_API_BASE_URL` isn't set in `Config/Local.xcconfig`, or isn't `https://` with no path |
 | Inventory fails to load after signing in | `AGORA_GOOGLE_IOS_CLIENT_ID` on Render doesn't match the app's client ID, or the server is still waking up |
 | A scan fails with `no_replay_fixture` | No vision key is set and that photo wasn't pre-recorded. Add the Gemini key (step 4) |
+| Scans fail with `provider_rate_limited` | Gemini quota hit: paste the spare key (section 8, step 2) or switch to `replay` |
+| `local_demo` says port in use | Another server is on 8000: add `--port 8001` |
 
 ## If a free tier runs out
 
