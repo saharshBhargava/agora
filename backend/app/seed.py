@@ -89,7 +89,7 @@ async def seed_catalog(db: Database) -> None:
                 "INSERT INTO products (name, brand, category, unit, size_value, size_unit) "
                 "VALUES ($1, $2, $3, $4, $5, $6)",
                 PRODUCTS)
-        if await conn.fetchval("SELECT count(*) FROM merchants") == 0:
+        if await conn.fetchval("SELECT count(*) FROM merchants WHERE household_id IS NULL") == 0:
             await conn.executemany(
                 "INSERT INTO merchants (name, kind, is_small_business, website, lat, lng) "
                 "VALUES ($1, $2, $3, $4, $5, $6)",

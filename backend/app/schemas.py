@@ -416,3 +416,206 @@ class WishlistItem(BaseModel):
     updated_at: datetime
     decided_at: datetime | None
     completed_at: datetime | None
+
+
+# ---------------------------------------------------------------- agent commerce
+
+IntentKind = Literal["purchase", "add_to_cart", "list_add", "calendar_event"]
+IntentStatus = Literal["proposed", "approved", "rejected", "cancelled", "executing", "succeeded", "failed",
+                       "outcome_unknown"]
+IntentDecision = Literal["allow", "needs_approval", "deny"]
+IntentRejectReason = Literal["too_expensive", "not_needed", "wrong_item", "wrong_merchant", "other"]
+Cents = Annotated[int, Field(ge=1, le=10_000_000)]
+DetailValue = Annotated[str, Field(max_length=300)] | int | float | bool | None
+
+
+class IntentEvidence(Strict):
+    kind: Literal["inventory_low", "runout_forecast", "purchase_history", "wishlist", "price", "product_page",
+                  "calendar", "other"]
+    detail: str = Field(min_length=1, max_length=200)
+
+
+class IntentIn(Strict):
+    """What the agent wants to do. The server decides whether it may; the model's own view is only evidence."""
+
+    household_id: UUID | None = None
+    kind: IntentKind
+    title: str = Field(min_length=1, max_length=120)
+    rationale: str = Field(min_length=1, max_length=500)
+    evidence: list[IntentEvidence] = Field(default_factory=list, max_length=5)
+    amount_cents: Cents | None = None
+    currency: Literal["USD"] = "USD"
+    quantity: int = Field(default=1, ge=1, le=99)
+    merchant_id: UUID | None = None
+    merchant_name: str | None = Field(default=None, min_length=1, max_length=80)
+    category: str | None = Field(default=None, min_length=1, max_length=40)
+    product_id: UUID | None = None
+    url: str | None = Field(default=None, max_length=2000, pattern=r"^https://")
+    # "device": the on-device browser agent acts in the visible browser and reports the outcome.
+    # "agora": the server charges a tokenized payment method (purchases only).
+    execution: Literal["device", "agora"] = "device"
+    payment_method_ref: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{4,100}$")
+    details: dict[Annotated[str, Field(pattern=r"^[a-z0-9_]{1,40}$")], DetailValue] = Field(default_factory=dict,
+                                                                                            max_length=20)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "IntentIn":
+        if self.kind == "purchase" and self.amount_cents is None:
+            raise ValueError("a purchase needs amount_cents")
+        if self.execution == "agora" and self.kind != "purchase":
+            raise ValueError("only purchases can use Agora checkout")
+        if self.payment_method_ref is not None and self.execution != "agora":
+            raise ValueError("payment_method_ref is only for Agora checkout")
+        return self
+
+
+class IntentOut(BaseModel):
+    id: UUID
+    household_id: UUID
+    kind: IntentKind
+    execution: Literal["device", "agora"]
+    title: str
+    payload: dict
+    amount_cents: int | None
+    final_amount_cents: int | None
+    currency: str
+    merchant_id: UUID | None
+    merchant_name: str | None
+    category: str | None
+    rationale: str
+    evidence: list[dict]
+    decision: IntentDecision
+    decision_reasons: list[str]
+    reason_codes: list[str]
+    mandate_id: UUID | None
+    status: IntentStatus
+    decided_by: Literal["policy", "user", "kill_switch"] | None
+    decided_at: datetime | None
+    reject_reason: str | None
+    error_code: str | None
+    order_id: UUID | None
+    mine: bool
+    approval_expires_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
+
+
+class IntentRejectIn(Strict):
+    reason_code: IntentRejectReason | None = None
+
+
+class IntentOutcomeIn(Strict):
+    """Reported by the on-device agent for ``execution: "device"`` intents."""
+
+    status: Literal["executing", "succeeded", "failed", "outcome_unknown"]
+    final_amount_cents: int | None = Field(default=None, ge=0, le=100_000_000)
+    error_code: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,40}$")
+
+
+class MandateIn(Strict):
+    household_id: UUID | None = None
+    label: str = Field(min_length=1, max_length=60)
+    merchant_ids: list[UUID] | None = Field(default=None, min_length=1, max_length=20)
+    categories: list[Annotated[str, Field(min_length=1, max_length=40)]] | None = Field(default=None, min_length=1,
+                                                                                        max_length=20)
+    max_per_txn_cents: Cents
+    max_per_period_cents: int | None = Field(default=None, ge=1, le=100_000_000)
+    period: Literal["day", "week", "month"] = "month"
+    require_confirm_above_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+    expires_at: datetime | None = None
+    expires_in_days: int | None = Field(default=None, ge=1, le=365)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "MandateIn":
+        if self.max_per_period_cents is not None and self.max_per_period_cents < self.max_per_txn_cents:
+            raise ValueError("max_per_period_cents can't be below max_per_txn_cents")
+        if self.expires_at is not None and self.expires_in_days is not None:
+            raise ValueError("send expires_at or expires_in_days, not both")
+        if self.expires_at is not None and self.expires_at.tzinfo is None:
+            raise ValueError("expires_at must include a time zone offset")
+        return self
+
+
+class MandateOut(BaseModel):
+    id: UUID
+    household_id: UUID
+    label: str
+    merchant_ids: list[UUID] | None
+    categories: list[str] | None
+    currency: str
+    max_per_txn_cents: int
+    max_per_period_cents: int | None
+    period: Literal["day", "week", "month"]
+    require_confirm_above_cents: int | None
+    expires_at: datetime
+    status: Literal["active", "expired", "revoked"]
+    revoked_at: datetime | None
+    revoked_reason: str | None
+    period_started_at: datetime
+    spent_this_period_cents: int
+    created_at: datetime
+
+
+class AgentState(BaseModel):
+    autonomy_level: str
+    paused: bool
+    paused_at: datetime | None
+    active_mandates: int
+    pending_approvals: int
+
+
+class PauseOut(BaseModel):
+    paused: bool
+    paused_at: datetime | None
+    mandates_revoked: int
+    intents_cancelled: int
+    in_flight: int
+
+
+class BudgetIn(Strict):
+    household_id: UUID | None = None
+    period: Literal["week", "month"]
+    category: str | None = Field(default=None, min_length=1, max_length=40)
+    limit_cents: int = Field(ge=1, le=100_000_000)
+
+
+class BudgetPatch(Strict):
+    limit_cents: int | None = Field(default=None, ge=1, le=100_000_000)
+    status: Literal["active", "archived"] | None = None
+
+
+class BudgetOut(BaseModel):
+    id: UUID
+    household_id: UUID
+    period: Literal["week", "month"]
+    category: str | None
+    limit_cents: int
+    currency: str
+    status: Literal["active", "archived"]
+    starts_on: date
+    period_started_at: datetime
+    spent_cents: int
+    pending_cents: int
+    remaining_cents: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SpendGroup(BaseModel):
+    key: str | None
+    label: str
+    amount_cents: int
+    entries: int
+
+
+class SpendOut(BaseModel):
+    household_id: UUID
+    period: Literal["week", "month"]
+    group: Literal["category", "merchant", "none"]
+    start: datetime
+    end: datetime
+    currency: str
+    total_cents: int
+    groups: list[SpendGroup]
+    budgets: list[BudgetOut]
