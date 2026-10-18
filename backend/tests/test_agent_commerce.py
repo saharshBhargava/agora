@@ -283,6 +283,51 @@ async def test_pause_revokes_cancels_and_denies(client):
     assert first_pause["meta"] == {"mandates_revoked": 1, "intents_cancelled": 2, "in_flight": 1}
 
 
+async def test_approve_holds_household_lock_during_checkout(client, app):
+    """Approve takes the same household lock as propose for the whole checkout transaction.
+
+    Without it, a concurrent auto-allow propose can read budgets before the approve transaction
+    commits spend and both charge under the same cap.
+    """
+    h = await fresh(client, autonomy="buy_with_approval")
+    await flag_demo(app, client, h)
+    await mandate(client, h)
+    created = await client.post("/v1/budgets", headers=h, json={"period": "month", "limit_cents": 1500})
+    assert created.status_code == 201, created.text
+    pending = (await propose(client, h, "Milk", execution="agora", amount_cents=899)).json()
+    assert pending["status"] == "proposed"
+    await client.patch("/v1/me/settings", headers=h, json={"autonomy_level": "buy_within_mandate"})
+
+    charge_started, release_charge = asyncio.Event(), asyncio.Event()
+    real_charge = app.state.demo_payments.charge
+
+    async def gated_charge(request):
+        charge_started.set()
+        await release_charge.wait()
+        return await real_charge(request)
+
+    app.state.demo_payments.charge = gated_charge
+    try:
+        approve_task = asyncio.create_task(
+            client.post(f"/v1/agent/intents/{pending['id']}/approve", headers=h))
+        await asyncio.wait_for(charge_started.wait(), timeout=5)
+        propose_task = asyncio.create_task(propose(client, h, "Eggs", execution="agora", amount_cents=899))
+        await asyncio.sleep(0.2)  # propose should block on the household lock held by approve
+        assert not propose_task.done(), "propose must wait while approve holds the household lock"
+        release_charge.set()
+        approve, auto = await asyncio.gather(approve_task, propose_task)
+    finally:
+        release_charge.set()
+        app.state.demo_payments.charge = real_charge
+
+    assert approve.status_code == 200, approve.text
+    assert auto.status_code == 201, auto.text
+    assert approve.json()["status"] == "succeeded"
+    assert auto.json()["status"] != "succeeded"
+    assert auto.json()["decision"] in ("deny", "needs_approval")
+    assert (await client.get("/v1/spend", headers=h)).json()["total_cents"] == 899
+
+
 async def test_idempotent_retries_never_double_charge(client, database_url, app):
     h = await fresh(client)
     await flag_demo(app, client, h)
