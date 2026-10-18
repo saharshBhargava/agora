@@ -13,6 +13,8 @@ export type PipelineDeps = {
   price: PriceProvider;
   now: () => number;
   /** Delivers a message to the run's shopper socket only. */
+  /** Chip ids whose identify is running; a retry for one of them is a no-op. */
+  inflight?: Set<string>;
   toShopper?: (runId: string, msg: ServerMsg) => void;
 };
 
@@ -53,6 +55,7 @@ export async function identifyChip(
   region: Box | null,
   opts: { retryChipId?: string; hint?: string; removeOnFail?: boolean } = {},
 ): Promise<IdentifyResult> {
+  if (opts.retryChipId && deps.inflight?.has(opts.retryChipId)) return { chipId: opts.retryChipId };
   const { store, vision, price, now } = deps;
   const run = store.get(runId);
   if (!run) return { chipId: null, error: 'cart closed' };
@@ -69,6 +72,24 @@ export async function identifyChip(
     );
     if ('error' in added || !added.run.chips.some((c) => c.id === id)) return { chipId: null, error: 'cart closed' };
   }
+  deps.inflight?.add(id);
+  try {
+    return await identifyLive(deps, runId, id, frameBase64, region, run.store, opts);
+  } finally {
+    deps.inflight?.delete(id);
+  }
+}
+
+async function identifyLive(
+  deps: PipelineDeps,
+  runId: string,
+  id: string,
+  frameBase64: string,
+  region: Box | null,
+  storeName: string,
+  opts: { hint?: string; removeOnFail?: boolean },
+): Promise<IdentifyResult> {
+  const { store, vision, price, now } = deps;
   if (region) deps.store.broadcast(runId, { t: 'identifying', region });
 
   let found;
@@ -89,7 +110,7 @@ export async function identifyChip(
 
   if (found.priceCents === null) {
     void price
-      .lookup(found.name, run.store)
+      .lookup(found.name, storeName)
       .then((hit) => {
         if (!hit) return;
         // Discard a late price unless the chip is still unpriced and the run still takes changes.

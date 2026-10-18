@@ -47,14 +47,16 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
 
   const makeDetector = deps.detector ?? getDetector;
   const relay = createFrameRelay();
-  type Live = { detector: Detector; queue: Promise<unknown> };
+  type Frame = { jpegBase64: string; at: number };
+  type Live = { detector: Detector; running: boolean; pending: Frame | null };
   const live = new Map<string, Live>();
   const conns = new Map<string, Map<WebSocket, string>>();
   const toShopper = (runId: string, msg: ServerMsg) => {
     const shopperId = store.get(runId)?.shopperId;
     for (const [ws, pid] of conns.get(runId) ?? []) if (pid === shopperId) store.send(ws, msg);
   };
-  const pipe: PipelineDeps = { store, vision, price, now, toShopper };
+  const inflight = new Set<string>();
+  const pipe: PipelineDeps = { store, vision, price, now, toShopper, inflight };
   const accepting = (r: Run | undefined): r is Run => !!r && (r.state === 'open' || r.state === 'lastCall');
   /** Discards the run's buffered frame and detector. */
   const dropFrames = (runId: string) => {
@@ -302,11 +304,18 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         }
       }
       let st = live.get(runId);
-      if (!st) live.set(runId, (st = { detector: makeDetector(), queue: Promise.resolve() }));
+      if (!st) live.set(runId, (st = { detector: makeDetector(), running: false, pending: null }));
       const mine = st;
-      mine.queue = mine.queue.then(async () => {
+      // At most one frame waits behind the push in progress; a newer one replaces it.
+      if (mine.running) {
+        mine.pending = frame;
+        return;
+      }
+      mine.running = true;
+      let next: Frame | null = frame;
+      while (next) {
         try {
-          const events = await mine.detector.push(frame);
+          const events = await mine.detector.push(next);
           if (live.get(runId) !== mine || !accepting(store.get(runId))) return;
           for (const ev of events) {
             if (ev.kind !== 'newItem') continue;
@@ -315,7 +324,10 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         } catch (e) {
           console.error('detector push failed', e);
         }
-      });
+        next = mine.pending;
+        mine.pending = null;
+      }
+      mine.running = false;
     } catch (e) {
       console.error('frame failed', e);
     }
@@ -330,6 +342,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         (c) => c.state === 'identifying' && !c.dropped && c.region &&
           x >= c.region.x && x <= c.region.x + c.region.w && y >= c.region.y && y <= c.region.y + c.region.h,
       );
+      if (hit && inflight.has(hit.id)) return;
       let region = hit?.region ?? null;
       if (!region) {
         const m = await sharp(Buffer.from(frame.jpegBase64, 'base64')).metadata();

@@ -313,7 +313,10 @@ describe('dibs server', () => {
       const shopper = connect(runId, shopperId);
       const wa = connect(runId, A);
       await Promise.all([shopper.opened, wa.opened]);
-      for (let i = 0; i < seq.length; i++) shopper.send({ t: 'frame', jpegBase64: fx(seq[i]), at: i * 500 });
+      for (let i = 0; i < seq.length; i++) {
+        shopper.send({ t: 'frame', jpegBase64: fx(seq[i]), at: i * 500 });
+        await sleep(80); // paced so the bounded detector queue does not coalesce frames
+      }
       await wa.waitFor((m) => m.t === 'frame');
       await shopper.waitFor((m) => m.t === 'identifying');
       for (let i = 0; i < 200 && !(await getRun(runId)).chips.some((c) => c.state === 'open'); i++) await sleep(10);
@@ -335,7 +338,10 @@ describe('dibs server', () => {
       await post(`/api/runs/${runId}/checkout`, { personId: shopperId });
       await wa.waitFor((m) => m.t === 'locked');
       const n = wa.msgs.length;
-      for (let i = 0; i < seq.length; i++) shopper.send({ t: 'frame', jpegBase64: fx(seq[i]), at: i * 500 });
+      for (let i = 0; i < seq.length; i++) {
+        shopper.send({ t: 'frame', jpegBase64: fx(seq[i]), at: i * 500 });
+        await sleep(80); // paced so the bounded detector queue does not coalesce frames
+      }
       shopper.send({ t: 'identifyAt', x: 100, y: 100 });
       await sleep(300);
       expect(wa.msgs.length).toBe(n);
@@ -357,6 +363,46 @@ describe('dibs server', () => {
       const [chip] = (await getRun(runId)).chips;
       expect(chip.state).toBe('open');
       expect(chip.region).toMatchObject({ x: 0, y: 0, w: 200, h: 200 });
+    });
+
+    it('retries a failed chip by tapping inside its region, once', async () => {
+      await app.close();
+      const stub = new StubVision();
+      let calls = 0;
+      let mode: 'fail' | 'slow' | 'ok' = 'fail';
+      const vision = {
+        identify: async (...a: Parameters<StubVision['identify']>) => {
+          calls++;
+          if (mode === 'fail') throw new Error('down');
+          if (mode === 'slow') await sleep(300);
+          return stub.identify(...a);
+        },
+        readReceipt: (i: string) => stub.readReceipt(i),
+      };
+      await start({ vision });
+      const { runId, shopperId } = await setup();
+      const shopper = connect(runId, shopperId);
+      await shopper.opened;
+      for (let i = 0; i < seq.length; i++) {
+        shopper.send({ t: 'frame', jpegBase64: fx(seq[i]), at: i * 500 });
+        await sleep(80); // paced so the bounded detector queue does not coalesce frames
+      }
+      await shopper.waitFor((m) => m.t === 'error' && m.reason === 'identify failed');
+      const [stuck] = (await getRun(runId)).chips;
+      expect(stuck.state).toBe('identifying');
+      const r = stuck.region!;
+      mode = 'slow';
+      calls = 0;
+      const tap = { t: 'identifyAt', x: r.x + r.w / 2, y: r.y + r.h / 2 };
+      shopper.send(tap);
+      await sleep(50);
+      shopper.send(tap); // in flight: ignored
+      for (let i = 0; i < 200 && (await getRun(runId)).chips[0].state !== 'open'; i++) await sleep(10);
+      const chips = (await getRun(runId)).chips;
+      expect(chips).toHaveLength(1);
+      expect(chips[0].id).toBe(stuck.id);
+      expect(chips[0].state).toBe('open');
+      expect(calls).toBe(1);
     });
   });
 });
