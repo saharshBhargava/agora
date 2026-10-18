@@ -94,13 +94,13 @@ final class ShopperLogicTests: XCTestCase {
         run.chips.append(Chip(id: "nameless", name: "", priceCents: 199, state: .open, addedAt: 1_792_293_596_000))
         let bagelAdded = Date(timeIntervalSince1970: 1_792_293_590)
         // Unpriced, unnamed and identifying chips stay off the feed; wishes show.
-        XCTAssertEqual(ShopperLogic.rows(run.chips, now: bagelAdded.addingTimeInterval(59)).map(\.id),
+        XCTAssertEqual(ShopperLogic.rows(run.chips, now: bagelAdded.addingTimeInterval(19)).map(\.id),
                        [oat, "milk", towels, eggs])
-        // A named chip still unpriced after 60 s shows, as "No price found · Add price".
-        XCTAssertEqual(ShopperLogic.rows(run.chips, now: bagelAdded.addingTimeInterval(60)).map(\.id),
+        // A named chip still unpriced after 20 s shows, as "No price found · Add price".
+        XCTAssertEqual(ShopperLogic.rows(run.chips, now: bagelAdded.addingTimeInterval(20)).map(\.id),
                        [oat, "milk", "bagel", towels, eggs])
         XCTAssertEqual(ShopperLogic.subline(run.chip("bagel")!, people: run.people, checking: nil,
-                                            now: bagelAdded.addingTimeInterval(60)), .noPrice)
+                                            now: bagelAdded.addingTimeInterval(20)), .noPrice)
         XCTAssertTrue(run.chip(eggs)!.isOnFeed)
         XCTAssertTrue(run.chip(oat)!.isOnFeed)
         XCTAssertFalse(run.chip("bagel")!.isOnFeed)
@@ -124,12 +124,12 @@ final class ShopperLogicTests: XCTestCase {
         XCTAssertNil(ShopperLogic.subline(identifying, people: run.people, checking: nil))
     }
 
-    func testNoPriceFoundAfterSixtySecondsUnlessBeingChecked() throws {
+    func testNoPriceFoundAfterTwentySecondsUnlessBeingChecked() throws {
         let added = 1_792_293_590_000.0
         let chip = Chip(id: "bagel", name: "Bagels", priceCents: nil, state: .open, addedAt: added)
         let at = { (s: Double) in Date(timeIntervalSince1970: added / 1000 + s) }
-        XCTAssertEqual(ShopperLogic.subline(chip, people: [], checking: nil, now: at(59)), .muted("Finding price…"))
-        XCTAssertEqual(ShopperLogic.subline(chip, people: [], checking: nil, now: at(60)), .noPrice)
+        XCTAssertEqual(ShopperLogic.subline(chip, people: [], checking: nil, now: at(19)), .muted("Finding price…"))
+        XCTAssertEqual(ShopperLogic.subline(chip, people: [], checking: nil, now: at(20)), .noPrice)
         XCTAssertEqual(ShopperLogic.subline(chip, people: [], checking: "Checking qfc.com…", now: at(90)),
                        .muted("Checking qfc.com…"))
         var priced = chip

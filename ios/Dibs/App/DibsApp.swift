@@ -30,6 +30,7 @@ struct DibsApp: App {
 /// Home at the root; every run screen is a `Route` pushed on top.
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         @Bindable var model = model
@@ -42,6 +43,8 @@ struct RootView: View {
         .tint(Color.ink)
         // A claim or shopper screen moves to Settle (or the receipt check) when the live run gets there.
         .onChange(of: model.store.run.map { "\($0.id)|\($0.state.rawValue)" }) { model.followRun() }
+        // Back from the lock screen or another app: check the socket at once instead of waiting for the heartbeat.
+        .onChange(of: scenePhase) { _, phase in if phase == .active { model.store.foregrounded() } }
         .confirmationDialog(
             "This link is from \(model.pendingLink?.server?.host ?? "another server"). Use it as your Dibs server?",
             isPresented: Binding(

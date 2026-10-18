@@ -20,7 +20,9 @@ struct ShopperView: View {
     /// Called after "Leave the cart?" is confirmed and the camera and price worker are stopped. The
     /// routed screen goes Home; nil (the debug auto-shop root) just stops.
     let onLeave: (() -> Void)?
-    @State private var camera: ShopperCamera
+    /// Made once in `.task`, not in `init`: RootView re-creates this view on every run broadcast, and a
+    /// camera built in `init` would churn an AVCaptureSession each time.
+    @State private var camera: ShopperCamera?
     /// Finds QFC prices for unpriced chips with the in-app browser while this shopper is in the run.
     @State private var priceWorker = PriceWorker()
 
@@ -61,7 +63,6 @@ struct ShopperView: View {
         self.personId = personId
         self.onSnapReceipt = onSnapReceipt
         self.onLeave = onLeave
-        _camera = State(initialValue: ShopperCamera(store: store, api: api, runId: runId))
     }
 
     private var run: Run? { store.run }
@@ -135,16 +136,25 @@ struct ShopperView: View {
         .task {
             store.connect(runId: runId, personId: personId)
             priceWorker.start(api: api)
-            await camera.start()
+            // The phone rides clipped to the cart: keep it from auto-locking while it streams.
+            UIApplication.shared.isIdleTimerDisabled = true
+            let cam = camera ?? ShopperCamera(store: store, api: api, runId: runId)
+            if camera == nil { camera = cam }
+            cam.runStateChanged(store.run?.state)
+            await cam.start()
         }
-        .onDisappear { camera.stop(); priceWorker.stop() }
-        .onChange(of: store.run?.state, initial: true) { _, state in camera.runStateChanged(state) }
+        .onDisappear {
+            camera?.stop()
+            priceWorker.stop()
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
+        .onChange(of: store.run?.state, initial: true) { _, state in camera?.runStateChanged(state) }
         .onChange(of: store.connection, initial: true) { _, c in DibsLog.event("socket \(c)") }
         .onChange(of: store.lastError) { _, e in if let e { DibsLog.event("store error: \(e)") } }
         .onChange(of: "\(store.errorSeq)|\(store.lastError ?? "")") { _, _ in
             if let e = store.lastError, let n = ShopperLogic.notice(forError: e) { notice = n }
         }
-        .onChange(of: camera.lastAddError) { _, e in if let e { notice = e } }
+        .onChange(of: camera?.lastAddError) { _, e in if let e = e ?? nil { notice = e } }
         .onChange(of: store.run?.chips, initial: true) { _, chips in
             guard let chips else { return }
             let r = ShopperLogic.removals(previous: removedIds, chips: chips)
@@ -333,7 +343,7 @@ struct ShopperView: View {
     private func cameraArea(height: CGFloat) -> some View {
         ZStack(alignment: .top) {
             Color.cameraDark
-            switch camera.status {
+            switch camera?.status ?? .starting {
             case .denied:
                 CameraOffPanel(title: "Camera is off",
                                message: "Dibs needs the camera to stream your cart to your housemates.",
@@ -343,12 +353,14 @@ struct ShopperView: View {
                 CameraOffPanel(title: "No camera", message: "This device has no rear camera.", showSettings: false)
                     .padding(.bottom, 28)
             case .starting, .running:
-                GeometryReader { geo in
-                    ZStack {
-                        CameraPreview(session: camera.camera.session)
-                            .contentShape(Rectangle())
-                            .onTapGesture(coordinateSpace: .local) { p in camera.tap(at: p, in: geo.size) }
-                        outlines(in: geo.size)
+                if let camera {
+                    GeometryReader { geo in
+                        ZStack {
+                            CameraPreview(session: camera.camera.session)
+                                .contentShape(Rectangle())
+                                .onTapGesture(coordinateSpace: .local) { p in camera.tap(at: p, in: geo.size) }
+                            outlines(camera, in: geo.size)
+                        }
                     }
                 }
             }
@@ -438,7 +450,7 @@ struct ShopperView: View {
     }
 
     @ViewBuilder
-    private func outlines(in size: CGSize) -> some View {
+    private func outlines(_ camera: ShopperCamera, in size: CGSize) -> some View {
         if let frame = camera.streamSize {
             ForEach(Array(camera.pending.values.enumerated()), id: \.offset) { _, r in
                 PulsingOutline(rect: ScanGeometry.viewRect(normalized: r, content: frame, in: size))
@@ -541,8 +553,9 @@ struct ShopperView: View {
     private func adopt(_ r: Run) { store.adopt(r) }
 
     private func leave() {
-        camera.stop()
+        camera?.stop()
         priceWorker.stop()
+        UIApplication.shared.isIdleTimerDisabled = false
         DibsLog.event("shopper left the cart")
         onLeave?()
     }

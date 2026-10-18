@@ -93,8 +93,11 @@ enum ShopperLogic {
         case noPrice
     }
 
-    /// How long a row waits for a price before offering "Add price".
-    static let noPriceAfter: TimeInterval = 60
+    /// How long a row waits for a price before offering "Add price" (fallback when the price worker
+    /// hasn't said it gave up).
+    // TODO(price worker): also show "Add price" at once when `priceWorker.gaveUp(for: chip.name)` is true,
+    // once the price-worker agent commits it (pass it in like `checking`).
+    static let noPriceAfter: TimeInterval = 20
     static let noPriceText = "No price found"
     static let addPriceText = "Add price"
 
