@@ -18,7 +18,18 @@ from app.jobs import Worker
 from app.payments import make_payment_provider
 from app.pipeline import Pipeline
 from app.routers import (
-    account, agent, audit, budgets, calendar, events, forecasts, inventory, lists, merchants, scans, wishlist,
+    account,
+    agent,
+    audit,
+    budgets,
+    calendar,
+    events,
+    forecasts,
+    inventory,
+    lists,
+    merchants,
+    scans,
+    wishlist,
 )
 from app.routers.events import Broadcaster
 from app.storage import make_storage

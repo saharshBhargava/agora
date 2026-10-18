@@ -5,9 +5,13 @@ Pending UI work: [frontend-requests.md](frontend-requests.md).
 
 ## Current deployment record
 
-As of October 17, 2026, the owner has created Tiger Cloud and Render accounts. Database/API resource setup
-is in progress; no live API URL has been supplied or verified in this session. Replace the fields below
-after deploying; examples are not working hosts.
+As of October 17, 2026, the Tiger database is created and initialized through migration `0010` with only
+the designated demo account. Connectivity, TimescaleDB, and the privileges needed to create the request
+role were verified. In-process API checks against that database passed for readiness, profile, inventory,
+lists and forecasts; unauthenticated profile access returned 401. This does not verify a public endpoint
+or native Google sign-in. Render service setup remains pending; no live API URL is available yet.
+After the commerce merge, hosted boot applies migrations `0011`/`0012` and backfills its demo data.
+Replace the fields below after deploying; examples are not working hosts.
 
 | Field | Actual value |
 |---|---|

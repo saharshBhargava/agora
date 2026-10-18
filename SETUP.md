@@ -59,6 +59,9 @@ The schema and demo data are created automatically on first boot; there's nothin
 
 ## 2. API: Render (about 10 min, mostly build time)
 
+Shortcut: open [Deploy Agora on Render](https://render.com/deploy?repo=https://github.com/saharshBhargava/agora)
+to start the Blueprint flow directly. The generic service-type picker is not needed.
+
 1. Sign in to Render with GitHub. **New > Blueprint**, then choose `saharshBhargava/agora`. Render reads
    `render.yaml` from **main** in the repo. If Render can't see the repo, the repo owner (Saharsh) has to grant Render's
    GitHub app access to it.
@@ -195,9 +198,10 @@ Invoke-RestMethod "$api/v1/inventory" -Headers $headers
 Remove-Variable loginBody, session, headers, demoCredential
 ```
 
-Alternatively, open `<origin>/docs`, call `POST /v1/dev/login` with handle `demo` and the Render password,
-then use its `access_token` in the **Authorize** dialog. `/v1/me` should identify Alex Rivera and
-`/v1/inventory` should contain seeded items. An unauthenticated request to `/v1/me` should return 401.
+Open `<origin>/docs` to inspect request/response schemas. Protected endpoints currently read the
+Authorization header directly and do not expose a Swagger Authorize control; use the PowerShell example
+above for authenticated testing. `/v1/me` should identify Alex Rivera and `/v1/inventory` should contain
+seeded items. An unauthenticated request to `/v1/me` should return 401.
 Finally sign in on the phone with the demo Gmail and approve Calendar. Verify inventory, a real photo scan
 (requires the vision key), and a Calendar event. Calendar traffic goes directly from the phone to Google.
 

@@ -3,6 +3,8 @@
 Agora is a hackathon app: an iOS SwiftUI client (`Agora/`) and a FastAPI + Postgres/TimescaleDB backend
 (`backend/`). Start with `SETUP.md` (deploy and Plan B), `backend/README.md` (backend layout and security
 model), `docs/backend-spec.md` (design) and `docs/frontend-requests.md` (backend features waiting for UI).
+Before resuming an older branch, read [docs/pr-handoff.md](docs/pr-handoff.md) for merged PRs, migration
+renumbering, and integration changes. Fetch and sync `origin/main` before continuing.
 
 ## Keep the demo account current (required)
 

@@ -16,7 +16,8 @@ async def restore_demo_flags(app):
         original = await conn.fetch("SELECT id FROM users WHERE is_demo")
     yield
     async with app.state.db.system() as conn:
-        await conn.execute("UPDATE users SET is_demo = false WHERE is_demo AND NOT (id = ANY($1::uuid[]))",
+        await conn.execute("UPDATE users SET is_demo = false WHERE is_demo")
+        await conn.execute("UPDATE users SET is_demo = true WHERE id = ANY($1::uuid[])",
                            [row["id"] for row in original])
 
 
@@ -40,6 +41,7 @@ async def flag_demo(app, client, headers):
     """Only explicit simulated-checkout test accounts receive the server-only marker."""
     user_id = uuid.UUID((await client.get("/v1/me", headers=headers)).json()["id"])
     async with app.state.db.system() as conn:
+        await conn.execute("UPDATE users SET is_demo = false WHERE is_demo")
         await conn.execute("UPDATE users SET is_demo = true WHERE id = $1", user_id)
 
 
@@ -50,6 +52,25 @@ async def test_real_account_checkout_never_simulates_payments(client):
     assert result.status_code == 503 and result.json()["title"] == "payments_unavailable"
     assert (await client.get("/v1/spend", headers=headers)).json()["total_cents"] == 0
     assert (await client.get("/v1/agent/intents", headers=headers)).json() == []
+
+
+async def test_demo_checkout_never_calls_external_provider(client, app):
+    class ExternalProvider:
+        name = "external"
+
+        async def charge(self, request):
+            raise AssertionError("The demo account reached an external payment provider")
+
+    headers = await fresh(client)
+    await flag_demo(app, client, headers)
+    await mandate(client, headers)
+    original = app.state.payments
+    app.state.payments = ExternalProvider()
+    try:
+        result = await propose(client, headers, execution="agora")
+        assert result.status_code == 201 and result.json()["status"] == "succeeded"
+    finally:
+        app.state.payments = original
 
 
 async def mandate(client, headers, **fields) -> dict:

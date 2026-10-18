@@ -10,8 +10,9 @@ All routes need `Authorization: Bearer <token>` and return RFC 7807 `application
 Changes publish events on `GET /v1/events`: `agent.updated` (intents and mandates), `budget.updated` and
 `spend.updated`. Each event carries only an `id`; refetch the resource.
 
-The examples below are real responses captured from the API (`kedar` dev account, simulated payments). IDs
-and timestamps will differ.
+The examples below were captured before the dedicated demo account was introduced. Their shapes still
+apply, but simulated checkout now requires the designated demo account (`demo` login, Alex Rivera).
+Ordinary accounts never receive simulated payments. IDs and timestamps will differ.
 
 ## Contents
 
@@ -431,8 +432,14 @@ intent with `"status": "rejected", "decided_by": "user", "reject_reason": "not_n
 ## Agora checkout and payments
 
 `execution: "agora"` purchases are charged by the server through a `PaymentProvider`
-(`backend/app/payments.py`). Today the only provider is `simulated`: no real money moves, but it records an
-order and spend exactly as a real one would.
+(`backend/app/payments.py`). Today the only provider is `simulated`, and it is restricted to accounts whose
+server-only `users.is_demo` flag is true: no real money moves, but it records an order and spend exactly as
+a real one would. Ordinary accounts get HTTP 503 `payments_unavailable` if an approved Agora checkout would
+run without a real provider. Their transaction is rolled back, with no simulated order or spend.
+The demo account always uses simulation even if a real provider is configured later.
+
+Pausing and resuming also publish `agent.updated` with the user ID, even when no intent or mandate changed;
+refetch `/v1/agent/state` on these events as well as refreshing the activity list.
 
 - **Never card data.** The server receives a `payment_method_ref` (a provider token reference) and stores only
   the provider's charge reference plus brand and last4 on the order (`payment_ref`, `payment_brand`,
@@ -586,6 +593,7 @@ Audit `meta` holds codes and counts only: no titles, amounts or rationale.
 | 422 | `idempotency_key_reused` | Same key, different body |
 | 422 | `invalid_expiry` | Mandate expiry in the past or more than a year out |
 | 422 | `invalid_request` | Validation failed (lists the fields, never the values) |
+| 503 | `payments_unavailable` | Ordinary-account Agora checkout has no real payment provider; nothing was charged |
 
 ## Fitting the iOS agent
 

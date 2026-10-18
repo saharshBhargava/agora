@@ -174,6 +174,7 @@ async def pause(request: Request, user: Principal = CurrentUser) -> PauseOut:
         await audit(conn, "agent.paused", actor_id=user.user_id, household_id=household_id, target_type="user",
                     target_id=user.user_id, meta={"mandates_revoked": len(revoked), "intents_cancelled": len(cancelled),
                                                   "in_flight": in_flight})
+        await notify(conn, household_id, "agent.updated", user.user_id)
         for row in [*revoked, *cancelled]:
             await notify(conn, row["household_id"], "agent.updated", row["id"])
     return PauseOut(paused=True, paused_at=paused_at, mandates_revoked=len(revoked), intents_cancelled=len(cancelled),
@@ -191,6 +192,7 @@ async def resume(request: Request, user: Principal = CurrentUser) -> PauseOut:
             household_id = await require_household(conn, None, user.user_id)
             await audit(conn, "agent.resumed", actor_id=user.user_id, household_id=household_id, target_type="user",
                         target_id=user.user_id)
+            await notify(conn, household_id, "agent.updated", user.user_id)
     return PauseOut(paused=False, paused_at=None, mandates_revoked=0, intents_cancelled=0, in_flight=0)
 
 

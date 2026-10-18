@@ -2,6 +2,7 @@
 
 Features the backend already supports and that are waiting for a UI. Each section links to its API contract.
 Add new sections at the end.
+Resuming older work: read the [PR integration handoff](pr-handoff.md) and sync `origin/main` first.
 
 ---
 
