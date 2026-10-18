@@ -14,7 +14,17 @@ struct BrowserCall {
             }
         }
         self.name = name; self.arguments = arguments; id = raw["id"] as? String
-        try Self.validate(name: name, arguments: arguments)
+        do { try Self.validate(name: name, arguments: arguments) }
+        catch {
+            // Field names and value types only (no values), to see why a model's call was refused.
+            let shape = arguments.keys.sorted().map { key -> String in
+                let v = arguments[key]
+                let type = v is String ? "string" : (v as? NSNumber).map { CFGetTypeID($0) == CFBooleanGetTypeID() ? "bool" : "number" } ?? String(describing: type(of: v as Any))
+                return "\(key):\(type)"
+            }.joined(separator: ",")
+            NSLog("[browser] refused tool=%@ fields=%@ error=%@", name, shape, String(describing: error))
+            throw error
+        }
     }
     static let fields: [String: Set<String>] = [
         "browser_open": ["url"], "browser_observe": [], "browser_find": ["text"],
