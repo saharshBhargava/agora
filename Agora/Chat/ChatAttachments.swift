@@ -52,10 +52,26 @@ struct ChatAttachmentPreview: View {
     let attachment: ChatAttachment
     var body: some View {
         ScrollView {
-            if let image = attachment.image { Image(uiImage: image).resizable().scaledToFit().accessibilityLabel(attachment.name) }
-            else if attachment.mimeType == "application/pdf" { PDFPreview(data: attachment.data).frame(minHeight: 650) }
-            else { Text(attachment.extractedText ?? "").font(.body.monospaced()).textSelection(.enabled).padding() }
-        }.navigationTitle(attachment.name).navigationBarTitleDisplayMode(.inline)
+            if let image = attachment.image {
+                Image(uiImage: image).resizable().scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous).strokeBorder(Color.line))
+                    .padding(Metrics.space2)
+                    .accessibilityLabel(attachment.name)
+            }
+            else if attachment.mimeType == "application/pdf" {
+                PDFPreview(data: attachment.data).frame(minHeight: 650)
+                    .clipShape(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous).strokeBorder(Color.line))
+                    .padding(Metrics.space2)
+            }
+            else {
+                Text(attachment.extractedText ?? "").font(.receipt(14)).foregroundStyle(Color.ink).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .dibsCard()
+                    .padding(Metrics.space2)
+            }
+        }.dibsPage(attachment.name)
     }
 }
 private struct PDFPreview: UIViewRepresentable {
@@ -78,7 +94,7 @@ final class ChatDictation: ObservableObject {
         let speech = await withCheckedContinuation { continuation in SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) } }
         let mic = await withCheckedContinuation { continuation in AVAudioApplication.requestRecordPermission { continuation.resume(returning: $0) } }
         guard generation == token else { return }
-        guard speech == .authorized, mic else { error = "Enable Microphone and Speech Recognition for Agora in iOS Settings to dictate."; return }
+        guard speech == .authorized, mic else { error = "Enable Microphone and Speech Recognition for Dibs in iOS Settings to dictate."; return }
         guard let recognizer = SFSpeechRecognizer(), recognizer.isAvailable else { error = "Dictation is unavailable. Try again when connected."; return }
         do {
             let session = AVAudioSession.sharedInstance()
