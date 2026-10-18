@@ -14,6 +14,8 @@ struct ClaimActions {
     var raise: @MainActor (Int) async throws -> Void = { _ in }
     /// Adds a wish; returns an error message or nil.
     var wish: @MainActor (String) async -> String? = { _ in nil }
+    /// The wish page's shopping list and suggestions; nil when they could not be loaded.
+    var wishPicks: @MainActor () async -> WishPicks? = { nil }
 }
 
 /// The claimer's screen, live from the shared `RunStore` (canvas Claim.dc.html, web app/claim).
@@ -85,7 +87,8 @@ struct ClaimView: View {
                 } catch {
                     return ClaimLogic.notice((error as? LocalizedError)?.errorDescription ?? "Could not add the wish")
                 }
-            }
+            },
+            wishPicks: { try? await api.wishPicks(runId: ref.runId, personId: ref.personId) }
         )
     }
 
@@ -221,7 +224,8 @@ struct ClaimScreen: View {
                 .presentationCornerRadius(28)
         }
         .navigationDestination(isPresented: $showWish) {
-            WishView(picks: picks, shopperName: shopper?.name) { await actions.wish($0) }
+            WishView(run: run, me: me.id, shopperName: shopper?.name, usualPicks: picks,
+                     loadPicks: { await actions.wishPicks() }, onWish: { await actions.wish($0) })
         }
         .onChange(of: errorSeq) {
             if let lastError {
