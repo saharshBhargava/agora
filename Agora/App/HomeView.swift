@@ -7,6 +7,8 @@ enum AppTab: Hashable {
 struct HomeView: View {
     @Binding var selectedTab: AppTab
     @ObservedObject var store: InventoryStore
+    @ObservedObject var shopping: ShoppingStore
+    @ObservedObject var settings: SettingsStore
     private var inventory: [InventoryItem] { store.activeItems }
     private var loading: Bool { store.loading }
     private var inventoryError: String? { store.error }
@@ -36,15 +38,31 @@ struct HomeView: View {
 
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 16)], alignment: .leading, spacing: 16) {
                         lowStockCard
-                        dashboardCard(title: "Wishlist prices", subtitle: "Good finds, at your price.", symbol: "tag", tint: .purple) {
-                            Text("Coming soon").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                            Text("Keep an eye on items you want, with a heads-up when prices get close to or meet your target.")
-                                .font(.subheadline).foregroundStyle(.secondary)
+                        dashboardCard(title: "Wishlist", subtitle: "Good finds, at your price.", symbol: "heart", tint: .purple) {
+                            if shopping.active.isEmpty {
+                                Text("Save something you want and set a target price.").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                            ForEach(shopping.active.prefix(3)) { item in
+                                HStack {
+                                    Text(item.title).font(.subheadline)
+                                    Spacer()
+                                    if let price = item.targetLabel { Text(price).font(.caption).foregroundStyle(.secondary) }
+                                }
+                            }
+                            NavigationLink("View wishlist") { ShoppingView(store: shopping, settings: settings) }
                         }
                         dashboardCard(title: "Suggested for you", subtitle: "A few thoughtful additions.", symbol: "sparkles", tint: .teal) {
-                            Text("Coming soon").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                            Text("Discover useful picks based on what you have and what you might need next.")
-                                .font(.subheadline).foregroundStyle(.secondary)
+                            if shopping.suggestions.isEmpty {
+                                Text("Review replenishment suggestions or find ideas based on your inventory.").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                            ForEach(shopping.suggestions.prefix(2)) { item in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(item.title).font(.subheadline.weight(.semibold))
+                                    if let reason = item.rationale { Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+                                }
+                            }
+                            if let error = shopping.error { Text(error).font(.caption).foregroundStyle(.secondary) }
+                            NavigationLink("View suggestions") { ShoppingView(store: shopping, settings: settings, selection: "suggestions") }
                         }
                         dashboardCard(title: "Upcoming trips", subtitle: "Make room for your next run.", symbol: "calendar", tint: .blue) {
                             Text("Upcoming trip summaries are coming soon. For now, plan a shopping trip with your assistant.")
@@ -75,7 +93,7 @@ struct HomeView: View {
                     .accessibilityLabel("Settings")
                 }
             }
-            .refreshable { await store.refresh() }
+            .refreshable { await store.refresh(); await shopping.refresh() }
         }
     }
 

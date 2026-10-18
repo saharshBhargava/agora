@@ -9,7 +9,7 @@ Ordinary-account Google/model configuration and existing feature requests below 
 
 # Frontend requests
 
-Features the backend already supports and that are waiting for a UI. Each section links to its API contract.
+Feature contracts and frontend integration status. Each section links to its API contract.
 Add new sections at the end.
 Resuming older work: read the [PR integration handoff](pr-handoff.md) and sync `origin/main` first.
 
@@ -17,8 +17,9 @@ Resuming older work: read the [PR integration handoff](pr-handoff.md) and sync `
 
 ## Requested frontend features: wishlist
 
-**Backend status:** done. **API contract:** [docs/api/wishlist.md](api/wishlist.md). **For:** iOS (desktop
-can follow the same layout).
+**Status:** backend and iOS implemented. **API contract:** [docs/api/wishlist.md](api/wishlist.md).
+Home opens Wishlist and Suggested for you; `Agora/Shopping/` contains the shared store, views, model-backed
+idea service and chat tools. Desktop can follow the same contract.
 
 The wishlist is a priority queue that both the user and the on-device agent add to. Agent suggestions wait
 for an explicit decision, and the user can rate them with a thumbs up or down.
@@ -140,7 +141,8 @@ Send `PATCH /v1/wishlist/{id}` with only the fields that changed.
 
 ### 7. Live refresh
 
-- The app already subscribes to `GET /v1/events` (SSE). On an event with `type == "wishlist.updated"`,
+- The current iOS shopping store refreshes on foreground, local mutations and every 30 seconds while active.
+  A future shared `GET /v1/events` (SSE) subscriber can replace polling. On `type == "wishlist.updated"`,
   refetch the wishlist and suggestions. The event carries only the item `id`, so you can refetch just
   `GET /v1/wishlist/{id}` if you prefer.
 - This keeps two household members' phones in sync, and makes agent suggestions appear without a manual
@@ -399,16 +401,20 @@ explains why it thinks so, and turns that into a shopping list per store in one 
 
 ---
 
-## Planned feature: six-hour suggestion and price-watch refresh
+## Six-hour replenishment refresh and shopping ideas
 
-**Status:** requirement recorded; scheduled generation and price monitoring are not implemented.
+**Status:** replenishment scheduling, wishlist management and suggestion UI are implemented. Live retailer
+price monitoring is deferred; retain user-entered target prices without implying a verified offer.
 See [backend refresh design](backend-spec.md#45-prices-deals-small-businesses).
 
-- Refresh shopping suggestions and enabled wishlist price watches every **6 hours** through backend jobs,
-  including while the app is closed. Do not use a six-hour iOS timer as the scheduler.
-- Show the last successful update and next scheduled check on the Suggestions and Wishlist prices views.
-  If a refresh fails, retain previous results with their timestamps and show the failure separately.
-- Fetch saved results on foreground, after local actions, and on relevant live updates. The six-hour
-  cadence governs generation and price checks, not how quickly the UI reflects existing changes.
-- Refreshes preserve accept/reject/snooze decisions, user price targets and feedback. Repeated unchanged
-  offers should not produce duplicate suggestions or alerts, and refreshing does not authorize purchases.
+- Replenishment checks run through backend jobs at 00:00, 06:00, 12:00 and 18:00 UTC, including while the
+  app is closed when the worker is available. Missed intervals are coalesced when work resumes.
+- Suggested for you shows last successful replenishment check, next scheduled check and failures separately.
+  **Check stock** invokes `POST /v1/wishlist/refresh` with a stable key for retries.
+- **Find ideas** uses the model assigned to Shopping suggestions in Settings, with structured output and
+  inventory evidence. It sends inventory names/quantities and feedback to that connection, never media or
+  Calendar credentials. It runs on demand; it is not the six-hour backend job.
+- Accept, reject with a reason, snooze, feedback, edit, pin, priorities, mark purchased and remove all use
+  existing wishlist endpoints. Failed refreshes retain previous results; account/household switches clear
+  shopping state and discard stale responses.
+- Price-watch checks will use the same six-hour requirement when merchant integrations are added.

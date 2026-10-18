@@ -33,6 +33,7 @@ from app.routers import (
     wishlist,
 )
 from app.routers.events import Broadcaster
+from app.shopping import ShoppingRefresher
 from app.storage import make_storage
 from app.vision.providers import make_provider
 from app.vision.service import VisionService
@@ -76,10 +77,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # idempotency keys still dedupe after a rolled-back propose→checkout transaction.
         app.state.demo_payments = SimulatedPaymentProvider()
         app.state.verifier = TokenVerifier(settings)
-        app.state.worker = Worker(db, pipeline.handlers, settings.worker_concurrency)
+        app.state.shopping = ShoppingRefresher(db)
+        app.state.worker = Worker(db, {**pipeline.handlers, **app.state.shopping.handlers}, settings.worker_concurrency)
         worker_task = None
         if settings.run_worker_in_process:
             await pipeline.forecaster.start()
+            await app.state.shopping.start()
             worker_task = asyncio.create_task(app.state.worker.run())
         log.info("startup env=%s timescale=%s vision=%s/%s auth=%s", settings.env, db.timescale,
                  settings.vision_provider, settings.vision_fallback, settings.auth_mode)

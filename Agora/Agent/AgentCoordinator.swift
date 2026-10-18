@@ -22,6 +22,7 @@ final class AgentCoordinator: ObservableObject {
     let browser: BrowserSession
     private let settings: SettingsStore
     private let calendar: CalendarConnection?
+    private let shopping: ShoppingStore?
     private let executor: BrowserToolExecutor
     private let repository = TaskRepository()
     private var history: [ModelMessage] = []
@@ -33,8 +34,9 @@ final class AgentCoordinator: ObservableObject {
     var providerOverride: ModelProvider?
     var modelClientOverride: ModelClient?
 
-    init(settings: SettingsStore, browser: BrowserSession, calendar: CalendarConnection? = nil) {
+    init(settings: SettingsStore, browser: BrowserSession, calendar: CalendarConnection? = nil, shopping: ShoppingStore? = nil) {
         self.calendar = calendar
+        self.shopping = shopping
         self.settings = settings; self.browser = browser; executor = BrowserToolExecutor(session: browser)
         browser.onHumanInteraction = { [weak self] in self?.stop(reason: "Paused for you. Press Resume when ready.", paused: true) }
         settingsSubscription = settings.$chatRevision.dropFirst().sink { [weak self] _ in
@@ -124,7 +126,7 @@ final class AgentCoordinator: ObservableObject {
                 try Task.checkCancellation(); guard generation == id else { return }
                 guard try contents.reduce(0, { try $0 + $1.byteCount() }) < 1_500_000 else { throw BrowserError("conversation_limit", "Start a new chat to continue.") }
                 status = "Thinking…"
-                let schemas = BrowserCall.schemas.filter { provider.capabilities.images || $0["name"] as? String != "browser_screenshot" } + (calendar?.connected == true ? CalendarCall.schemas : [])
+                let schemas = BrowserCall.schemas.filter { provider.capabilities.images || $0["name"] as? String != "browser_screenshot" } + (calendar?.connected == true ? CalendarCall.schemas : []) + (shopping?.canUse == true ? ShoppingCall.schemas : [])
                 let request = ModelRequest(instructions: AgentInstructions.text, messages: contents,
                                            tools: try schemas.map { try ModelToolDefinition(legacy: $0) })
                 let response = try await provider.generate(request, onEvent: { _ in })
@@ -147,7 +149,14 @@ final class AgentCoordinator: ObservableObject {
                     try Task.checkCancellation(); guard generation == id else { return }
                     var result: [String: Any]
                     do {
-                        if let name = raw["name"] as? String, CalendarCall.names.contains(name) {
+                        if let name = raw["name"] as? String, ShoppingCall.names.contains(name) {
+                            guard let shopping else { throw BrowserError("shopping_unavailable") }
+                            let call = try ShoppingCall(raw)
+                            status = name == "shopping_context" ? "Reading your shopping context…" : "Saving suggestion…"
+                            try repository.record(task: id, operation: name, phase: "dispatched")
+                            result = try await shopping.execute(call, taskID: id)
+                            try repository.record(task: id, operation: name, phase: "observed")
+                        } else if let name = raw["name"] as? String, CalendarCall.names.contains(name) {
                             guard let calendar, calendar.connected else { throw BrowserError("calendar_reconnect_required") }
                             let approvedAccountID = calendar.accountID
                             let call = try CalendarCall(raw)

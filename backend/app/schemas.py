@@ -500,6 +500,18 @@ class WishlistItem(BaseModel):
     completed_at: datetime | None
 
 
+class WishlistRefreshIn(Strict):
+    household_id: UUID | None = None
+
+
+class WishlistRefreshOut(BaseModel):
+    household_id: UUID
+    last_refreshed_at: datetime | None
+    next_refresh_at: datetime
+    last_error: str | None
+    generated_count: int
+
+
 # ---------------------------------------------------------------- agent commerce
 
 IntentKind = Literal["purchase", "add_to_cart", "list_add", "calendar_event"]

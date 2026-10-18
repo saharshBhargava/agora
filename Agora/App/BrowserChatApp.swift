@@ -10,7 +10,7 @@ struct BrowserChatApp: App {
         WindowGroup {
             CalendarGate(calendar: workspace.calendar, onDisconnect: { workspace.agent.newChat() }) {
                 TabView(selection: $selectedTab) {
-                    HomeView(selectedTab: $selectedTab, store: workspace.inventory)
+                    HomeView(selectedTab: $selectedTab, store: workspace.inventory, shopping: workspace.shopping, settings: workspace.settings)
                         .tabItem { Label("Home", systemImage: "house") }
                         .tag(AppTab.home)
                     ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser)
@@ -27,6 +27,7 @@ struct BrowserChatApp: App {
                         .tag(AppTab.settings)
                 }
                 .background { InventoryRefresh(store: workspace.inventory) }
+                .background { ShoppingRefresh(store: workspace.shopping) }
             }
             .tint(.teal)
             .onOpenURL { url in
@@ -48,6 +49,7 @@ final class ChatWorkspace: ObservableObject {
     let calendar: CalendarConnection
     let api: AgoraClient
     let inventory: InventoryStore
+    let shopping: ShoppingStore
     init() {
         AppLog.event(.app, "workspace.created")
         let settings = SettingsStore(); self.settings = settings
@@ -57,7 +59,8 @@ final class ChatWorkspace: ObservableObject {
         settings.demoCalendar = calendar
         api = AgoraClient(calendar: calendar)
         inventory = InventoryStore(api: api, calendar: calendar)
-        agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar)
+        shopping = ShoppingStore(api: api, inventory: inventory)
+        agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar, shopping: shopping)
     }
 }
 
@@ -70,6 +73,21 @@ private struct InventoryRefresh: View {
                 guard phase == .active else { return }
                 // Refresh on foreground/household changes and periodically while the app is open.
                 // Shared state also updates immediately after every successful local mutation.
+                while !Task.isCancelled {
+                    await store.refresh()
+                    do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                }
+            }
+    }
+}
+
+private struct ShoppingRefresh: View {
+    @ObservedObject var store: ShoppingStore
+    @Environment(\.scenePhase) private var phase
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0)
+            .task(id: "\(store.context)-\(phase == .active)") {
+                guard phase == .active else { return }
                 while !Task.isCancelled {
                     await store.refresh()
                     do { try await Task.sleep(for: .seconds(30)) } catch { return }

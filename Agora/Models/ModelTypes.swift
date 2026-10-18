@@ -65,10 +65,10 @@ struct ModelCapabilities: Codable, Equatable {
 }
 
 enum ModelFeature: String, Codable, CaseIterable, Identifiable {
-    case chat, captions, inventory
+    case chat, captions, inventory, suggestions
     var id: String { rawValue }
     var title: String {
-        switch self { case .chat: return "Chat"; case .captions: return "Captions"; case .inventory: return "Inventory recognition" }
+        switch self { case .chat: return "Chat"; case .captions: return "Captions"; case .inventory: return "Inventory recognition"; case .suggestions: return "Shopping suggestions" }
     }
 }
 

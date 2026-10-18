@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.db import Database
 from app.jobs import Worker
 from app.main import build_pipeline
+from app.shopping import ShoppingRefresher
 
 log = logging.getLogger("agora.worker")
 
@@ -22,7 +23,9 @@ async def main() -> None:
     async with httpx.AsyncClient(follow_redirects=False) as client:
         pipeline = build_pipeline(settings, db, client)
         await pipeline.forecaster.start()
-        worker = Worker(db, pipeline.handlers, settings.worker_concurrency)
+        shopping = ShoppingRefresher(db)
+        await shopping.start()
+        worker = Worker(db, {**pipeline.handlers, **shopping.handlers}, settings.worker_concurrency)
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:

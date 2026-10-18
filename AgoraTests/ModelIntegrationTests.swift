@@ -55,6 +55,8 @@ final class ModelIntegrationTests: XCTestCase {
     private var suite: String!
     private var service: String!
     private var http: URLSessionCaptionHTTPClient!
+    // Built-in behavior is covered separately by DemoAccessTests; these exercise HTTP adapters.
+    private let networkProviders: [ModelProviderKind] = [.gemini, .openAICompatible]
     private let localConnectionID = UUID(), localProfileID = UUID()
     private var capabilities: ModelCapabilities {
         .init(images: true, tools: true, structuredOutput: true, streaming: true, nativeVideo: false)
@@ -224,7 +226,7 @@ final class ModelIntegrationTests: XCTestCase {
         let file = try photo(); defer { try? FileManager.default.removeItem(at: file) }
         let image = try Data(contentsOf: file)
         let schema = try ModelJSON.from(["type": "object", "properties": ["items": ["type": "array", "items": ["type": "string"]]], "required": ["items"]])
-        for provider in ModelProviderKind.allCases {
+        for provider in networkProviders {
             ModelWireProtocol.handler = { request in
                 let body = try modelWireBody(request)
                 if provider == .gemini {
@@ -252,7 +254,7 @@ final class ModelIntegrationTests: XCTestCase {
     }
 
     func testBothProvidersStreamThroughRealURLSessionTransport() async throws {
-        for provider in ModelProviderKind.allCases {
+        for provider in networkProviders {
             ModelWireProtocol.handler = { _ in try self.streamingResponse(provider, text: "A blue square.") }
             var text: [String] = []
             let result = try await client(provider).stream(.init(instructions: "Describe", messages: [
@@ -369,7 +371,7 @@ final class ModelIntegrationTests: XCTestCase {
 
     func testBothProvidersRejectMalformedToolArgumentsBeforeReturningCalls() async throws {
         let tool = try ModelToolDefinition(legacy: BrowserCall.schemas[0])
-        for provider in ModelProviderKind.allCases {
+        for provider in networkProviders {
             ModelWireProtocol.handler = { _ in
                 if provider == .gemini {
                     return try .json(["candidates": [["finishReason": "STOP", "content": ["role": "model", "parts": [
@@ -401,7 +403,7 @@ private final class ModelInventoryAuthorization: GoogleCalendarAuthorizing {
 
 extension ModelIntegrationTests {
     func testBothProvidersCoordinatorToolResultFinalAndGeminiSignatureRoundTrip() async throws {
-        for provider in ModelProviderKind.allCases {
+        for provider in networkProviders {
             let browser = BrowserSession(policy: BrowserPolicy())
             let agent = AgentCoordinator(settings: settings, browser: browser)
             agent.modelClientOverride = client(provider)
@@ -499,7 +501,7 @@ extension ModelIntegrationTests {
     func testBothProvidersCaptionControllerGeneratesAndPersistsGenericProvenance() async throws {
         let file = try photo(); defer { try? FileManager.default.removeItem(at: file) }
         let item = CaptureItem(id: UUID(), kind: .image, filename: file.lastPathComponent, createdAt: Date())
-        for provider in ModelProviderKind.allCases {
+        for provider in networkProviders {
             let model = client(provider)
             var requests = 0
             ModelWireProtocol.handler = { request in
@@ -523,7 +525,7 @@ extension ModelIntegrationTests {
     }
 
     func testBothProvidersRecognitionReviewSaveAndRestartKeepExactMetadata() async throws {
-        for provider in ModelProviderKind.allCases {
+        for provider in networkProviders {
             let calendar = CalendarConnection(authorization: ModelInventoryAuthorization())
             await calendar.refresh()
             let configuration = URLSessionConfiguration.ephemeral; configuration.protocolClasses = [ModelWireProtocol.self]
@@ -592,7 +594,7 @@ extension ModelIntegrationTests {
 
     func testBothProvidersRejectInvalidRecognitionBeforeShowingReviewItems() async throws {
         let file = try photo(); defer { try? FileManager.default.removeItem(at: file) }
-        for provider in ModelProviderKind.allCases {
+        for provider in networkProviders {
             for text in [#"{"items":[{"name":"Milk","category":"dairy","unit":"unit","quantity":-1,"confidence":0.9}]}"#,
                          #"{"items":[{"name":"Milk","category":"dairy","unit":"unit","quantity":1,"confidence":2}]}"#,
                          "not JSON"] {

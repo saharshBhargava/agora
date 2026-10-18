@@ -289,19 +289,27 @@ The worker groups list items by merchant, takes the earliest run-out date as the
 
 ### 4.5 Prices, deals, small businesses
 
-**Planned refresh requirement:** regenerate shopping suggestions and check enabled wishlist price watches
-every **6 hours**. This is a requirement for the upcoming feature, not an implemented scheduler. Wishlist
-storage and suggestion decisions already exist; scheduled generation, merchant price collection and price
-watches still need implementation.
+**Implemented:** the iOS Home screen links to Wishlist and Suggested for you. Wishlist targets are USD per
+item, before shipping and tax. Replenishment suggestions refresh through durable backend jobs every
+**6 hours**, at 00:00, 06:00, 12:00 and 18:00 UTC. `wishlist.sweep` queues one `wishlist.refresh` per due
+household; the job uses recent inventory observations and current forecasts, without an external model.
+It creates at most five suggestions per check, respecting the pending cap, open items, rejections, snoozes,
+recent purchases/removals, existing shopping-list lines and the acting member's agent pause. Unknown or
+more-than-30-day-old stock is not treated as empty stock. Retries cannot duplicate open suggestions.
 
-Use durable backend jobs so refreshes do not depend on the iOS app being open. Schedule suggestion refreshes
-per household and price checks per enabled watch, with deduplication and bounded retries. After downtime,
-coalesce missed intervals into one current refresh rather than replaying every missed check. Preserve user
-targets, accepted items, feedback, rejections and snoozes; a refresh must not reset user decisions or imply
-permission to purchase. Record last successful refresh and next scheduled check separately from failures,
-and leave prior results visibly dated when a refresh fails. The six-hour generation/check cadence is
-separate from UI fetching: clients should display saved changes promptly. Reliable unattended execution
-requires available worker capacity and configured price/model providers.
+The app's **Find ideas** action uses its selected Suggestions model (Gemini or an OpenAI-compatible
+connection) for broader inventory-grounded ideas, validates inventory references and bounded output, and
+saves through the same suggestion service. Chat exposes `shopping_context` and `shopping_suggest`. These
+manual model calls are distinct from scheduled replenishment checks; model credentials remain on-device.
+
+`wishlist_refresh_state` stores the last successful check, next scheduled check, safe failure code and
+number generated. Missed schedule intervals coalesce into a current refresh. Prior suggestions and user
+price targets/decisions remain intact. The app fetches saved state on foreground and every 30 seconds while
+active; this is separate from the six-hour generation cadence. A continuously available worker is needed
+for timely unattended checks; sleeping hosting delays work until the worker resumes.
+
+**Deferred by scope:** live retailer prices, price histories, deal alerts and six-hour price-watch checks.
+The price capabilities below remain design proposals. No displayed target is presented as a current offer.
 
 - `price_observations` comes from receipts (real prices you paid), seeded history for demo merchants, and optionally agent-browsed product pages.
 - A continuous aggregate `price_daily` (min/avg per product per merchant per day) drives "lowest in 30 days" and target-price alerts.

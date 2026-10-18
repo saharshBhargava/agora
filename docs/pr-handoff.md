@@ -114,3 +114,11 @@ requests correctly return 401. The keep-warm workflow variable is configured and
 pull main, remove stale local URL overrides, and rebuild. Do not blank the shared API URL or restore old
 deployment paths. See [frontend-handoff.md](frontend-handoff.md) for a ready-to-send teammate message and
 the remaining Google test-user/demo-email/device-key setup. Secrets remain in Render; none were committed.
+
+
+## Wishlist and suggestion integration
+
+Wishlist UI, model-backed ideas and six-hour replenishment jobs include the password-only demo changes.
+The new refresh-state migration is `0014_wishlist_refresh.sql`; `0013_calendar_events.sql` is already
+merged and must not be renamed. Demo backfill preserves both Calendar events and shopping refresh state.
+The built-in, server-verified demo model also supports Shopping suggestions without external model calls.

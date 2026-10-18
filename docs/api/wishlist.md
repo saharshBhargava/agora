@@ -1,6 +1,8 @@
 # Wishlist API
 
 A household wishlist that both the user and the on-device agent can add to, ranked as a priority queue.
+The iOS Home screen opens Wishlist and Suggested for you. Replenishment suggestions are generated every
+six hours by the backend; Find ideas and chat can also submit model-generated suggestions.
 Agent suggestions need an explicit decision (accept, reject with a reason, or snooze), and thumbs
 feedback teaches the agent without changing an item's status.
 
@@ -31,6 +33,8 @@ The examples below were captured from the running app (`kedar` dev account). IDs
 | `GET /v1/wishlist?status=active` | app | The wishlist, highest priority first. Repeat `status` for several |
 | `GET /v1/wishlist/suggestions` | app | Agent suggestions waiting for a decision, best first. `include_snoozed=true` adds snoozed ones |
 | `GET /v1/wishlist/agent-context` | agent | Compact summary of past reactions for the model's prompt |
+| `GET /v1/wishlist/refresh-status` | app | Last successful replenishment check, next scheduled check, failure code |
+| `POST /v1/wishlist/refresh` | app | Run a replenishment check now; **`Idempotency-Key` required** |
 | `GET /v1/wishlist/{id}` | app | One item |
 | `POST /v1/wishlist` | app | User adds an item. Goes straight to `active` |
 | `POST /v1/wishlist/suggestions` | agent | Agent suggests an item. Starts `suggested`. **`Idempotency-Key` required** |
@@ -123,7 +127,7 @@ Every endpoint that returns an item returns this shape:
 | `status` | `suggested`, `active`, `snoozed`, `rejected`, `purchased`, `removed` |
 | `priority` | User's manual priority 1-5 (5 = highest), or `null` for normal |
 | `pinned` | Pinned items always sort first |
-| `target_price_cents` | Integer cents, to avoid floating-point money |
+| `target_price_cents` | USD cents per item, before shipping/tax; a user target, not a current offer |
 | `category` | Stored lowercased, so "Snacks" and "snacks" learn together |
 | `confidence`, `rationale`, `evidence` | Set on agent suggestions only |
 | `snoozed_until` | Set only while a snooze is in effect |
@@ -490,3 +494,39 @@ most four. Signals worth zero points are left out.
   `wishlist.removed`, `wishlist.item_updated` (field names only), `wishlist.feedback` and
   `wishlist.feedback_cleared`.
 - SSE events carry only `{household_id, type: "wishlist.updated", id}`. Clients refetch through the API.
+
+
+## Scheduled replenishment and refresh status
+
+`GET /v1/wishlist/refresh-status?household_id=...` returns:
+
+```json
+{
+  "household_id": "a308f99a-2504-4f46-965e-3a9748d2253f",
+  "last_refreshed_at": "2026-10-18T06:00:01Z",
+  "next_refresh_at": "2026-10-18T12:00:00Z",
+  "last_error": null,
+  "generated_count": 2
+}
+```
+
+`last_refreshed_at` is null before the first successful check; `generated_count` is the count from the last
+successful check. Failure records `last_error: "refresh_failed"` without clearing the previous successful
+check or suggestions. Status and all reads remain household-scoped.
+
+`POST /v1/wishlist/refresh` accepts `{}` or `{"household_id": "..."}` and returns the same shape, HTTP 200.
+An `Idempotency-Key` is required; replay returns the original result without generating again. A paused
+agent receives `409 agent_paused` for refresh and suggestion submission. Manual refresh does not shift the six-hour UTC schedule.
+
+The worker checks at 00:00, 06:00, 12:00 and 18:00 UTC. It uses stock observations from the last 30 days and
+forecasts anchored to the latest observation. It proposes at most five items per run, skips unknown stock,
+open wishlist entries (including snoozes), recent rejections, purchases/removals from the last seven days,
+and unchecked items on open shopping lists. It preserves user targets and decisions. Suggested quantities
+start at one; the user can edit them. No external model or merchant requests occur in scheduled checks.
+A worker must be available to execute on time; after downtime, one current check replaces missed intervals.
+
+Model-backed Find ideas is an on-device action using the selected Suggestions model, followed by the
+existing suggestion POST. Model output cannot set target prices through that UI flow. The chat tools
+`shopping_context` and `shopping_suggest` share this persistence path. All suggestions still require user
+acceptance to join the active wishlist. Live retailer prices and automatic purchase execution are outside
+this feature.

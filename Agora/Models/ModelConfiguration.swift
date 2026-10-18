@@ -48,7 +48,7 @@ extension SettingsStore {
             let canUseNativeVideo = connection.provider == .gemini && profile.capabilities.nativeVideo && kind != .image
             guard profile.capabilities.images || canUseNativeVideo else { throw BrowserError("model_capability", "Choose a model that supports this media for \(feature.title).") }
         }
-        if feature == .inventory, !profile.capabilities.structuredOutput { throw BrowserError("model_capability", "Inventory recognition requires structured output. Enable it for a compatible model in Settings.") }
+        if feature == .inventory || feature == .suggestions, !profile.capabilities.structuredOutput { throw BrowserError("model_capability", "\(feature.title) requires structured output. Enable it for a compatible model in Settings.") }
         let identity = ModelIdentity(provider: connection.provider, model: model, profileID: profile.id)
         let key = try connectionKey(connection)
         switch connection.provider {
