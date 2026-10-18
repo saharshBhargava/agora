@@ -38,6 +38,7 @@ struct ChatToolActivity {
         case "wishlist_add": return "Adding to wishlist"
         case "inventory_add": return "Adding to inventory"
         case "shopping_suggest": return "Saving a suggestion"
+        case "purchase_request": return "Asking to buy"
         default: return name.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }

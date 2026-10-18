@@ -27,6 +27,8 @@ final class AgentCoordinator: ObservableObject {
     private let calendar: CalendarConnection?
     private let shopping: ShoppingStore?
     private let trips: TripStore?
+    private let commerce: CommerceStore?
+    private var purchaseInFlight: UUID?
     private var householdSubscription: AnyCancellable?
     private var shoppingMutationInFlight: UUID?
     private let executor: BrowserToolExecutor
@@ -44,8 +46,9 @@ final class AgentCoordinator: ObservableObject {
     var providerOverride: ModelProvider?
     var modelClientOverride: ModelClient?
 
-    init(settings: SettingsStore, browser: BrowserSession, calendar: CalendarConnection? = nil, shopping: ShoppingStore? = nil, trips: TripStore? = nil) {
+    init(settings: SettingsStore, browser: BrowserSession, calendar: CalendarConnection? = nil, shopping: ShoppingStore? = nil, trips: TripStore? = nil, commerce: CommerceStore? = nil) {
         self.calendar = calendar
+        self.commerce = commerce
         self.shopping = shopping
         self.trips = trips
         self.settings = settings; self.browser = browser; executor = BrowserToolExecutor(session: browser)
@@ -116,19 +119,20 @@ final class AgentCoordinator: ObservableObject {
         let old = generation, wasRunning = running
         let uncertainCalendar = calendarMutationInFlight == old
         let uncertainShopping = shoppingMutationInFlight == old
-        generation = UUID(); task?.cancel(); task = nil; calendarMutationInFlight = nil; shoppingMutationInFlight = nil
+        let uncertainPurchase = purchaseInFlight == old
+        generation = UUID(); task?.cancel(); task = nil; calendarMutationInFlight = nil; shoppingMutationInFlight = nil; purchaseInFlight = nil
         let expired = messages.last(where: { $0.approval?.id == approval?.id && $0.approval != nil })
         resolveApproval(false); expired?.approval?.status = .expired
         for row in messages {
             row.streaming = false
             if row.tool?.status == .running { row.tool?.status = .stopped }
         }
-        browser.revoke(); running = false; self.paused = paused && !uncertainCalendar && !uncertainShopping
+        browser.revoke(); running = false; self.paused = paused && !uncertainCalendar && !uncertainShopping && !uncertainPurchase
         let calendarName = calendar?.isDemoAccount == true ? "Dibs calendar" : "Google Calendar"
-        status = uncertainShopping ? "An item may have been saved. Check Lists before retrying." : uncertainCalendar ? "A Calendar event may have been saved. Check \(calendarName) before retrying." : reason
+        status = uncertainPurchase ? "A purchase may have gone through. Check Spending before retrying." : uncertainShopping ? "An item may have been saved. Check Lists before retrying." : uncertainCalendar ? "A Calendar event may have been saved. Check \(calendarName) before retrying." : reason
         browser.state.status = status
-        if uncertainCalendar || uncertainShopping { messages.append(ChatMessage(role: "notice", text: status)) }
-        if wasRunning { try? repository.record(task: old, operation: "task", phase: browser.state.busy || uncertainCalendar || uncertainShopping ? "outcome_unknown" : "stopped") }
+        if uncertainCalendar || uncertainShopping || uncertainPurchase { messages.append(ChatMessage(role: "notice", text: status)) }
+        if wasRunning { try? repository.record(task: old, operation: "task", phase: browser.state.busy || uncertainCalendar || uncertainShopping || uncertainPurchase ? "outcome_unknown" : "stopped") }
     }
     func newChat() {
         AppLog.event(.agent, "chat.new")
@@ -178,6 +182,33 @@ final class AgentCoordinator: ObservableObject {
         status = "Waiting for your approval"
         return await withCheckedContinuation { approvalReply = $0 }
     }
+    /// `purchase_request`: propose an Agora checkout, ask the user in the chat when the backend needs approval,
+    /// and hand the backend's answer back to the model as-is.
+    private func purchase(_ call: PurchaseCall, commerce: CommerceStore, id: UUID) async throws -> [String: Any] {
+        status = "Asking Dibs to buy \(call.proposal.title)…"
+        try repository.record(task: id, operation: PurchaseCall.name, phase: "dispatched")
+        purchaseInFlight = id
+        let intent = try await commerce.propose(call.proposal, key: try call.requestKey(taskID: id))
+        purchaseInFlight = nil
+        try repository.record(task: id, operation: PurchaseCall.name, phase: "observed")
+        try Task.checkCancellation(); guard generation == id else { throw CancellationError() }
+        guard intent.decision == "needs_approval", intent.status == "proposed" else { return PurchaseCall.result(intent) }
+        guard intent.canApprove() else {
+            var result = PurchaseCall.result(intent)
+            result["instruction"] = "This request is waiting for someone else's approval. Tell the user it is waiting."
+            return result
+        }
+        approval = ActionApproval(title: call.approvalTitle, detail: PurchaseCall.approvalDetail(intent))
+        status = "Waiting for your approval"
+        let allowed = await withCheckedContinuation { approvalReply = $0 }
+        try Task.checkCancellation(); guard generation == id else { throw CancellationError() }
+        status = allowed ? "Buying \(call.proposal.title)…" : "Telling Dibs you said no…"
+        if allowed { purchaseInFlight = id }
+        let decided = allowed ? try await commerce.approve(intent) : try await commerce.reject(intent, reason: nil)
+        purchaseInFlight = nil
+        try repository.record(task: id, operation: PurchaseCall.name, phase: "observed")
+        return PurchaseCall.result(decided, userDecision: allowed ? "approved" : "rejected")
+    }
     private func run(provider: ModelClient, contents initial: [ModelMessage], id: UUID) async {
         var contents = initial
         var failures = 0
@@ -185,6 +216,7 @@ final class AgentCoordinator: ObservableObject {
         defer {
             if calendarMutationInFlight == id { calendarMutationInFlight = nil }
             if shoppingMutationInFlight == id { shoppingMutationInFlight = nil }
+            if purchaseInFlight == id { purchaseInFlight = nil }
             if generation == id { running = false; task = nil; browser.state.status = status }
         }
         do {
@@ -195,7 +227,7 @@ final class AgentCoordinator: ObservableObject {
                 try Task.checkCancellation(); guard generation == id else { return }
                 guard try contents.reduce(0, { try $0 + $1.byteCount() }) < 1_500_000 else { throw BrowserError("conversation_limit", "Start a new chat to continue.") }
                 status = "Thinking…"
-                let schemas = BrowserCall.schemas.filter { provider.capabilities.images || $0["name"] as? String != "browser_screenshot" } + (calendar?.connected == true ? CalendarCall.schemas : []) + (shopping?.canUse == true ? ShoppingCall.schemas : [])
+                let schemas = BrowserCall.schemas.filter { provider.capabilities.images || $0["name"] as? String != "browser_screenshot" } + (calendar?.connected == true ? CalendarCall.schemas : []) + (shopping?.canUse == true ? ShoppingCall.schemas : []) + (commerce?.canUse == true && calendar?.connected == true ? [PurchaseCall.schema] : [])
                 let request = ModelRequest(instructions: AgentInstructions.text, messages: contents,
                                            tools: try schemas.map { try ModelToolDefinition(legacy: $0) })
                 let streamingRow = ChatMessage(role: "assistant", text: "")
@@ -232,7 +264,11 @@ final class AgentCoordinator: ObservableObject {
                     toolRow.tool = ChatToolActivity(name: ChatToolActivity.title(modelCall.name), input: ChatToolActivity.summary(modelCall.arguments.mapValues(\.foundation)))
                     messages.append(toolRow)
                     do {
-                        if let name = raw["name"] as? String, ShoppingCall.names.contains(name) {
+                        if raw["name"] as? String == PurchaseCall.name {
+                            guard let commerce, commerce.canUse else { throw BrowserError("purchases_unavailable", "Sign in and open your household first.") }
+                            let call = try PurchaseCall(raw)
+                            result = try await purchase(call, commerce: commerce, id: id)
+                        } else if let name = raw["name"] as? String, ShoppingCall.names.contains(name) {
                             guard let shopping else { throw BrowserError("shopping_unavailable") }
                             let call = try ShoppingCall(raw)
                             status = name == "shopping_context" ? "Reading your shopping context…" : call.isAddition ? "Adding item…" : "Saving suggestion…"
@@ -277,6 +313,7 @@ final class AgentCoordinator: ObservableObject {
                         try Task.checkCancellation(); guard generation == id else { return }
                         if calendarMutationInFlight == id { calendarMutationInFlight = nil }
                         if shoppingMutationInFlight == id { shoppingMutationInFlight = nil }
+                        if purchaseInFlight == id { purchaseInFlight = nil }
                         AppLog.failure(.agent, "tool.failed", error: error)
                         result = ["error": error.localizedDescription]; failures += 1
                         try repository.record(task: id, operation: raw["name"] as? String ?? "invalid_tool", phase: "failed_or_uncertain")
