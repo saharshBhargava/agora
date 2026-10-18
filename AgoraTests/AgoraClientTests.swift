@@ -122,4 +122,22 @@ final class AgoraClientTests: XCTestCase {
         _ = try await client.request("v1/wishlist", method: "POST", body: ["title": "Oat milk"], key: "idem-123")
         XCTAssertEqual(sawKey, "idem-123")
     }
+
+    func testValidOriginAcceptsHTTPSAndDebugLocalHTTP() {
+        XCTAssertTrue(AgoraClient.validOrigin(URL(string: "https://agora-api-yq3m.onrender.com")))
+        XCTAssertFalse(AgoraClient.validOrigin(URL(string: "https://user:pass@host.example/v1")))
+        XCTAssertFalse(AgoraClient.validOrigin(URL(string: "https://host.example?x=1")))
+        XCTAssertFalse(AgoraClient.validOrigin(URL(string: "/")))
+        #if DEBUG
+        for url in ["http://localhost:8000", "http://127.0.0.1:8000", "http://192.168.1.20:8000",
+                    "http://10.0.0.5:8000", "http://macbook.local:8000", "http://[::1]:8000"] {
+            XCTAssertTrue(AgoraClient.validOrigin(URL(string: url)), url)
+        }
+        for url in ["http://example.com", "http://8.8.8.8", "http://169.254.169.254", "ftp://localhost"] {
+            XCTAssertFalse(AgoraClient.validOrigin(URL(string: url)), url)
+        }
+        #else
+        XCTAssertFalse(AgoraClient.validOrigin(URL(string: "http://localhost:8000")))
+        #endif
+    }
 }
