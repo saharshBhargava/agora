@@ -131,6 +131,14 @@ struct ShopperView: View {
                 }
                 .accessibilityLabel("Leave the cart")
             }
+            // Invite more housemates while streaming: same link and text as the start screen's share button.
+            ToolbarItem(placement: .topBarTrailing) {
+                ShareLink(item: StartLogic.shareText(title: run?.title ?? "the run", link: api.joinLink(runId: runId)),
+                          subject: Text(run?.title ?? "Dibs run")) {
+                    Image(systemName: "square.and.arrow.up").font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.ink)
+                }
+                .accessibilityLabel("Share the join link")
+            }
         }
         .confirmationDialog("Leave the cart? Housemates will stop seeing your stream.",
                             isPresented: $confirmLeave, titleVisibility: .visible) {
