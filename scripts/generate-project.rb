@@ -13,6 +13,9 @@ app.build_configurations.each do |config|
 end
 config_ref = project.main_group.new_file('Config/Agora.xcconfig')
 app.build_configurations.each { |config| config.base_configuration_reference = config_ref }
+assets_ref = project.main_group.new_file('assets/Assets.xcassets')
+app.resources_build_phase.add_file_reference(assets_ref)
+app.build_configurations.each { |config| config.build_settings['ASSETCATALOG_COMPILER_APPICON_NAME'] = 'AppIcon' }
 package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
 package.repositoryURL = 'https://github.com/google/GoogleSignIn-iOS.git'
 package.requirement = { 'kind' => 'exactVersion', 'version' => '9.2.0' }

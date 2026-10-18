@@ -12,7 +12,7 @@ struct BrowserChatApp: App {
         WindowGroup {
             CalendarGate(calendar: workspace.calendar, onDisconnect: { workspace.agent.newChat() }) {
                 TabView(selection: $selectedTab) {
-                    HomeView(selectedTab: $selectedTab, store: workspace.inventory, shopping: workspace.shopping, settings: workspace.settings)
+                    HomeView(selectedTab: $selectedTab, store: workspace.inventory, shopping: workspace.shopping, settings: workspace.settings, trips: workspace.trips)
                         .tabItem { Label("Home", systemImage: "house") }
                         .tag(AppTab.home)
                     ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser)
@@ -30,6 +30,7 @@ struct BrowserChatApp: App {
                 }
                 .background { InventoryRefresh(store: workspace.inventory) }
                 .background { ShoppingRefresh(store: workspace.shopping) }
+                .background { TripRefresh(store: workspace.trips) }
             }
             .tint(.teal)
             .sheet(isPresented: Binding(get: { push.openWatchID != nil && workspace.calendar.connected },
@@ -73,6 +74,7 @@ final class ChatWorkspace: ObservableObject {
     let api: AgoraClient
     let inventory: InventoryStore
     let shopping: ShoppingStore
+    let trips: TripStore
     init() {
         AppLog.event(.app, "workspace.created")
         let settings = SettingsStore(); self.settings = settings
@@ -86,6 +88,7 @@ final class ChatWorkspace: ObservableObject {
         }
         inventory = InventoryStore(api: api, calendar: calendar)
         shopping = ShoppingStore(api: api, inventory: inventory)
+        trips = TripStore(api: api, inventory: inventory, calendar: calendar)
         agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar, shopping: shopping)
         shopping.watches.browserReviewHandler = { [weak self] url in
             guard let self, self.calendar.connected, self.inventory.accountID == self.calendar.accountID else {
@@ -116,6 +119,21 @@ final class ChatWorkspace: ObservableObject {
                 }
             }
         }
+    }
+}
+
+private struct TripRefresh: View {
+    @ObservedObject var store: TripStore
+    @Environment(\.scenePhase) private var phase
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0)
+            .task(id: "\(store.context)-\(phase == .active)") {
+                guard phase == .active else { return }
+                while !Task.isCancelled {
+                    await store.refresh()
+                    do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                }
+            }
     }
 }
 

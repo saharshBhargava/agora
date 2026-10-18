@@ -19,6 +19,7 @@
 		20476743923B728C05D6CBA2 /* WatchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9B0D186D871585E3F767A40 /* WatchStore.swift */; };
 		21807B9C72A7D293730B7A16 /* BrowserScripts.js in Resources */ = {isa = PBXBuildFile; fileRef = 53ED4944AABB5AFAB8E77288 /* BrowserScripts.js */; };
 		2289447391B6428E6F5A6F1E /* InventoryForms.swift in Sources */ = {isa = PBXBuildFile; fileRef = D321B867CDD7DD8E49E0ED43 /* InventoryForms.swift */; };
+		25C973976978D18A637CB178 /* TripModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0042D6D266AEBF2AF1B8863 /* TripModels.swift */; };
 		2971CBA99FE80E2F4C939472 /* InventoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 008ECCAF5FCCE2738062A9EB /* InventoryStore.swift */; };
 		2A3088999406A8AA8526BAAF /* CaptionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE74BEEED1DE81A6C9EB8F0 /* CaptionController.swift */; };
 		2AE38083B67C24F083A58F33 /* RecognitionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ADCA78234E13E5D33584ADF /* RecognitionController.swift */; };
@@ -36,11 +37,13 @@
 		4A7C1E90B2D84F6EA1C0D3F1 /* AgoraClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B9E4C71A8F05D3C9E6B1A02 /* AgoraClient.swift */; };
 		4DB185EC3F1F901B1470CA2B /* CalendarOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D63E8A1F4D704E4944DE1118 /* CalendarOnboardingView.swift */; };
 		4FC355EA8D6BE5C8BB446EBF /* CalendarTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EB5DD92CDB24C7884F2F633 /* CalendarTools.swift */; };
+		51904F013062C9E77C58A947 /* TripsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE26387FFF3222EE2FA489BA /* TripsView.swift */; };
 		51C0E2A9D4B87F1E6A903C44 /* AgoraClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F3A6B21C9E047D5A2B1F880 /* AgoraClientTests.swift */; };
 		591BB0C7E60D64929EF3C6F5 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AB33E9AFC57A2F607241511 /* Foundation.framework */; };
 		598434D9E26FB1BBBDBA0581 /* WatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 266F6BF103217A20EA9D5BC8 /* WatchTests.swift */; };
 		5C485979A3F60B935D182BAF /* RecognitionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D2529E7ACFA88E5639F4C75 /* RecognitionView.swift */; };
 		5E82547AEA8810A151966587 /* GeminiInventoryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED8024D8CACC085BCE8CC386 /* GeminiInventoryService.swift */; };
+		61B41740DD006E6D1C822805 /* TripPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18BC4C4FB3FA843D1E08F2EA /* TripPlanner.swift */; };
 		637C7900444565D71F26D904 /* ShoppingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3831F5336718C6D1F0812566 /* ShoppingModels.swift */; };
 		6C5FD45E1092921153F0FA8D /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0411E5B71785DAFDB59ADDA2 /* WatchModels.swift */; };
 		6D11BAD95BF25539F1C4E6F9 /* BrowserToolExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7F7975FBBF93E36BFD498E9 /* BrowserToolExecutor.swift */; };
@@ -48,6 +51,7 @@
 		6E30429DCEA967A30A0237B1 /* AgentCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A9515555259CC33BE5F8186 /* AgentCoordinator.swift */; };
 		787C25763968DEF19BCEA0BC /* ShoppingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E74068D84D061771BC76CFD0 /* ShoppingTests.swift */; };
 		7ADD93AC1DAA8FBDB5B01A83 /* GeminiCaptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84712908608539A298B3D679 /* GeminiCaptionService.swift */; };
+		7D5BFDED3EAB83DAF848C59C /* TripStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 572772A3A39FCFF81E12CE7D /* TripStore.swift */; };
 		7E74D785404CE20E82B14692 /* ModelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EFB306656DA7F8B908FD7AD /* ModelProvider.swift */; };
 		829771E2C30B7236F5C5D14A /* ModelConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C7DA23DEE420545EF43C5C /* ModelConfiguration.swift */; };
 		8302AFD8D8B81A92CBEAD235 /* browser-fixture.html in Resources */ = {isa = PBXBuildFile; fileRef = 1EBB9EED3AC87495774DB9C3 /* browser-fixture.html */; };
@@ -59,8 +63,10 @@
 		95C9CA5BD07AC93F9805C30F /* BrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15815BEC3690BB246FAB930E /* BrowserTests.swift */; };
 		9D77C25CBCC07BA089556075 /* ShoppingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF0FE70D07896CFCA0EF744B /* ShoppingView.swift */; };
 		9E76D3E5F8E372903A639FEB /* CaptionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E8D513CC6D322C48CB177B1 /* CaptionModels.swift */; };
+		A082C1D308DDEA6DD3CEA44D /* TripTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67A46475E759D19F3E1F3766 /* TripTests.swift */; };
 		A08A2945ADCBCDF7B83142E5 /* CaptionHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1982523DE11C44D26A8E91A /* CaptionHTTPClient.swift */; };
 		A35D6F61976E6049CF5A4B80 /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7005469F1885068D2934AB7 /* AppLog.swift */; };
+		A5D122500AE424307987EC21 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AE3AF07D1DFFE2907C7142C6 /* Assets.xcassets */; };
 		A8ED89AC09560331D16FAB79 /* BrowserPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D12F0C37DD25E51D738468 /* BrowserPolicy.swift */; };
 		B0218DE2720796644F4C0F20 /* MediaLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A4EFF4ADF48178439FDE70 /* MediaLibrary.swift */; };
 		B051B41FACDC019E64163064 /* ModelIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B4A2278117C7B4E35EC36D5 /* ModelIntegrationTests.swift */; };
@@ -73,6 +79,7 @@
 		D03A7F0139733750A21E1B8B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 925DF290158B6070465CC038 /* SettingsView.swift */; };
 		D36C7420907A1586CCFC20AB /* OpenAICompatibleClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FC5DA7691A7DDF469D7A3E /* OpenAICompatibleClient.swift */; };
 		D644F849E402F92D37C9999D /* ShoppingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AE1F09B0FEBB701A047564A /* ShoppingStore.swift */; };
+		E99F4EF6518E72601D76C12D /* TripLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C06DECDABCB93EDC8CA07A /* TripLiveTests.swift */; };
 		F7D383076DE98B47E7091CBD /* InventoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59263885EC20BE4AAF4D7F3B /* InventoryTests.swift */; };
 		FD1FF5C357383BDC1AC89B3D /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 867F5B288D00FC80995A3455 /* SettingsStore.swift */; };
 /* End PBXBuildFile section */
@@ -97,6 +104,7 @@
 		12B048E8F7517165BBAC352B /* CalendarConnection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarConnection.swift; path = Agora/Calendar/CalendarConnection.swift; sourceTree = "<group>"; };
 		15815BEC3690BB246FAB930E /* BrowserTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserTests.swift; path = AgoraTests/BrowserTests.swift; sourceTree = "<group>"; };
 		16FC5DA7691A7DDF469D7A3E /* OpenAICompatibleClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OpenAICompatibleClient.swift; path = Agora/Models/OpenAICompatibleClient.swift; sourceTree = "<group>"; };
+		18BC4C4FB3FA843D1E08F2EA /* TripPlanner.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripPlanner.swift; path = Agora/Trips/TripPlanner.swift; sourceTree = "<group>"; };
 		1AE74BEEED1DE81A6C9EB8F0 /* CaptionController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionController.swift; path = Agora/Capture/CaptionController.swift; sourceTree = "<group>"; };
 		1E8D513CC6D322C48CB177B1 /* CaptionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionModels.swift; path = Agora/Capture/CaptionModels.swift; sourceTree = "<group>"; };
 		1E95A5738AAF7E09F32FD585 /* CaptureView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptureView.swift; path = Agora/Capture/CaptureView.swift; sourceTree = "<group>"; };
@@ -119,9 +127,12 @@
 		505DFE9A75708E3D8303AD44 /* PushNotifications.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PushNotifications.swift; path = Agora/Shopping/PushNotifications.swift; sourceTree = "<group>"; };
 		508A2F0DC4605AD428A03C04 /* BrowserViewport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserViewport.swift; path = Agora/Browser/BrowserViewport.swift; sourceTree = "<group>"; };
 		53ED4944AABB5AFAB8E77288 /* BrowserScripts.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; name = BrowserScripts.js; path = Agora/Browser/BrowserScripts.js; sourceTree = "<group>"; };
+		572772A3A39FCFF81E12CE7D /* TripStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripStore.swift; path = Agora/Trips/TripStore.swift; sourceTree = "<group>"; };
 		59263885EC20BE4AAF4D7F3B /* InventoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryTests.swift; path = AgoraTests/InventoryTests.swift; sourceTree = "<group>"; };
 		5BD2ABEE624DF14392818B91 /* CaptureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptureTests.swift; path = AgoraTests/CaptureTests.swift; sourceTree = "<group>"; };
 		5EB5DD92CDB24C7884F2F633 /* CalendarTools.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarTools.swift; path = Agora/Calendar/CalendarTools.swift; sourceTree = "<group>"; };
+		61C06DECDABCB93EDC8CA07A /* TripLiveTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripLiveTests.swift; path = AgoraTests/TripLiveTests.swift; sourceTree = "<group>"; };
+		67A46475E759D19F3E1F3766 /* TripTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripTests.swift; path = AgoraTests/TripTests.swift; sourceTree = "<group>"; };
 		69046516E9A54E1DE9CD950D /* RecognitionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RecognitionModels.swift; path = Agora/Inventory/RecognitionModels.swift; sourceTree = "<group>"; };
 		69584785EE382B97897F6C47 /* CaptionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionTests.swift; path = AgoraTests/CaptionTests.swift; sourceTree = "<group>"; };
 		6B9A12AA0E4847192CD7F25A /* InventoryModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryModels.swift; path = Agora/Inventory/InventoryModels.swift; sourceTree = "<group>"; };
@@ -141,13 +152,16 @@
 		9EF0CCE8E37C05F53DC86690 /* LocalModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LocalModelTests.swift; path = AgoraTests/LocalModelTests.swift; sourceTree = "<group>"; };
 		9FCB296ECB295212A8B566B1 /* GeminiModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GeminiModelTests.swift; path = AgoraTests/GeminiModelTests.swift; sourceTree = "<group>"; };
 		A910D2A694D670DFE0DCB5D7 /* HomeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HomeView.swift; path = Agora/App/HomeView.swift; sourceTree = "<group>"; };
+		AE3AF07D1DFFE2907C7142C6 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = assets/Assets.xcassets; sourceTree = "<group>"; };
 		AFB5E3DC159E6C5ABA2617F4 /* Agora.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Agora.xcconfig; path = Config/Agora.xcconfig; sourceTree = "<group>"; };
 		B28FEB162E40A1C4E217B004 /* ShoppingTools.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShoppingTools.swift; path = Agora/Shopping/ShoppingTools.swift; sourceTree = "<group>"; };
 		BBDF642207C3ACC783A1C0A9 /* InventoryView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryView.swift; path = Agora/App/InventoryView.swift; sourceTree = "<group>"; };
 		C1982523DE11C44D26A8E91A /* CaptionHTTPClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionHTTPClient.swift; path = Agora/Capture/CaptionHTTPClient.swift; sourceTree = "<group>"; };
 		C9B0D186D871585E3F767A40 /* WatchStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchStore.swift; path = Agora/Shopping/WatchStore.swift; sourceTree = "<group>"; };
+		CE26387FFF3222EE2FA489BA /* TripsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripsView.swift; path = Agora/Trips/TripsView.swift; sourceTree = "<group>"; };
 		D321B867CDD7DD8E49E0ED43 /* InventoryForms.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryForms.swift; path = Agora/Inventory/InventoryForms.swift; sourceTree = "<group>"; };
 		D63E8A1F4D704E4944DE1118 /* CalendarOnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarOnboardingView.swift; path = Agora/Calendar/CalendarOnboardingView.swift; sourceTree = "<group>"; };
+		E0042D6D266AEBF2AF1B8863 /* TripModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripModels.swift; path = Agora/Trips/TripModels.swift; sourceTree = "<group>"; };
 		E0CEBF0DA029FF97E245B638 /* BrowserSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserSession.swift; path = Agora/Browser/BrowserSession.swift; sourceTree = "<group>"; };
 		E7005469F1885068D2934AB7 /* AppLog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppLog.swift; path = Agora/Storage/AppLog.swift; sourceTree = "<group>"; };
 		E74068D84D061771BC76CFD0 /* ShoppingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShoppingTests.swift; path = AgoraTests/ShoppingTests.swift; sourceTree = "<group>"; };
@@ -250,6 +264,13 @@
 				505DFE9A75708E3D8303AD44 /* PushNotifications.swift */,
 				0EBDC6F2F40BF43268ABCC36 /* WatchViews.swift */,
 				266F6BF103217A20EA9D5BC8 /* WatchTests.swift */,
+				AE3AF07D1DFFE2907C7142C6 /* Assets.xcassets */,
+				E0042D6D266AEBF2AF1B8863 /* TripModels.swift */,
+				CE26387FFF3222EE2FA489BA /* TripsView.swift */,
+				18BC4C4FB3FA843D1E08F2EA /* TripPlanner.swift */,
+				572772A3A39FCFF81E12CE7D /* TripStore.swift */,
+				61C06DECDABCB93EDC8CA07A /* TripLiveTests.swift */,
+				67A46475E759D19F3E1F3766 /* TripTests.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -371,6 +392,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				21807B9C72A7D293730B7A16 /* BrowserScripts.js in Resources */,
+				A5D122500AE424307987EC21 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -393,6 +415,8 @@
 				C775D3D4251857255C2703D3 /* ModelSettingsRenderTests.swift in Sources */,
 				787C25763968DEF19BCEA0BC /* ShoppingTests.swift in Sources */,
 				598434D9E26FB1BBBDBA0581 /* WatchTests.swift in Sources */,
+				E99F4EF6518E72601D76C12D /* TripLiveTests.swift in Sources */,
+				A082C1D308DDEA6DD3CEA44D /* TripTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -450,6 +474,10 @@
 				20476743923B728C05D6CBA2 /* WatchStore.swift in Sources */,
 				35949209347C681FE019C619 /* PushNotifications.swift in Sources */,
 				B9EAD3EEB24BE2F557E2239A /* WatchViews.swift in Sources */,
+				25C973976978D18A637CB178 /* TripModels.swift in Sources */,
+				51904F013062C9E77C58A947 /* TripsView.swift in Sources */,
+				61B41740DD006E6D1C822805 /* TripPlanner.swift in Sources */,
+				7D5BFDED3EAB83DAF848C59C /* TripStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

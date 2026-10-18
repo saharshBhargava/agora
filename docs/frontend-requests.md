@@ -396,8 +396,7 @@ explains why it thinks so, and turns that into a shopping list per store in one 
 
 ### Out of scope for this request
 
-- Automatic list-to-trip scheduling remains a follow-up (use the list's `needed_by` as the deadline).
-  Standalone Calendar chat tools already exist: private Agora events for demo, native Google for ordinary users.
+- Scheduling is available from Home → Plan shopping trips; see the replenishment-to-Calendar section below.
 - Checkout from a list, and turning ticked lines into purchases/restocks (receipts, P1 follow-up).
 - Price-drop lines (`reason: "price_drop"` is reserved).
 
@@ -431,18 +430,36 @@ See [backend refresh design](backend-spec.md#45-prices-deals-small-businesses).
   `interaction_urls`, the latest confirmed run shows **Needs browser review**. An explicit tap opens the
   shared browser privately and selects Chat; no model action or purchase starts automatically.
 
-## Replenishment to Calendar: backend contract
+## Replenishment to Calendar
 
-The backend now supports persisted trips through `GET /v1/trips`, `POST /v1/trips` and
-`PATCH /v1/trips/{id}/outcome`; see [the contract](api/replenishment-trips.md). The native planner UI is a
-separate client change. Generate per-store lists, use Calendar free/busy to propose a time, show the exact
-list and event for approval, and reserve its current list version before writing to Calendar. Use the trip
-ID as the stable Calendar request identity and report the confirmed event reference or uncertain outcome.
+**Status:** implemented in iOS and the backend. Contract: [replenishment trips](api/replenishment-trips.md).
 
-Refetch on `trip.updated`. Display persisted trips and recover uncertain writes through read-only event
-lookup, never a new request identity. Demo recovery uses `GET /v1/demo/calendar/events/by-request?key=...`.
-Keep demo traffic on the private Calendar routes; ordinary accounts use their actual Google Calendar.
-A `409 duplicate_request` means retry the same request key after the competing transaction finishes.
+Home's **Plan shopping trips** and **Plan a restock trip** open the store lists and trip planner. The planner
+generates lists from the next seven days of run-outs, including preferred/last-purchased stores, then loads
+all existing open lists. Users choose a 1–14-day Calendar search window, daily shopping hours, and a duration
+including travel. The earliest deadlines are planned first, in non-overlapping free Calendar slots. A trip
+that would finish after its list's deadline has a visible warning; unavailable slots stay unscheduled.
+Store opening hours and travel routes are not inferred.
+
+**Review trip** shows the exact title, time, timezone, store and item notes. **Add to Calendar** checks
+availability again, reserves the reviewed list version on the backend, creates the event, and persists its
+outcome. Ordinary accounts use the primary Google Calendar directly; the designated account uses its private
+Agora Calendar. Planning alone creates no Calendar events. No invitations are sent.
+
+Saved trips appear on Home and in Shopping trips after app restart. A reserved trip can be reviewed again
+to finish the same saved request; recovery first looks for the original event and keeps its deterministic
+identity. Uncertain outcomes offer **Check Calendar status**, which only reads the provider and never
+creates another event. Account or household switches invalidate reviews and pending local state.
+
+Store lists can be opened and items checked/unchecked with their replenishment explanations visible.
+This does not increment inventory or record a purchase. Existing wishlist and shopping suggestion flows
+remain separate. Trip/list data refreshes on foreground, local changes and periodic polling; the backend
+also publishes `trip.updated` for future SSE clients.
+
+Trip reservations and private Calendar creation return `409 duplicate_request` if another operation wins
+the same request key concurrently; the losing write is rolled back. Preserve the original key on retry
+and reload trips to recover saved state. A key already used for different input returns
+`422 idempotency_key_reused`.
 
 Price-watch capability responses now include `discovery_status` (`available`, `model_not_configured`,
 `search_not_configured`). The watch UI distinguishes model setup from web-provider setup and does not
