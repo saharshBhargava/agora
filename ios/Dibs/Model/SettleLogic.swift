@@ -64,7 +64,7 @@ enum SettleLogic {
     static func staysWith(run: Run) -> String? {
         var items: [(name: String, cents: Int?)] = run.chips
             .filter { $0.isLive && $0.claimers.isEmpty }
-            .map { ($0.name, $0.priceCents) }
+            .map { ($0.nameWithQty, $0.lineCents) }
         for i in run.receipt?.mine ?? [] {
             if let lines = run.receipt?.lines, lines.indices.contains(i) { items.append((lines[i].text, lines[i].cents)) }
         }
@@ -197,7 +197,7 @@ enum SettleLogic {
             var sub: String?
             if let chip {
                 let names = chip.claimers.map { run.person($0)?.name ?? "?" }
-                sub = "\(chip.name) · \(names.isEmpty ? "yours" : names.joined(separator: ", "))"
+                sub = "\(chip.nameWithQty) · \(names.isEmpty ? "yours" : names.joined(separator: ", "))"
             } else if mine {
                 sub = "Mine"
             } else if line.isTax {
@@ -209,15 +209,25 @@ enum SettleLogic {
         }
     }
 
-    /// Live chips not paired with any line: what "Pair with an item" offers.
+    /// What "Pair with an item" offers: live chips with no line yet, and chips counted more than once
+    /// whose lines so far cover fewer items than their cart count (the server's rule: a second "APPLE"
+    /// line for an apple counted twice).
     static func pairable(run: Run) -> [Chip] {
-        let matched = Set(run.receipt?.matches.map(\.chipId) ?? [])
-        return run.chips.filter { $0.isLive && !matched.contains($0.id) }
+        guard let receipt = run.receipt else { return run.chips.filter(\.isLive) }
+        var covered: [String: Int] = [:]
+        for m in receipt.matches {
+            let items = receipt.lines.indices.contains(m.lineIndex) ? max(1, receipt.lines[m.lineIndex].quantity) : 1
+            covered[m.chipId, default: 0] += items
+        }
+        return run.chips.filter { c in
+            c.isLive && (covered[c.id] ?? 0) < (receipt.cartQuantities?[c.id] ?? c.quantity)
+        }
     }
 
-    /// "Not on receipt: Milk, Gum", or nil.
+    /// "Not on receipt: Milk, Gum" (live chips with no line at all), or nil.
     static func notOnReceipt(run: Run) -> String? {
-        let names = pairable(run: run).map(\.name)
+        let matched = Set(run.receipt?.matches.map(\.chipId) ?? [])
+        let names = run.chips.filter { $0.isLive && !matched.contains($0.id) }.map(\.name)
         return names.isEmpty ? nil : "Not on receipt: \(names.joined(separator: ", "))"
     }
 
@@ -232,7 +242,7 @@ enum SettleLogic {
         let matched = Set(run.receipt?.matches.map(\.chipId) ?? [])
         var by: [String: Int] = [:]
         for c in run.chips where matched.contains(c.id) && c.isLive {
-            guard let price = c.priceCents, !c.claimers.isEmpty else { continue }
+            guard let price = c.lineCents, !c.claimers.isEmpty else { continue }
             let base = price / c.claimers.count
             let leftover = price - base * c.claimers.count
             for (i, id) in c.claimers.enumerated() { by[id, default: 0] += base + (i < leftover ? 1 : 0) }

@@ -35,10 +35,10 @@ enum ClaimLogic {
         return out
     }
 
-    /// My share of one chip; a chip with no price yet counts 0.
+    /// My share of one chip's line total (unit × quantity, or the receipt's total); a chip with no price yet counts 0.
     static func myShare(_ chip: Chip, me: String) -> Int {
-        guard let price = chip.priceCents else { return 0 }
-        return splitChip(price, chip.claimers)[me] ?? 0
+        guard let line = chip.lineCents else { return 0 }
+        return splitChip(line, chip.claimers)[me] ?? 0
     }
 
     /// Cents of hold left after the tray's full prices plus tax, rounded up; may be negative.
@@ -58,7 +58,7 @@ enum ClaimLogic {
     /// Room left on my hold, the same number the server's cap check uses; nil when I have no hold.
     static func roomLeft(run: Run, me: String) -> Int? {
         guard let held = run.person(me)?.authorizedCents else { return nil }
-        return roomFor(roomChips(run, me: me).map { $0.priceCents ?? 0 }, authorizedCents: held, taxRate: run.taxRate)
+        return roomFor(roomChips(run, me: me).map { $0.lineCents ?? 0 }, authorizedCents: held, taxRate: run.taxRate)
     }
 
     static func trayTotal(_ tray: [Chip], me: String) -> Int {
@@ -179,9 +179,9 @@ enum ClaimLogic {
         return .claim
     }
 
-    /// Full prices of my counted chips plus this one (the server leaves the chip itself out of the tray first).
+    /// Full line totals of my counted chips plus this one (the server leaves the chip itself out of the tray first).
     private static func prices(with chip: Chip, _ roomChips: [Chip]) -> [Int] {
-        roomChips.filter { $0.id != chip.id }.map { $0.priceCents ?? 0 } + [chip.priceCents ?? 0]
+        roomChips.filter { $0.id != chip.id }.map { $0.lineCents ?? 0 } + [chip.lineCents ?? 0]
     }
 
     /// The smallest hold that fits my counted chips plus this one, with tax.
@@ -231,7 +231,7 @@ enum ClaimLogic {
 
     /// Raise-only sheet: "$45.00 · $5.00 over your hold".
     static func overHoldLine(_ chip: Chip, roomCents: Int) -> String {
-        let price = chip.priceCents.map(Money.format) ?? "Price not known yet"
+        let price = chip.lineCents.map(Money.format) ?? "Price not known yet"
         return roomCents < 0 ? "\(price) · \(Money.format(-roomCents)) over your hold" : "\(price) · over your hold"
     }
 
@@ -243,7 +243,7 @@ enum ClaimLogic {
 
     /// "$14.99 · more than your $7.29 room".
     static func overCapLine(_ chip: Chip, roomCents: Int) -> String {
-        let price = chip.priceCents.map(Money.format) ?? "Price not known yet"
+        let price = chip.lineCents.map(Money.format) ?? "Price not known yet"
         return "\(price) · more than your \(Money.format(max(0, roomCents))) room"
     }
 
@@ -324,9 +324,10 @@ enum ClaimLogic {
         return "Your \(Money.whole(held)) hold stays until the shopper checks out."
     }
 
-    /// The price under a chip: the price, or "Finding price…" while the server looks it up.
+    /// The price under a chip: its line total ("$2.20" for two at $1.10), or "Finding price…" while the
+    /// server looks it up.
     static func priceText(_ chip: Chip) -> String {
-        chip.priceCents.map(Money.format) ?? "Finding price…"
+        chip.lineCents.map(Money.format) ?? "Finding price…"
     }
 
     // MARK: live view
@@ -344,8 +345,8 @@ enum ClaimLogic {
             .filter { $0.region != nil && $0.state != .wish && $0.state != .identifying && $0.state != .removed && !$0.dropped }
             .max { $0.addedAt < $1.addedAt }
         guard let newest, let region = newest.region, nowMs - newest.addedAt < highlightMs else { return nil }
-        let price = newest.priceCents.map(Money.format) ?? "~$?"
-        return Highlight(region: region, label: "\(newest.name) · \(price)", pending: false)
+        let price = newest.lineCents.map(Money.format) ?? "~$?"
+        return Highlight(region: region, label: "\(newest.nameWithQty) · \(price)", pending: false)
     }
 
     /// A region in sent-frame pixels to a rectangle in a box the image fills (aspect fill, centered).

@@ -1,8 +1,9 @@
 import SwiftUI
 import UIKit
 
-/// One cart line for the shopper (web CartRowView): thumb, name, who is in, price. Unclaimed lines
-/// are dashed; wishes are dashed in the wisher's color with their avatar.
+/// One cart line for the shopper (web CartRowView): thumb, name, who is in, line total and, for items
+/// while the cart takes changes, a − N + stepper. Unclaimed lines are dashed; wishes are dashed in the
+/// wisher's color with their avatar.
 struct CartRowView: View {
     let chip: Chip
     let people: [Person]
@@ -15,6 +16,10 @@ struct CartRowView: View {
     var gaveUp = false
     /// "Add price" on a row whose lookup gave up.
     var onAddPrice: (() -> Void)?
+    /// The − N + stepper's change (nil hides it: wishes, the drag preview, a closed cart).
+    var onQuantity: ((Int) -> Void)?
+    /// The count on its way to the server (shown, with the stepper waiting); nil shows the chip's own.
+    var pendingQuantity: Int?
 
     var body: some View {
         let wish = chip.state == .wish
@@ -52,8 +57,8 @@ struct CartRowView: View {
                 case nil:
                     EmptyView()
                 }
-                if chip.quantity > 1 {
-                    Text("×\(chip.quantity)").font(.system(size: 13)).foregroundStyle(Color.muted)
+                if let line = ShopperLogic.quantityLine(chip) {
+                    Text(line).font(.system(size: 13)).foregroundStyle(Color.muted)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -65,6 +70,10 @@ struct CartRowView: View {
                 .foregroundStyle(wish ? Color.muted : Color.ink)
                 .monospacedDigit()
                 .frame(minWidth: 56, alignment: .trailing)
+            if let onQuantity {
+                QuantityStepper(name: chip.name, quantity: pendingQuantity ?? chip.quantity,
+                                busy: pendingQuantity != nil, onChange: onQuantity)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -83,6 +92,12 @@ struct CartRowView: View {
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Self.label(chip, people: people))
+        .accessibilityValue(onQuantity == nil ? "" : "\(pendingQuantity ?? chip.quantity)")
+        .accessibilityAdjustableAction { direction in
+            guard let onQuantity, pendingQuantity == nil else { return }
+            let delta = direction == .increment ? 1 : direction == .decrement ? -1 : 0
+            if delta != 0, let next = ShopperLogic.step(chip.quantity, by: delta) { onQuantity(next) }
+        }
         .accessibilityActions {
             if ShopperLogic.subline(chip, people: people, checking: checking, now: now, gaveUp: gaveUp) == .noPrice {
                 Button(ShopperLogic.addPriceText) { onAddPrice?() }
@@ -95,9 +110,9 @@ struct CartRowView: View {
         let initial = { (id: String) in people.first { $0.id == id }?.initial ?? "?" }
         if chip.state == .wish { return "Wish: \(chip.name), wished by \(initial(chip.wishedBy ?? ""))" }
         if chip.state == .identifying { return "\(chip.name.isEmpty ? "Item" : chip.name), identifying" }
-        let price = chip.priceCents.map(Money.format) ?? "price not known yet"
+        let price = chip.lineCents.map(Money.format) ?? "price not known yet"
         let who = chip.claimers.map(initial)
-        return "\(chip.name), \(price), \(who.isEmpty ? "not claimed" : "claimed by \(RunText.listNames(who))")"
+        return "\(chip.nameWithQty), \(price), \(who.isEmpty ? "not claimed" : "claimed by \(RunText.listNames(who))")"
     }
 }
 

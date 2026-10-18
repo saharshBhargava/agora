@@ -127,18 +127,18 @@ struct Tray: View {
     }
 }
 
-/// One tray row: thumbnail, name, "Split with Marcus", my share.
+/// One tray row: thumbnail, name with its count ("×2"), "Split with Marcus", my split of the line total.
 struct TrayRow: View {
     let chip: Chip
     let people: [Person]
     let me: String
 
     var body: some View {
-        let share = chip.priceCents == nil ? nil : ClaimLogic.myShare(chip, me: me)
+        let share = Self.share(chip, me: me)
         HStack(spacing: 12) {
             ChipThumb(chip: chip, height: 44, width: 44, radius: 10, letterSize: 18)
             VStack(alignment: .leading, spacing: 2) {
-                Text(chip.name)
+                Text(chip.nameWithQty)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Color.white)
                     .lineLimit(1)
@@ -174,12 +174,19 @@ struct TrayRow: View {
         .background(Color(hex: 0x1F1D1A), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label(share: share))
+        .accessibilityLabel(Self.label(chip, me: me))
     }
 
-    private func label(share: Int?) -> String {
+    /// My split of the line total; nil while unpriced.
+    static func share(_ chip: Chip, me: String) -> Int? {
+        chip.lineCents == nil ? nil : ClaimLogic.myShare(chip, me: me)
+    }
+
+    /// "Cosmic Crisp Apple ×2, your share $1.10, split 2 ways".
+    static func label(_ chip: Chip, me: String) -> String {
         let n = chip.claimers.count
-        return "\(chip.name), your share \(share.map(Money.format) ?? "not known yet")\(n > 1 ? ", split \(n) ways" : "")"
+        let share = share(chip, me: me)
+        return "\(chip.nameWithQty), your share \(share.map(Money.format) ?? "not known yet")\(n > 1 ? ", split \(n) ways" : "")"
     }
 }
 

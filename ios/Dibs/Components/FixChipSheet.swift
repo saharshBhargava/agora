@@ -1,31 +1,38 @@
 import SwiftUI
 
-/// Name and price a chip (web FixChipSheet). Empty fields are left alone; only changes are sent.
+/// Name, price (of one) and count of a chip (web FixChipSheet). Empty fields are left alone; only
+/// changes are sent.
 struct FixChipSheet: View {
     let chip: Chip
-    /// Called with the changed fields (both nil: nothing changed).
-    let onSave: (_ name: String?, _ priceCents: Int?) -> Void
+    /// Called with the changed fields (all nil: nothing changed).
+    let onSave: (_ name: String?, _ priceCents: Int?, _ quantity: Int?) -> Void
     let onCancel: () -> Void
     /// Start in the price field ("Add price" on a row with no price found).
     var focusPrice = false
     /// "Remove from cart" at the bottom (shopper, while the cart takes changes); nil hides it.
     var onRemove: (() -> Void)?
+    /// The "How many" stepper (shopper, while the cart takes changes).
+    var showsQuantity = false
 
     @State private var name: String
     @State private var price: String
+    @State private var quantity: Int
     @FocusState private var focus: Field?
 
     private enum Field { case name, price }
 
-    init(chip: Chip, focusPrice: Bool = false, onSave: @escaping (_ name: String?, _ priceCents: Int?) -> Void,
+    init(chip: Chip, focusPrice: Bool = false, showsQuantity: Bool = false,
+         onSave: @escaping (_ name: String?, _ priceCents: Int?, _ quantity: Int?) -> Void,
          onCancel: @escaping () -> Void, onRemove: (() -> Void)? = nil) {
         self.chip = chip
         self.focusPrice = focusPrice
+        self.showsQuantity = showsQuantity
         self.onRemove = onRemove
         self.onSave = onSave
         self.onCancel = onCancel
         _name = State(initialValue: chip.name)
         _price = State(initialValue: ShopperLogic.priceField(chip))
+        _quantity = State(initialValue: chip.quantity)
     }
 
     private var result: ShopperLogic.Fix { ShopperLogic.fix(chip, name: name, price: price) }
@@ -41,16 +48,24 @@ struct FixChipSheet: View {
                     .submitLabel(.next)
                     .onSubmit { focus = .price }
             }
-            field("Price") {
-                TextField("", text: $price, prompt: Text("0.00").foregroundStyle(Color.muted))
-                    .keyboardType(.decimalPad)
-                    .focused($focus, equals: .price)
+            HStack(alignment: .bottom, spacing: 16) {
+                field(ShopperLogic.priceLabel(quantity: quantity)) {
+                    TextField("", text: $price, prompt: Text("0.00").foregroundStyle(Color.muted))
+                        .keyboardType(.decimalPad)
+                        .focused($focus, equals: .price)
+                }
+                if showsQuantity {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("How many").font(.system(size: 13)).foregroundStyle(Color.muted)
+                        QuantityStepper(name: chip.name, quantity: quantity) { quantity = $0 }
+                    }
+                }
             }
             if result == .badPrice {
                 ErrorText(message: "Enter a price like 4.29")
             }
             Button("Save") {
-                if case let .save(n, c) = result { onSave(n, c) }
+                if case let .save(n, c) = result { onSave(n, c, ShopperLogic.quantityChange(chip, to: quantity)) }
             }
             .buttonStyle(.dibs)
             .disabled(result == .badPrice)
@@ -96,7 +111,8 @@ struct FixChipSheet: View {
 #if DEBUG
 #Preview("Fix sheet") {
     Color.cameraDark.sheet(isPresented: .constant(true)) {
-        FixChipSheet(chip: Chip(id: "t", name: "Paper Towels 12 pk", priceCents: 2399), onSave: { _, _ in }, onCancel: {})
+        FixChipSheet(chip: Chip(id: "t", name: "Paper Towels 12 pk", priceCents: 2399, quantity: 2), showsQuantity: true,
+                     onSave: { _, _, _ in }, onCancel: {})
             .presentationDetents([.height(430)])
             .presentationBackground(Color.paper)
     }

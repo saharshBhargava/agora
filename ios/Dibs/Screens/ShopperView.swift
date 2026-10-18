@@ -28,6 +28,8 @@ struct ShopperView: View {
     @State private var priceWorker = PriceWorker()
 
     @State private var fixing: FixTarget?
+    /// Counts on their way to the server, by chip id: the row shows it and its stepper waits.
+    @State private var pendingQuantity: [String: Int] = [:]
     @State private var confirmLeave = false
     /// Chips already seen removed; a chip newly removed (by anyone, the camera watcher too) gets the undo.
     @State private var removedIds: Set<String>?
@@ -138,7 +140,8 @@ struct ShopperView: View {
         .preferredColorScheme(.light)
         .sheet(item: $fixing) { target in
             FixChipSheet(chip: target.chip, focusPrice: target.focusPrice,
-                         onSave: { name, cents in save(target.chip, name: name, cents: cents) },
+                         showsQuantity: ShopperLogic.canAdjustQuantity(target.chip, runState: run?.state),
+                         onSave: { name, cents, quantity in save(target.chip, name: name, cents: cents, quantity: quantity) },
                          onCancel: { fixing = nil },
                          onRemove: ShopperLogic.canRemoveFromSheet(target.chip, runState: run?.state)
                             ? { fixing = nil; remove(target.chip) } : nil)
@@ -307,7 +310,10 @@ struct ShopperView: View {
         let view = CartRowView(chip: chip, people: run?.people ?? [], me: personId,
                                checking: priceWorker.status(for: chip.name), now: clock,
                                gaveUp: priceWorker.gaveUp(for: chip.name),
-                               onAddPrice: { fixing = FixTarget(chip: chip, focusPrice: true) })
+                               onAddPrice: { fixing = FixTarget(chip: chip, focusPrice: true) },
+                               onQuantity: ShopperLogic.canAdjustQuantity(chip, runState: run?.state)
+                                   ? { setQuantity(chip, to: $0) } : nil,
+                               pendingQuantity: pendingQuantity[chip.id])
             .opacity(dragActive && dragged?.id == chip.id ? 0.3 : 1)
             .onTapGesture { if chip.state != .wish { fixing = FixTarget(chip: chip) } }
             .accessibilityAddTraits(chip.state != .wish ? .isButton : [])
@@ -545,10 +551,33 @@ struct ShopperView: View {
         toast = nil
     }
 
-    private func save(_ chip: Chip, name: String?, cents: Int?) {
+    private func save(_ chip: Chip, name: String?, cents: Int?, quantity: Int?) {
         fixing = nil
-        guard name != nil || cents != nil else { return }
-        act { adopt(try await api.fixChip(runId: runId, chipId: chip.id, personId: personId, name: name, priceCents: cents)) }
+        guard name != nil || cents != nil || quantity != nil else { return }
+        act {
+            if name != nil || cents != nil {
+                adopt(try await api.fixChip(runId: runId, chipId: chip.id, personId: personId, name: name, priceCents: cents))
+            }
+            if let quantity {
+                adopt(try await api.setQuantity(runId: runId, chipId: chip.id, personId: personId, quantity: quantity))
+            }
+        }
+    }
+
+    /// The row's − N +: shows the new count at once and waits for the server (one change per row at a
+    /// time, so quick taps never race); the server's answer replaces the run either way.
+    private func setQuantity(_ chip: Chip, to quantity: Int) {
+        guard pendingQuantity[chip.id] == nil else { return }
+        pendingQuantity[chip.id] = quantity
+        actionError = nil
+        Task { @MainActor in
+            defer { pendingQuantity[chip.id] = nil }
+            do {
+                adopt(try await api.setQuantity(runId: runId, chipId: chip.id, personId: personId, quantity: quantity))
+            } catch {
+                actionError = (error as? LocalizedError)?.errorDescription ?? "Something went wrong"
+            }
+        }
     }
 
     private func adopt(_ r: Run) { store.adopt(r) }

@@ -59,7 +59,12 @@ public struct Chip: Codable, Sendable, Hashable, Identifiable {
     public var priceSource: PriceSource
     public var photoUrl: String?
     public var region: Box?
+    /// How many of this item are in the cart (1 to 20). `priceCents` is the price of one.
     public var quantity: Int
+    /// The receipt's exact line total for this chip, tax included; once set it replaces priceCents × quantity.
+    public var receiptTotalCents: Int?
+    /// When the camera last counted this item (ms).
+    public var lastSeenAt: Double?
     /// Ordered by claim time.
     public var claimers: [String]
     public var state: ChipState
@@ -78,17 +83,17 @@ public struct Chip: Codable, Sendable, Hashable, Identifiable {
         photoUrl: String? = nil, region: Box? = nil, quantity: Int = 1, claimers: [String] = [],
         state: ChipState = .open, wishedBy: String? = nil, duplicateOf: String? = nil,
         putBack: Bool = false, dropped: Bool = false, overCap: [String] = [],
-        removedAt: Double? = nil, addedAt: Double = 0
+        removedAt: Double? = nil, addedAt: Double = 0, receiptTotalCents: Int? = nil
     ) {
         self.id = id; self.name = name; self.priceCents = priceCents; self.priceSource = priceSource
         self.photoUrl = photoUrl; self.region = region; self.quantity = quantity; self.claimers = claimers
         self.state = state; self.wishedBy = wishedBy; self.duplicateOf = duplicateOf
         self.putBack = putBack; self.dropped = dropped; self.overCap = overCap
-        self.removedAt = removedAt; self.addedAt = addedAt
+        self.removedAt = removedAt; self.addedAt = addedAt; self.receiptTotalCents = receiptTotalCents
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, priceCents, priceSource, photoUrl, region, quantity, claimers, state
+        case id, name, priceCents, priceSource, photoUrl, region, quantity, receiptTotalCents, lastSeenAt, claimers, state
         case wishedBy, duplicateOf, putBack, dropped, overCap, removedAt, addedAt
     }
 
@@ -102,6 +107,8 @@ public struct Chip: Codable, Sendable, Hashable, Identifiable {
         photoUrl = try c.decodeIfPresent(String.self, forKey: .photoUrl)
         region = try c.decodeIfPresent(Box.self, forKey: .region)
         quantity = try c.decodeIfPresent(Int.self, forKey: .quantity) ?? 1
+        receiptTotalCents = try c.decodeIfPresent(Int.self, forKey: .receiptTotalCents)
+        lastSeenAt = try c.decodeIfPresent(Double.self, forKey: .lastSeenAt)
         claimers = try c.decodeIfPresent([String].self, forKey: .claimers) ?? []
         state = try c.decode(ChipState.self, forKey: .state)
         wishedBy = try c.decodeIfPresent(String.self, forKey: .wishedBy)
@@ -112,6 +119,21 @@ public struct Chip: Codable, Sendable, Hashable, Identifiable {
         removedAt = try c.decodeIfPresent(Double.self, forKey: .removedAt)
         addedAt = try c.decodeIfPresent(Double.self, forKey: .addedAt) ?? 0
     }
+}
+
+extension Chip {
+    /// The most of one item a chip counts (server MAX_QUANTITY): the shopper's stepper stops here.
+    public static let maxQuantity = 20
+
+    /// The line total: the receipt's exact total once read, else unit price × quantity; nil while
+    /// unpriced. Mirrors `lineCents` in server/src/money.ts; every share, room and total uses it.
+    public var lineCents: Int? { receiptTotalCents ?? priceCents.map { $0 * quantity } }
+
+    /// "×2" for more than one, "" for one.
+    public static func qtyText(_ quantity: Int) -> String { quantity > 1 ? "×\(quantity)" : "" }
+
+    /// "Cosmic Crisp Apple ×2", or just the name for one.
+    public var nameWithQty: String { quantity > 1 ? "\(name) \(Self.qtyText(quantity))" : name }
 }
 
 public struct Person: Codable, Sendable, Hashable, Identifiable {
@@ -162,9 +184,13 @@ public struct ReceiptState: Codable, Sendable, Hashable {
     public var unmatchedLines: [Int]
     /// Lines the shopper claimed as their own.
     public var mine: [Int]?
+    /// Each chip's count before the receipt changed it: how many items' worth of lines it may take.
+    public var cartQuantities: [String: Int]?
 
-    public init(lines: [ReceiptLine], matches: [ReceiptMatch], unmatchedLines: [Int], mine: [Int]? = nil) {
+    public init(lines: [ReceiptLine], matches: [ReceiptMatch], unmatchedLines: [Int], mine: [Int]? = nil,
+                cartQuantities: [String: Int]? = nil) {
         self.lines = lines; self.matches = matches; self.unmatchedLines = unmatchedLines; self.mine = mine
+        self.cartQuantities = cartQuantities
     }
 }
 

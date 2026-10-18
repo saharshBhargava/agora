@@ -159,6 +159,23 @@ final class APITests: XCTestCase {
         XCTAssertEqual(try lastBody(), ["personId": "jake", "priceCents": 899])
     }
 
+    func testSetQuantity() async throws {
+        StubProtocol.reply(200, runJSON)
+        _ = try await api.setQuantity(runId: "r1", chipId: "c/1", personId: "jake", quantity: 3)
+        assertRequest("POST", "/api/runs/r1/chips/c%2F1/quantity")
+        XCTAssertEqual(try lastBody(), ["personId": "jake", "quantity": 3])
+    }
+
+    func testSetQuantityRefusalShowsTheServerReason() async {
+        StubProtocol.reply(409, #"{"error":"cart closed"}"#)
+        do {
+            _ = try await api.setQuantity(runId: "r1", chipId: "c1", personId: "jake", quantity: 2)
+            XCTFail("expected an error")
+        } catch {
+            XCTAssertEqual((error as? LocalizedError)?.errorDescription, "cart closed")
+        }
+    }
+
     func testPutBack() async throws {
         StubProtocol.reply(200, runJSON)
         _ = try await api.putBack(runId: "r1", chipId: "c1", personId: "jake")

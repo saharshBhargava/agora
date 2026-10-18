@@ -24,7 +24,7 @@ struct OverCapSheet: View {
             HStack(spacing: 12) {
                 ChipThumb(chip: chip, height: 56, width: 56, radius: 14, letterSize: 22)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(chip.name)
+                    Text(chip.nameWithQty)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(Color.ink)
                     Text(mode == .raiseOnly ? ClaimLogic.overHoldLine(chip, roomCents: roomCents)

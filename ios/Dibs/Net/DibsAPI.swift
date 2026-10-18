@@ -133,6 +133,14 @@ public struct DibsAPI: Sendable {
                               body: Body(personId: personId, name: name, priceCents: priceCents))
     }
 
+    /// How many of the item are in the cart (shopper only, 1 to 20, open or last call). Claimers' caps are
+    /// re-checked by the server like a price fix.
+    public func setQuantity(runId: String, chipId: String, personId: String, quantity: Int) async throws -> Run {
+        struct Body: Encodable { let personId: String; let quantity: Int }
+        return try await call("POST", "\(Self.runPath(runId))/chips/\(Self.encode(chipId))/quantity",
+                              body: Body(personId: personId, quantity: quantity))
+    }
+
     public func putBack(runId: String, chipId: String, personId: String) async throws -> Run {
         try await call("POST", "\(Self.runPath(runId))/chips/\(Self.encode(chipId))/putback", body: PersonBody(personId: personId))
     }

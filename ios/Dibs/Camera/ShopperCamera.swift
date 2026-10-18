@@ -130,7 +130,7 @@ final class ShopperCamera {
                 let chip = try await api.addChip(runId: runId, imageBase64: base64)
                 camera.attach(chipId: chip.id, toItem: itemId)
                 let price = chip.priceCents.map { Money.format($0) } ?? "no price"
-                DibsLog.event("addChip #\(n) ok name=\"\(chip.name)\" price=\(price) source=\(chip.priceSource.rawValue) state=\(chip.state.rawValue)")
+                DibsLog.event("addChip #\(n) ok name=\"\(chip.name)\" price=\(price) qty=\(chip.quantity) source=\(chip.priceSource.rawValue) state=\(chip.state.rawValue)")
                 self?.lastAddError = nil
             } catch {
                 let text = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription

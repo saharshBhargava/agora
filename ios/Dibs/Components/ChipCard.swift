@@ -150,17 +150,17 @@ struct ChipCard: View {
             .background(Capsule().fill(fill))
     }
 
-    /// VoiceOver name (web chipLabel).
+    /// VoiceOver name (web chipLabel): "Cosmic Crisp Apple ×2, $2.20, claimed by P".
     static func label(_ chip: Chip, people: [Person]) -> String {
         let initial = { (id: String?) in people.first { $0.id == id }?.initial ?? "?" }
         switch chip.state {
         case .wish: return "Wish: \(chip.name), wished by \(initial(chip.wishedBy))"
         case .identifying: return "\(chip.name.isEmpty ? "Item" : chip.name), identifying"
         default:
-            let price = chip.priceCents.map(Money.format) ?? "price not known yet"
+            let price = chip.lineCents.map(Money.format) ?? "price not known yet"
             let who = chip.claimers.map { initial($0) }
             let claimed = who.isEmpty ? "not claimed" : "claimed by \(RunText.listNames(who))"
-            return "\(chip.name), \(price), \(claimed)"
+            return "\(chip.nameWithQty), \(price), \(claimed)"
         }
     }
 }

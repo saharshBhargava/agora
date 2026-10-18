@@ -11,7 +11,7 @@ enum ShopperLogic {
     struct Coverage: Equatable {
         /// Sum of every housemate's share (the shopper's own claims are not covered).
         let coveredCents: Int
-        /// Sum of live chip prices.
+        /// Sum of live chip line totals.
         let totalCents: Int
         /// One per housemate with a share, in join order.
         let segments: [Segment]
@@ -35,9 +35,9 @@ enum ShopperLogic {
         var by: [String: Int] = [:]
         var total = 0
         for c in chips where c.isLive {
-            guard let price = c.priceCents else { continue }
-            total += price
-            for (id, cents) in split(price, among: c.claimers) { by[id, default: 0] += cents }
+            guard let line = c.lineCents else { continue }
+            total += line
+            for (id, cents) in split(line, among: c.claimers) { by[id, default: 0] += cents }
         }
         let segments = people
             .filter { !$0.isShopper && (by[$0.id] ?? 0) > 0 }
@@ -122,12 +122,44 @@ enum ShopperLogic {
         }
     }
 
-    /// The row's right column: price, "wish", or nothing while the price is being found.
+    /// The row's right column: the line total, "wish", or nothing while the price is being found.
     static func price(_ chip: Chip) -> String {
         if chip.state == .wish { return "wish" }
         if chip.state == .identifying { return "…" }
-        return chip.priceCents.map(Money.format) ?? ""
+        return chip.lineCents.map(Money.format) ?? ""
     }
+
+    /// Under the name when there is more than one: "×2 · $1.10 each" ("×2" while unpriced); nil for one.
+    static func quantityLine(_ chip: Chip) -> String? {
+        guard chip.quantity > 1 else { return nil }
+        guard let unit = chip.priceCents else { return Chip.qtyText(chip.quantity) }
+        return "\(Chip.qtyText(chip.quantity)) · \(Money.format(unit)) each"
+    }
+
+    // MARK: quantity stepper
+
+    /// The stepper runs 1 to 20 (server MAX_QUANTITY). Removing stays the swipe or "Remove from cart".
+    static let maxQuantity = Chip.maxQuantity
+
+    /// The next count, or nil when it would leave 1...20 (that button is disabled).
+    static func step(_ quantity: Int, by delta: Int) -> Int? {
+        let next = quantity + delta
+        return (1...maxQuantity).contains(next) ? next : nil
+    }
+
+    /// Rows and the fix sheet show − N + on an item (not a wish or one still identifying) while the
+    /// server takes quantity changes: open or last call.
+    static func canAdjustQuantity(_ chip: Chip, runState: RunState?) -> Bool {
+        (runState == .open || runState == .lastCall) && isRemovable(chip) && chip.state != .removed && !chip.dropped
+    }
+
+    /// The fix sheet sends a count only when it changed.
+    static func quantityChange(_ chip: Chip, to quantity: Int) -> Int? {
+        quantity == chip.quantity ? nil : quantity
+    }
+
+    /// The fix sheet's price field is the price of one.
+    static func priceLabel(quantity: Int) -> String { quantity > 1 ? "Price each" : "Price" }
 
     /// Whether the screen needs a 1 s clock: some named item is unpriced and younger than
     /// `noPriceAfter`, so it is about to appear (5 s) or switch to "Add price" (20 s).
@@ -224,6 +256,12 @@ enum ShopperLogic {
     static func unclaimed(_ run: Run) -> [Chip] {
         run.chips.filter { $0.claimers.isEmpty && $0.state == .locked && !$0.dropped }
     }
+
+    /// "Cosmic Crisp Apple ×2".
+    static func unclaimedName(_ chip: Chip) -> String { chip.nameWithQty }
+
+    /// The line total, or "~$?".
+    static func unclaimedPrice(_ chip: Chip) -> String { chip.lineCents.map(Money.format) ?? "~$?" }
 
     static func unclaimedNote(_ items: [Chip]) -> String {
         items.isEmpty ? "Everything has an owner."

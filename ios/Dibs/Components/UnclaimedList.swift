@@ -49,7 +49,7 @@ struct UnclaimedList: View {
             HStack(spacing: 12) {
                 CartThumb(chip: chip, size: 48, radius: 12)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(chip.name)
+                    Text(ShopperLogic.unclaimedName(chip))
                         .font(.system(size: 16, weight: .bold))
                         .strikethrough(chip.putBack)
                         .foregroundStyle(Color.ink)
@@ -58,7 +58,7 @@ struct UnclaimedList: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Text(chip.priceCents.map(Money.format) ?? "~$?")
+                Text(ShopperLogic.unclaimedPrice(chip))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.ink)
                     .monospacedDigit()
