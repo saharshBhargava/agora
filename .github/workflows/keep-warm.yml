@@ -4,8 +4,10 @@ name: keep-warm
 # - Keeps Render's free instance awake: it sleeps after 15 idle minutes and takes ~1 minute to wake.
 #   Scheduled runs can be delayed by GitHub, so also open /healthz before a live demo.
 # - Goes red if the API is down, so the Actions tab shows an outage.
-# - Warns (without failing) when production runs a different commit than main's latest tested backend
-#   commit, e.g. a release that is still in progress or one that failed. The deploy workflow has the details.
+# - Self-heals releases: when production runs an older commit than main's latest tested backend commit,
+#   it starts the deploy workflow for that commit (e.g. the first run after RENDER_API_KEY is added, or a
+#   release that was skipped). It never retries a release that failed (a person fixes forward), waits for
+#   any release in progress, starts at most one per commit every 30 minutes, and honours the deploy freeze.
 # Uses the repository variable AGORA_API_URL (falls back to the team API).
 
 on:
@@ -14,7 +16,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: read
+  actions: write   # to start the deploy workflow when production is behind
+  contents: read
 
 jobs:
   ping:
@@ -34,7 +37,6 @@ jobs:
           echo "$body"
           echo "commit=$(echo "$body" | jq -r '.commit // empty')" >> "$GITHUB_OUTPUT"
       - name: Production runs main's latest tested backend
-        if: steps.ready.outputs.commit != ''
         env:
           LIVE: ${{ steps.ready.outputs.commit }}
         run: |
@@ -43,11 +45,27 @@ jobs:
           [ -z "$sha" ] && exit 0
           age=$(( $(date +%s) - $(date -d "$finished" +%s) ))
           # Commits that change nothing the image is built from are intentionally never released.
-          changed=$(gh api "repos/$GH_REPO/compare/$LIVE...$sha" \
-            --jq '[.files[].filename | select(startswith("backend/") or . == "render.yaml")] | length' \
-            2>/dev/null || echo 1)
-          if [ "$sha" != "$LIVE" ] && [ "$changed" != "0" ] && [ "$age" -gt 2700 ]; then
-            echo "::warning::Production runs ${LIVE:0:12}, but main's latest tested backend commit ${sha:0:12} finished CI $((age / 60)) min ago. Check the deploy workflow for that commit."
-          else
-            echo "Production is on ${LIVE:0:12}; latest tested backend commit ${sha:0:12}."
+          changed=1
+          if [ -n "$LIVE" ]; then
+            changed=$(gh api "repos/$GH_REPO/compare/$LIVE...$sha" --jq \
+              '[.files[].filename | select(startswith("backend/") or . == "render.yaml")] | length' 2>/dev/null || echo 1)
           fi
+          if [ "$sha" = "$LIVE" ] || [ "$changed" = "0" ]; then
+            echo "Production is up to date (${LIVE:0:12}; latest tested backend commit ${sha:0:12})."; exit 0
+          fi
+          [ "$age" -lt 600 ] && { echo "CI for ${sha:0:12} finished ${age}s ago; its release should be running."; exit 0; }
+          read -r status conclusion created < <(gh run list --workflow deploy.yml --limit 30 --json displayTitle,status,conclusion,createdAt \
+            --jq "[.[] | select(.displayTitle | contains(\"$sha\"))][0] | \"\\(.status) \\(.conclusion) \\(.createdAt)\"")
+          [ "$created" = "null" ] && created=""   # no earlier release run for this commit
+          if [ "$status" = "in_progress" ] || [ "$status" = "queued" ] || [ "$status" = "waiting" ]; then
+            echo "A release of ${sha:0:12} is already running."; exit 0
+          fi
+          if [ "$conclusion" = "failure" ]; then
+            echo "::warning::Production runs ${LIVE:0:12}; the release of ${sha:0:12} FAILED. Not retrying automatically: fix forward (docs/deployment.md#when-a-release-fails)."
+            exit 0
+          fi
+          if [ -n "$created" ] && [ $(( $(date +%s) - $(date -d "$created" +%s) )) -lt 1800 ]; then
+            echo "Released ${sha:0:12} less than 30 minutes ago without catching up (not configured, or frozen); waiting."; exit 0
+          fi
+          echo "::notice::Production runs ${LIVE:-an older build}; starting the release of ${sha:0:12}."
+          gh workflow run deploy.yml -f action=deploy -f ref="$sha" -f auto=true

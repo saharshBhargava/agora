@@ -15,7 +15,7 @@ records what was last verified live.
 | Process | FastAPI + in-process worker; on boot: `app.migrate` → `app.seed` (catalog + designated demo) → Uvicorn |
 | Database | Tiger Postgres + TimescaleDB, media stored in the DB (`AGORA_STORAGE_BACKEND=db`) |
 | Releases | `.github/workflows/deploy.yml`, driven by the Render API (Render's own auto-deploy is turned off) |
-| Monitor | `.github/workflows/keep-warm.yml`, every 10 min: wakes the free instance, red on outage |
+| Monitor | `.github/workflows/keep-warm.yml`, every 10 min: wakes the free instance, red on outage, and starts a release when production is behind main (never retries a failed one) |
 | Backups | `.github/workflows/db-backup.yml`, daily, encrypted, kept 14 days as workflow artifacts |
 
 ## The release pipeline
@@ -116,8 +116,9 @@ About 5 minutes, done once by the owners. Without these the pipeline still tests
 | `AGORA_DATABASE_URL` | the Tiger connection string | daily backups |
 | `AGORA_BACKUP_PASSPHRASE` | a long random phrase; **also store it in the team password manager** | backup encryption; restores need it |
 
-Then run `gh workflow run deploy.yml -f action=status` once. The first managed release turns Render's own
-auto-deploy off for you. Secrets are only readable inside workflow runs, never by collaborators. Optional
+Nothing else is needed: within about 30 minutes the keep-warm monitor notices production is behind main and
+starts the release itself (it runs on GitHub's servers, no one's computer). The first managed release turns
+Render's own auto-deploy off. Secrets are only readable inside workflow runs, never by collaborators. Optional
 hardening: move them into the `production` environment, limited to the `main` branch.
 
 ## Backups and restoring
