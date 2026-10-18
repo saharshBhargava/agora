@@ -316,3 +316,16 @@ export function roomsFor(run: Run): Map<string, number> {
 export function unclaimed(run: Run): Chip[] {
   return run.chips.filter((c) => c.claimers.length === 0 && c.state !== 'wish' && hasClaims(c) && !c.dropped);
 }
+
+/**
+ * A live chip already in the cart with the same name, added within the duplicate window.
+ * With MERGE_DUPLICATES=1 the pipeline folds a re-detection into it instead of adding a second chip.
+ */
+export function recentSameName(run: Run, name: string, now: number, excludeId: string): Chip | undefined {
+  const key = normalize(name);
+  if (key === '') return undefined;
+  return run.chips.find(
+    (c) => c.id !== excludeId && c.state !== 'wish' && c.state !== 'removed' && c.state !== 'identifying' &&
+      !c.dropped && normalize(c.name) === key && now - c.addedAt <= DUPLICATE_MS,
+  );
+}

@@ -117,4 +117,24 @@ describe('identifyPipeline', () => {
     expect(b.duplicateOf).toBe(a.id);
     expect(c.duplicateOf).toBeNull();
   });
+
+  it('with MERGE_DUPLICATES=1 folds a re-detection into the existing chip', async () => {
+    process.env.MERGE_DUPLICATES = '1';
+    try {
+      const { store, run, deps } = setup();
+      let t = 1000;
+      deps.now = () => t;
+      const ev = await eggs();
+      await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+      const firstId = store.get(run.id)!.chips[0].id;
+      t = 4000;
+      await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+      const chips = store.get(run.id)!.chips;
+      expect(chips.map((c) => c.id)).toEqual([firstId]);
+      expect(chips[0].duplicateOf).toBeNull();
+    } finally {
+      delete process.env.MERGE_DUPLICATES;
+    }
+  });
 });
+

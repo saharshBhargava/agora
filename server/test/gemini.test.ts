@@ -196,6 +196,19 @@ describe('generate model fallback', () => {
     delete process.env.GEMINI_MODEL;
   });
 
+  it('pauses and tries again once when every model is rate limited', async () => {
+    process.env.GEMINI_MODEL = 'a,b';
+    const seen: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      seen.push(String(url).split('/models/')[1].split(':')[0]);
+      return seen.length <= 2 ? reply(429) : reply(200, ok);
+    }) as unknown as typeof fetch;
+    const r = await generate({}, { fetchImpl, apiKey: 'k' });
+    expect(seen).toEqual(['a', 'b', 'a']);
+    expect(r.candidates?.[0]?.finishReason).toBe('STOP');
+    delete process.env.GEMINI_MODEL;
+  });
+
   it('stops on a 400 instead of trying other models', async () => {
     process.env.GEMINI_MODEL = 'a,b';
     let calls = 0;

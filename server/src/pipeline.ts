@@ -2,7 +2,7 @@
 import sharp from 'sharp';
 import type { PriceProvider } from './price/provider.js';
 import type { ServerMsg } from './protocol.js';
-import { addChip, setChipLive, setChipPrice } from './run.js';
+import { recentSameName, addChip, setChipLive, setChipPrice } from './run.js';
 import type { Store } from './store.js';
 import type { Box } from './types.js';
 import type { VisionProvider } from './vision/provider.js';
@@ -101,6 +101,15 @@ async function identifyLive(
   } catch {
     if (opts.removeOnFail) store.update(runId, (r) => ({ ...r, chips: r.chips.filter((c) => c.id !== id) }));
     return { chipId: id, error: 'identify failed' };
+  }
+  if (process.env.MERGE_DUPLICATES === '1') {
+    const cur = store.get(runId);
+    const same = cur ? recentSameName(cur, found.name, now(), id) : undefined;
+    if (same) {
+      // The camera saw the same product again (a merged box, a re-detection, a double tap): keep one chip.
+      store.update(runId, (r) => ({ ...r, chips: r.chips.filter((c) => c.id !== id) }));
+      return { chipId: same.id };
+    }
   }
   const source = found.priceCents === null ? 'none' : 'sticker';
   const crop = found.cropBase64 ? `data:image/jpeg;base64,${found.cropBase64}` : null;

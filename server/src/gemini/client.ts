@@ -20,14 +20,14 @@ export class GeminiError extends Error {
 
 /** Models to try in order. New API keys can't use retired models (404) and busy ones return 503 or 429. */
 export const geminiModels = (): string[] =>
-  (process.env.GEMINI_MODEL || 'gemini-3.6-flash,gemini-3.5-flash,gemini-3.5-flash-lite')
+  (process.env.GEMINI_MODEL || 'gemini-3.6-flash,gemini-3.7-flash,gemini-3.8-flash,gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite')
     .split(',')
     .map((m) => m.trim())
     .filter(Boolean);
 
 /** Fast models first, for short text-only jobs like reading a search page. */
 export const geminiFastModels = (): string[] =>
-  (process.env.GEMINI_FAST_MODEL || 'gemini-3.5-flash-lite,gemini-3.6-flash,gemini-3.5-flash')
+  (process.env.GEMINI_FAST_MODEL || 'gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.7-flash,gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash')
     .split(',')
     .map((m) => m.trim())
     .filter(Boolean);
@@ -47,7 +47,10 @@ export async function generate(
   const timer = setTimeout(() => ctl.abort(), opts.timeoutMs ?? 30_000);
   let last: GeminiError = new GeminiError('http', 'no Gemini model configured');
   try {
-    for (const model of opts.models ?? geminiModels()) {
+    // Two passes: free keys hit per-minute limits (429) on every model at once; a short pause usually clears one.
+    for (const [pass, model] of [...(opts.models ?? geminiModels()).map((m) => [0, m] as const), ...(opts.models ?? geminiModels()).slice(0, 2).map((m) => [1, m] as const)]) {
+      if (pass === 1 && last.message.includes('429')) await new Promise((r) => setTimeout(r, 1500));
+      else if (pass === 1) break;
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       const res = await f(url, {
         method: 'POST',

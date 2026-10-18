@@ -43,7 +43,7 @@ if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   exit 1
 fi
 
-export VISION=gemini PRICE=agent STORE_NAME=QFC PAYMENTS=sim LAST_CALL_MS=5000 DUPLICATE_MS=60000 PORT
+export VISION=gemini PRICE=agent STORE_NAME=QFC PAYMENTS=sim LAST_CALL_MS=5000 DUPLICATE_MS=60000 MERGE_DUPLICATES=1 PORT
 if [ -n "$PUBLIC_URL" ]; then
   export PUBLIC_URL="${PUBLIC_URL%/}"
   echo "Dibs demo server: $PUBLIC_URL  (local http://localhost:$PORT)"
