@@ -276,6 +276,13 @@ def cmd_deploy(args) -> int:
     if previous_commit == commit:
         log("that commit is already live; verifying only")
         failures = _smoke_or_report(commit)
+    elif previous_commit and args.paths and _unchanged(previous_commit, commit, args.paths):
+        # Saves Render build minutes: nothing the image is built from changed since the live release.
+        log(f"no changes under {args.paths} since the live release; skipping the build")
+        paths = " ".join(args.paths)
+        summary(f"### No release needed\n\nNothing under `{paths}` changed between the live "
+                f"release `{previous_commit[:12]}` and `{commit[:12]}`.")
+        failures = _smoke_or_report(None)
     else:
         status, created = render.call("POST", f"/services/{render.service}/deploys", {"commitId": commit})
         if status not in (200, 201, 202):
@@ -326,6 +333,13 @@ def cmd_deploy(args) -> int:
     annotate("error" if after else "warning",
              f"Rolled back to {previous_commit[:12]}" + (" (healthy)" if not after else f" but still failing: {after}"))
     return 1
+
+
+def _unchanged(old: str, new: str, paths: list[str]) -> bool:
+    import subprocess
+
+    result = subprocess.run(["git", "diff", "--quiet", old, new, "--", *paths], capture_output=True)  # noqa: S603, S607
+    return result.returncode == 0  # 1 = differences, 128 = unknown commit (then deploy to be safe)
 
 
 def cmd_rollback(args) -> int:
@@ -385,6 +399,8 @@ def main() -> None:
     deploy = sub.add_parser("deploy")
     deploy.add_argument("--commit", required=True)
     deploy.add_argument("--auto-rollback", action="store_true")
+    deploy.add_argument("--paths", nargs="*", default=[],
+                        help="skip the build when none of these changed since the live release")
     rollback = sub.add_parser("rollback")
     rollback.add_argument("--to-commit")
     rollback.add_argument("--to-deploy")

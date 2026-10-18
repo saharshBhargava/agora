@@ -16,9 +16,10 @@ availability. Anonymous demo-profile access returned 401. No payments were made.
 
 The existing keep-warm workflow is configured with repository variable `AGORA_API_URL`; a manual run
 passed. Native Google sign-in/Calendar consent and a real Gemini recognition still need device testing.
-Normal hosted boot checks pending migrations and ensures demo data idempotently. The live auto-deploy
-setting is **After CI Checks Pass**; the recorded release was manually triggered. Automatic end-to-end
-deployment and DB recovery have not been separately rehearsed. Both post-merge backend and selected iOS
+Normal hosted boot checks pending migrations and ensures demo data idempotently. Releases now go through
+the GitHub deploy workflow ([deployment](deployment.md)): merging backend work to main deploys it, and
+`/readyz` reports the running `commit`. If the app needs a backend feature that isn't live yet, check the
+latest deploy run rather than assuming the merge shipped. Both post-merge backend and selected iOS
 CI checks passed for the live commit; see the current-state record for links and boundaries.
 
 | Field | Actual value |

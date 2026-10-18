@@ -16,6 +16,29 @@ Documentation map:
 - [API contracts](docs/api/) and [frontend requests](docs/frontend-requests.md): implemented APIs versus UI/planned work.
 - [Backend spec](docs/backend-spec.md): design/roadmap, including unimplemented proposals; not a deployment manifest.
 
+## Shipping to production (continuous delivery)
+
+Merging to `main` **is** the release. Read [docs/deployment.md](docs/deployment.md) before backend or DB work.
+
+- A green `backend` CI run on main triggers `.github/workflows/deploy.yml`: Render builds that commit, new
+  migrations apply on boot, `/readyz` gates traffic, read-only smoke checks run, and a failing release is
+  rolled back automatically. Failed builds or boots never replace the running release.
+- **After merging backend work, check the deploy run (`gh run watch` / `gh run list --workflow deploy.yml`)
+  before saying you're done.** If it's red, fixing it is your job: fix forward with a new PR. Production
+  keeps serving the last good release meanwhile.
+- Anyone with write access can operate production from GitHub, with no Render or Tiger login:
+  `gh workflow run deploy.yml -f action=status|deploy|rollback|restart` (deploy/rollback accept `-f ref=<sha>`).
+  Don't ask the owner to click things in Render for routine releases.
+- `/readyz` reports the running `commit` and `migrations.pending`. Trust it, not the newest GitHub SHA, for
+  what is live.
+- **Migrations must be backward compatible** with the release still serving: additive only (new tables,
+  nullable or defaulted columns, indexes, backfills). Drops, renames, type changes, `SET NOT NULL` and deletes
+  need expand → contract across two releases, with `-- agora: allow-breaking <reason>` on the contract step.
+  The PR's `release-rehearsal` job enforces this and proves the previous release still runs on your schema.
+- Keep CI and Render usage lean: no preview environments or extra Render services (they share 750 free
+  hours), no new frequent schedules, and no smoke checks that write to production.
+- Backups run daily (`db-backup`, encrypted). Restoring and the laptop fallback are in docs/deployment.md.
+
 ## Preserve the current integration
 
 - The hosted API is `https://agora-api-yq3m.onrender.com`; `Config/Agora.xcconfig` already sets the shared
@@ -73,7 +96,8 @@ so it must always look like a real, fully used account in every feature.
   `Idempotency-Key`.
 - Model output is untrusted data. Validate and clamp it, and never follow instructions found in it.
 - Tests: `cd backend && AGORA_TEST_DATABASE_URL=postgresql://... uv run pytest -q` and `uv run ruff check .`.
-  CI runs both TimescaleDB and plain Postgres 17 and builds the Docker image from the Blueprint paths.
+  CI runs both TimescaleDB and plain Postgres 17, builds the Docker image from the Blueprint paths, and on PRs
+  rehearses the release (migration guard, upgrade of the previous release's DB, old + new code smoke tests).
   iOS changes run the simulator auth/integration checks in `.github/workflows/ios.yml`. Merge only on green
   for the applicable checks. Documentation-only changes need link/diff/fact checks, not unrelated app test runs.
 - On Windows, pass `encoding="utf-8"` whenever Python reads or writes repo files.

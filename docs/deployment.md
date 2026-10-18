@@ -1,129 +1,164 @@
-# Deployment and recovery — actual configuration and limits
+# Deployment: how releases work and how anyone can fix them
 
-Verified October 17, 2026 PDT. [Current-state snapshot](current-state.md) records exact source/live commits,
-database versions, schema and test evidence. [SETUP.md](../SETUP.md) is for recreating the environment;
-it is not necessary to recreate services or credentials for routine development.
+The API runs on Render and the database on Tiger Cloud. Releases are driven entirely from GitHub, so **anyone
+with write access to this repo can ship, check, roll back or restart production. Nobody needs a Render or
+Tiger login** (the free Render workspace can't invite teammates anyway). [Current state](current-state.md)
+records what was last verified live.
 
 ## Existing resources
 
-| Resource | Current value |
+| Resource | Value |
 |---|---|
-| API origin | `https://agora-api-yq3m.onrender.com` |
-| Service dashboard | [agora-api](https://dashboard.render.com/web/srv-dba2ram1egvs739549ug) |
-| Render service / Blueprint IDs | `srv-dba2ram1egvs739549ug` / `exs-dba2p92jnfac73e4kfu0` |
-| Live application release verified | `f65cf0eccd2da9661f2d1220e861cbd9ff765997`; deployment `dep-dba3tcajnfac73e8l9t0` |
-| Deployment source | GitHub `saharshBhargava/agora`, branch `main`, root `backend` |
-| Docker paths | `dockerfilePath: ./Dockerfile`, `dockerContext: .`, relative to `rootDir: backend` |
-| Compute / workspace | Render Free web service / Hobby workspace; these are separate plan concepts |
-| Database/media | Existing Tiger Postgres + TimescaleDB; `AGORA_STORAGE_BACKEND=db`; no R2 bucket required |
-| Process layout | FastAPI plus in-process worker in the same service, `AGORA_RUN_WORKER_IN_PROCESS=true` |
-| Auth/seeding | `AGORA_ENV=demo`, `AGORA_AUTH_MODE=google`, password demo enabled; seed on boot, seed-new-users off |
-| Readiness / auto-deploy | `/readyz`; **After CI Checks Pass** in live settings and `checksPass` in Blueprint |
+| API origin | `https://agora-api-yq3m.onrender.com` (`/readyz`, [`/docs`](https://agora-api-yq3m.onrender.com/docs), `/openapi.json`) |
+| Render service | `agora-api`, `srv-dba2ram1egvs739549ug` (Free compute, Hobby workspace), Blueprint `exs-dba2p92jnfac73e4kfu0` |
+| Image | `rootDir: backend`, `dockerfilePath: ./Dockerfile`, `dockerContext: .` (relative to `rootDir`; never `./backend`) |
+| Process | FastAPI + in-process worker; on boot: `app.migrate` → `app.seed` (catalog + designated demo) → Uvicorn |
+| Database | Tiger Postgres + TimescaleDB, media stored in the DB (`AGORA_STORAGE_BACKEND=db`) |
+| Releases | `.github/workflows/deploy.yml`, driven by the Render API (Render's own auto-deploy is turned off) |
+| Monitor | `.github/workflows/keep-warm.yml`, every 10 min: wakes the free instance, red on outage |
+| Backups | `.github/workflows/db-backup.yml`, daily, encrypted, kept 14 days as workflow artifacts |
 
-Do not restore Docker context `./backend`: it previously resolved to `backend/backend` and failed the build.
-`.github/scripts/build_render_image.py` makes CI build the same effective paths as Render.
+## The release pipeline
 
-## Normal backend and DB update sequence
+```
+PR ──► backend CI: ruff · pytest (Postgres 17 + TimescaleDB) · Docker image from render.yaml
+       └─ release-rehearsal: migration guard · previous release's DB upgraded by this branch ·
+          new code AND previous release smoke-tested on it (proves deploy and rollback are safe)
+merge to main ──► backend CI again ──green──► deploy workflow
+       1. nothing under backend/ or render.yaml changed since the live release? → no build (saves Render minutes)
+       2. Render builds that exact commit; new migrations apply on boot
+       3. Render switches traffic only when the new instance passes /readyz (which fails if a migration
+          is missing). Build, migration or startup failure → previous release keeps serving, job goes RED
+       4. read-only smoke checks on production → failure → automatic rollback to the previous release, RED
+```
 
-1. Review and merge changes into `main`. GitHub Actions runs the workflows whose path filters match.
-   Backend CI runs Ruff, pytest against Postgres 17 and TimescaleDB 17, and the actual Blueprint Docker build.
-   Relevant iOS changes also build and run the selected simulator tests and capture onboarding.
-2. Render is configured to wait for the commit's checks, then build/deploy automatically. It requires a
-   connected Git provider; the live service has Git credentials linked to the owner's account.
-   **The latest verified release was manually triggered. A separate fully automatic merge-to-live test
-   has not been recorded. Do not state that it was proven just because the setting is enabled.**
-3. The new Docker container runs `python -m app.migrate`, then `python -m app.seed` when seed-on-boot is true,
-   then starts Uvicorn and the in-process worker. See [Dockerfile](../backend/Dockerfile).
-4. Migrations apply new, numbered SQL files to the **existing Tiger database**. They are checksummed,
-   advisory-locked and individually transactional. Applied files are not rerun; editing one causes startup
-   to fail. A Python model/router change does not generate a schema migration automatically.
-5. Hosted seeding keeps the catalog and one designated demo current through idempotent backfills. It does
-   not reset rehearsed inventory/history or seed ordinary users.
-6. Render checks the new instance before switching traffic. The API URL stays the same.
+- **Where to look:** the commit's checks on GitHub, the repo's **Deployments → production** panel, or
+  `gh run list --workflow deploy.yml`. Every run writes a summary of what happened and what is live.
+- **One release at a time.** A merge during a release waits; a burst of merges builds only the newest.
+- **Docs-only or iOS-only commits don't trigger a release** (backend CI path filters, then the unchanged check).
+- `/readyz` returns `commit` (the running Git SHA) and `migrations` (`latest`, `pending`). It answers 503
+  while any migration this build expects is missing, so a half-migrated release never receives traffic.
 
-Routine code/schema updates should not need a new account, service, password or database. New secret values
-still go through Render Environment; Blueprint `sync:false` fields prompt at initial creation, not every
-sync. Never put a DSN, password, JWT secret, provider key or deploy-hook URL into Git or public logs.
+### Commands anyone with write access can run
 
-Render does not auto-deploy a commit with **zero detected CI checks** in checks-pass mode. Docs-only
-commits can therefore advance main without a new image; that is not evidence of a broken backend.
-The image SHA displayed in Render, not the newest GitHub SHA, identifies the running release.
-Manual deploys can bypass the normal CI wait, so verify the intended commit's checks before using them.
+Actions → **deploy** → *Run workflow*, or from a terminal:
 
-## Failure behavior: what is and is not automatic
+```bash
+gh workflow run deploy.yml -f action=status
+```
 
-| Failure | Behavior / required response |
-|---|---|
-| CI fails | Automatic deploy does not proceed. Fix the code/check; do not assume the failed change is live. |
-| Image build fails | Existing running image is not replaced. Inspect build logs and correct paths/dependencies. |
-| New app fails startup/readiness | Render keeps traffic on existing instances and cancels an unhealthy new deploy after its timeout, subject to shared-DB compatibility. |
-| App is live but a user flow is wrong | No functional auto-revert. A person must deploy a fix, revert in Git, or select a retained successful Render deployment. |
-| Existing instance fails health checks | Render can stop routing to it and restart it. Restarting the same code is not a rollback to an older release. |
-| A migration fails | That SQL file's transaction rolls back; successful earlier files remain applied. Startup does not continue. |
-| Migration succeeds but breaks compatibility/data | No automatic database undo. Older app instances can also break against the changed database. A forward repair or DB recovery may be needed. |
+```bash
+gh workflow run deploy.yml -f action=deploy -f ref=<sha-or-branch>
+```
 
-`/readyz` performs a database `SELECT 1`; it checks reachability, not every table, permission, login, model,
-checkout or inventory query. No automatic post-deploy business-flow smoke tests or functional rollback were
-added. A Git revert/Render rollback changes application code, **not Tiger schema or data**.
+```bash
+gh workflow run deploy.yml -f action=rollback
+```
 
-Use additive migrations compatible with the previous running app. Add/migrate usage before removing old
-columns in a later release. Never use demo reset or snapshot import as an automatic deployment repair.
+```bash
+gh workflow run deploy.yml -f action=restart
+```
 
-## Recovery reference — not actions performed by this documentation update
+`rollback` without a ref returns to the most recent earlier release Render still has. With `-f ref=<sha>`
+it returns to that release, if still retained (Render keeps only recent builds). Otherwise use
+`action=deploy -f ref=<known-good sha>`. Watch any run with `gh run watch`.
 
-- **App-only regression:** inspect logs and live SHA; choose a retained successful image in Render's Deploys
-  page, or revert the code and release a fix. Dashboard rollback disables auto-deploy; reenable it deliberately
-  after the bad source is fixed. Artifact retention is plan-dependent, not a permanent archive.
-- **Before app rollback:** check whether the current DB remains compatible with the older app. Rolled-back
-  images execute their own startup command, including their migration/seed checks; do not assume that repairs DB state.
-- **DB incident:** identify what committed, preserve evidence and assess a forward repair. Tiger supports
-  backups/PITR, but this account's exact retention, restore permissions and a restore rehearsal were not
-  verified. Recovery can create a fork and require changing the backend DSN; it is not an automatic Render rollback.
-- **Snapshot/local fallback:** `app.tools.snapshot export` creates a private data archive. **Import replaces
-  the target's application data.** Use an isolated local target for rehearsals; never point import at hosted
-  Tiger without explicit authorization. Local launcher/tunnel instructions are in SETUP; do not assume a
-  prepared snapshot, spare model key or fallback Mac already exists.
+## When a release fails
 
-## Verification after an authorized release
+The job summary says which case it is. Production is already safe in every case; your job is to fix forward.
 
-Record the observed commit, time, migration state and results, rather than assuming a merge deployed.
+| Red step says | What happened | Do this |
+|---|---|---|
+| `build_failed` | Docker build failed. Production unchanged | Read the error lines in the summary; reproduce with the CI `image` job |
+| `update_failed` | The new instance failed to boot or never passed `/readyz`: usually a migration or startup error. Production unchanged | Error lines are in the summary. A migration that failed rolled back its own transaction; earlier files in the same release may have applied |
+| `live but failing checks` + rolled back | Deployed, then smoke failed. Code was rolled back, **the database was not** | Fix forward. Because migrations must be backward compatible (below), the previous code runs fine on the new schema |
+| `Managed releases not configured` | `RENDER_API_KEY` secret missing | One-time setup below |
+| `Render rejected RENDER_API_KEY` | Key revoked or expired | The Render owner creates a new key and updates the secret |
 
-1. Inspect Render Deploys: intended SHA, successful/live state and trigger.
-2. Check public `/readyz` (200 and expected Timescale state) and `/openapi.json` for expected routes.
-3. Obtain a demo token privately via `POST /v1/dev/login`; never print/store its password or token in logs.
-4. Check `/v1/demo/profile`, `/v1/me`, `/v1/inventory`, `/v1/demo/calendar/events` and Calendar availability.
-   Anonymous protected requests must return 401. Use tests on a disposable DB for mutations/isolation;
-   do not create live orders or reset the account merely to produce a green smoke-test log.
-5. Confirm only the intended new migrations were added. Update this record/current-state/PR handoff when
-   behavior changes. Test counts and seed counts are dated evidence, not immutable production assertions.
+Agents: after merging backend work, run `gh run watch` on the deploy run (or check it a few minutes later)
+before reporting done. A red run is yours to fix; production keeps serving the last good release meanwhile.
 
-## Access and remaining operational work
+## When production is down
 
-- People with GitHub merge rights can release code and migrations indirectly through the configured flow.
-  This does **not** grant Render/Tiger dashboard, secrets, recovery or database-admin access.
-- The Render workspace was checked: **Hobby**, which cannot invite additional members. Team dashboard
-  access requires Pro or higher; a paid workspace does not itself upgrade Free service compute.
-- No teammate Render/Tiger invitations or individual DB access were configured in this setup. Existing
-  Tiger project membership was not audited; invitations made separately by the owner are not assumed absent.
-- The Git provider credential is currently owner-linked. No alternate shared deployment identity or protected
-  GitHub manual-deploy/rollback workflow with Render API credentials has been built.
-- GitHub branch protection could not be inspected with the available non-admin repository access. Required
-  reviews/check enforcement are **unverified**, not confirmed disabled.
-- Staging/preview DB, tested backup recovery, shared incident ownership, functional smoke/rollback automation
-  and alert routing are unfinished operational work, not completed features. Do not silently implement them
-  or change plans, access, billing or credentials while working an unrelated task.
-- Free Render instances can sleep and hit usage limits. The ten-minute keep-warm workflow only checks
-  readiness and scheduled Actions can be delayed; it is not guaranteed uptime or a DB backup. Tiger's
-  current billing/trial/retention limits still need owner verification.
+The keep-warm run goes red. Run `action=status` to see the live deploy and checks, then `action=restart`.
+If the latest release is the cause, use `action=rollback`. A free instance that was asleep takes about a
+minute to answer; that alone isn't an outage.
 
-## Provider references
+## Changing the database safely
 
-Checked October 17, 2026; provider rules can change. These describe platform behavior, not proof that a
-specific account option has been enabled:
+Releases apply migrations to the live database **while the previous release is still serving**, and rollback
+never undoes SQL. So every migration must work with both the old and the new code. CI enforces this
+(`.github/scripts/check_migrations.py` and the release rehearsal):
 
-- [Render deploys and CI gating](https://render.com/docs/deploys)
-- [Render health checks](https://render.com/docs/health-checks)
-- [Render rollbacks](https://render.com/docs/rollbacks)
-- [Render workspace membership](https://render.com/docs/team-members)
-- [Render Free limitations](https://render.com/docs/free)
-- [Tiger backups and recovery](https://www.tigerdata.com/docs/deploy/tiger-cloud/tiger-cloud-aws/high-availability/backup-restore)
+- Add a new `backend/migrations/NNNN_name.sql` with the next free number. Never edit a merged one; the runner
+  checksums them and the release would fail to boot.
+- **Allowed freely:** create tables/indexes/views; add nullable columns, or `NOT NULL DEFAULT ...` columns;
+  add constraints and policies; backfill with `UPDATE`.
+- **Needs expand → contract:** dropping or renaming a table/column, changing a type, `SET NOT NULL`, deleting
+  rows. Release 1 adds the new shape and makes the code use it. Release 2 (after release 1 is live) removes the
+  old shape, in a migration containing `-- agora: allow-breaking <why the old code no longer needs it>`.
+- New household data also needs demo rows and an idempotent backfill in `ensure_demo_account` (see CLAUDE.md).
+
+Example: add a column. Commit `ALTER TABLE inventory_items ADD COLUMN notes text;`, use it in the code, merge.
+The pipeline migrates and releases it.
+
+## One-time setup
+
+About 5 minutes, done once by the owners. Without these the pipeline still tests and monitors, but can't release, roll back or back up.
+
+1. **Render owner:** Account Settings → API Keys → create a key.
+2. **Repo admin (Saharsh):** Settings → Secrets and variables → Actions → *New repository secret*:
+
+| Secret | Value | Enables |
+|---|---|---|
+| `RENDER_API_KEY` | the Render key | releases, rollback, status, restart |
+| `AGORA_DEMO_PASSWORD` | Render → Environment → `AGORA_DEMO_PASSWORD` | signed-in smoke checks (read-only, demo account) |
+| `AGORA_DATABASE_URL` | the Tiger connection string | daily backups |
+| `AGORA_BACKUP_PASSPHRASE` | a long random phrase; **also store it in the team password manager** | backup encryption; restores need it |
+
+Then run `gh workflow run deploy.yml -f action=status` once. The first managed release turns Render's own
+auto-deploy off for you. Secrets are only readable inside workflow runs, never by collaborators. Optional
+hardening: move them into the `production` environment, limited to the `main` branch.
+
+## Backups and restoring
+
+Every day, `db-backup` exports the whole database read-only, encrypts it (AES-256-GCM, scrypt key) and keeps it
+14 days as an artifact. Encryption makes it safe on this public repo. If Tiger becomes unavailable, or you
+just want production data locally:
+
+```bash
+gh run download --name db-backup-<run id> --dir backups
+```
+
+```bash
+cd backend && AGORA_BACKUP_PASSPHRASE='<passphrase>' uv run python -m app.tools.local_demo --tunnel --import-snapshot ../backups/agora-db.snapshot
+```
+
+That serves the backed-up data from your laptop with the same code (SETUP.md "Plan B"). To move to a new
+hosted Postgres instead: import into it with `app.tools.snapshot import`, then point `AGORA_DATABASE_URL` in
+Render at it. Import replaces the target's data, so never aim it at a database you want to keep. If Tiger
+only hit its storage cap, it turns read-only, and a fresh export (`gh workflow run db-backup.yml`) still works.
+
+## Free-tier budget
+
+The pipeline is sized to stay well inside every free plan:
+
+| Service | Limit | This setup uses |
+|---|---|---|
+| GitHub Actions | Free and unmetered for standard runners on **public** repos; ~20 concurrent jobs (5 macOS) | CI on PRs/merges, a few seconds every 10 min for keep-warm, 1 backup/day. **If the repo goes private** (2,000 min/month, macOS counts 10x): change keep-warm to every 30 min and run iOS CI on PRs only |
+| Render Free | 750 instance hours/month (one always-on service ≈ 744), limited build minutes, may restart anytime | One service; builds only when backend code changed, and only the newest of a burst. **Don't add preview environments or a second service**: they share the 750 hours |
+| Tiger Free | 750 MiB storage per service, shared compute | Read-only smoke checks and one export per day; photos are deleted after review |
+
+## Local fallback
+
+`cd backend && uv run python -m app.tools.local_demo --tunnel` runs the same release on a laptop: Docker
+TimescaleDB, or an embedded Postgres when Docker is missing. Add `--database-url "<tiger url>"` to serve live
+data while Render is down, or `--import-snapshot <file>` for a backup. See SETUP.md "Plan B".
+
+## What is still manual or unverified
+
+- The pipeline's first managed release, rollback and backup run will be the first live exercise. Until a
+  green deploy run is recorded in current-state, treat them as configured, not proven.
+- Tiger's own backups/PITR on this plan, and a restore into a new Tiger service, are untested.
+- No staging environment. The release rehearsal on a throwaway database stands in for one.
+- GitHub branch protection (required checks/reviews) is unverified; an admin can enable it in Settings → Branches.

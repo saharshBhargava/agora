@@ -111,9 +111,9 @@ Earlier local validation for #17 had 238 backend tests plus a successful **local
 smaller test totals at their earlier checkpoints. Those historical totals are not current CI assertions.
 Real Google consent/model-provider/physical-device flows and DB backup restoration are not claimed tested.
 
-See [deployment.md](deployment.md) for CI-gated auto-deploy configuration, manual recovery, DB rollback
-limits and access gaps. Do not interpret a configured auto-deploy setting as a recorded hands-off test,
-or a repository merge as proof that a new image is live.
+See [deployment.md](deployment.md) for the release pipeline (GitHub-driven deploy, smoke checks, automatic
+rollback, backups) and the migration compatibility rules. A merge is live only once its deploy run is green
+and `/readyz` reports its commit.
 
 ## Wishlist and suggestion integration (after the snapshot above)
 

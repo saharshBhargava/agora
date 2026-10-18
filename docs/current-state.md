@@ -36,7 +36,7 @@ precedence; older chat history and planning documents do not override current ma
 | Schema | All applicable repo SQL migrations through `0013_calendar_events.sql` are applied, including Timescale steps |
 | Ordinary auth / demo auth | `AGORA_AUTH_MODE=google`; hosted password login also enabled by `AGORA_ENV=demo` and the private demo password |
 | Hosted seeding | `AGORA_SEED_ON_BOOT=true`, `AGORA_SEED_NEW_USERS=false`; catalog + one designated demo, additive backfills |
-| Automatic deploy mode | Live setting **After CI Checks Pass**, matching `autoDeployTrigger: checksPass`; last verified release was triggered manually |
+| Automatic deploy mode | Was Render's own **After CI Checks Pass**. On Oct 18 ~05:10 UTC production still lacked main's `/v1/wishlist/refresh` (7bc3f8e, backend CI green at 24a6d49), so it had **not** auto-deployed. Replaced by the GitHub-driven pipeline in `.github/workflows/deploy.yml` (see [deployment](deployment.md)); it needs the one-time `RENDER_API_KEY` secret, and its first live run is not yet recorded here |
 | Warm-up | GitHub repository variable `AGORA_API_URL` is the live origin; keep-warm is scheduled every 10 minutes, not an uptime guarantee |
 | PR state at audit | No earlier PR remains open; #4, #8–#19 described in the handoff are already merged |
 
@@ -85,13 +85,13 @@ a Gmail account just to let the frontend team sign in. See [frontend handoff](fr
 | Capture | Photos/video, model captions and recognition, user review and metadata-only inventory save | Real Google/provider/device flows still need appropriate real-account testing; built-in demo ignores media |
 | Model routing | `Agora/Models/` abstraction; Gemini/OpenAI-compatible connections, profiles, per-feature assignment; demo override | Do not revert to Gemini-only controllers or send demo captures to external models |
 | Recognition details | Readable brand/variant/package-size fields composed into reviewed item names; shared validation and Gemini-compatible schema | Do not restore the earlier broad-name-only prompt or unsupported generation-schema constraints |
-| Wishlist | Backend lifecycle, priority ranking, suggestions and feedback implemented; realistic demo rows | Full native wishlist/suggestion UI remains requested; Home price/suggestion cards are placeholders |
+| Wishlist | Backend lifecycle, priority ranking, suggestions and feedback; native Wishlist and Suggested views (`Agora/Shopping/`, 7bc3f8e); realistic demo rows | Live retailer price monitoring is deferred |
 | Forecasts/lists | Backend run-outs, histories, list CRUD and generation; demo backfill | Full native run-out/list screens/integration remain requested |
 | Commerce | Backend policy, mandates, approval/outcome lifecycle, pause/resume, budgets/spend, stable provider idempotency | Native commerce approval/mandate/budget UI remains requested; no real Stripe/Visa provider wired |
 | Calendar | Native tools and approval; demo-private routes + persistence; ordinary native Google route | Upcoming-trip summary UI and automatic list-to-trip scheduling are not implemented |
-| Suggestions/price watches | Suggestion submission/lifecycle API exists | Automatic **six-hour** suggestion generation/price monitoring is a recorded requirement, not running code; closed-app scheduling belongs on backend |
+| Suggestions/price watches | Six-hour backend replenishment jobs (00/06/12/18 UTC, `0014_wishlist_refresh.sql`), `POST /v1/wishlist/refresh`, on-demand model ideas (7bc3f8e) | Price monitoring not implemented. Not live until a release containing 7bc3f8e is deployed |
 | Other roadmap | Design notes describe receipts, scores/social, richer prices and additional integrations | Do not claim them live or create their proposed tables simply because they appear in the spec |
-| Operations | CI, configured Render auto-deploy, readiness, startup migrations, local launcher/snapshot tools | Automated functional rollback, tested DB recovery, verified branch protections, shared cloud-admin handoff and staging are not completed by this setup |
+| Operations | CI + PR release rehearsal (migration guard, upgrade and rollback compatibility), GitHub-driven deploy with smoke checks and automatic rollback, deploy/rollback/status/restart for any writer, readiness with commit + migration state, keep-warm monitor, daily encrypted DB backup, local launcher/snapshots | First live managed release/rollback/backup run, a tested restore into a new database, verified branch protection and staging. The pipeline needs the owner's one-time secrets (deployment.md) |
 
 ## Source-of-truth map
 

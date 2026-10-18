@@ -11,7 +11,8 @@ services:
     dockerfilePath: ./Dockerfile        # both Docker paths are relative to rootDir (backend)
     dockerContext: .
     healthCheckPath: /readyz
-    autoDeployTrigger: checksPass       # deploy main only after its CI checks pass
+    # Releases are driven by .github/workflows/deploy.yml (test -> deploy -> smoke -> auto-rollback). It turns
+    # Render's own auto-deploy off; autoDeployTrigger is deliberately omitted so a Blueprint sync never turns it back on.
     envVars:
       - key: AGORA_DATABASE_URL        # Tiger Cloud (or any Postgres) connection string
         sync: false

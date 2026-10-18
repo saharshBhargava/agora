@@ -286,7 +286,7 @@ credentials are needed only when separately testing ordinary accounts.
 | Render free server **sleeps** after 15 idle min (first request then takes ~1 min) | Certain, unless pinged | `keep-warm` workflow (below) + an uptime monitor + opening `/healthz` 5 min before presenting |
 | Render **restarts** the free server at any time | Occasional | Harmless: all state is in the database, and in-flight scans resume from the job queue |
 | Render **monthly hours** (750) or bandwidth run out | Very unlikely in a day | Plan B below |
-| A last-minute merge to `main` **auto-deploys a bad build** | Real: other sessions are merging PRs | Freeze deploys (below) |
+| A last-minute merge to `main` **releases a bad build** | Lower now: failed builds never go live, and smoke failures roll back automatically | Freeze releases (below) |
 | Tiger free service **storage** limit is reached | Depends on testing volume | Tiger can become read-only; `/readyz` only checks connectivity, so also test a write; snapshot + Plan B |
 | Tiger free service **pauses or misbehaves** (free plan is beta; idle behaviour isn't documented) | Unlikely | Keep-warm pings also hit the database; snapshot + Plan B |
 | **Gemini quota** runs out (check current limits in AI Studio; each scan frame can invoke the provider) | Depends on testing volume | Separate projects per use (below); replay fixtures; the cache avoids repeated provider calls for processed photos |
@@ -311,8 +311,9 @@ credentials are needed only when separately testing ordinary accounts.
 3. **Record the demo scans once** with a real key, then make them replayable offline. From `backend/`:
    `AGORA_DATABASE_URL=<tiger url> uv run python -m app.tools.export_replay`, then commit `backend/seed/replay/`.
    Setting `AGORA_VISION_PROVIDER=replay` then gives identical results for those photos with no API calls.
-4. **Freeze 2–3 hours before presenting.** Render service, then **Settings > Auto-Deploy: Off**. Note the commit
-   on the **Events** tab, and tag it so you can always go back:
+4. **Freeze 2–3 hours before presenting.** Commit an empty `.github/deploy-freeze` file to main (anyone can).
+   Automatic releases then pause; manual `gh workflow run deploy.yml -f action=deploy` still works. Delete the
+   file to resume. Tag the live commit (`/readyz` shows it) so you can always go back:
 
    ```bash
    git tag demo-ready <commit> && git push origin demo-ready

@@ -13,6 +13,10 @@ Fetch `origin` and compare your branch with `origin/main` before continuing. Pre
 integrate current main rather than overwriting it, resetting somebody else's worktree, or replaying a merged PR.
 Do not assume your earlier chat, branch-local docs, or an old deployment URL still describe the current system.
 
+**Merging backend work to `main` deploys it automatically.** Check the `deploy` workflow run afterwards and
+fix it if it's red. Anyone can operate production from GitHub (`gh workflow run deploy.yml -f action=status`);
+migrations must stay backward compatible. Details: [docs/deployment.md](docs/deployment.md).
+
 For operations read [docs/deployment.md](docs/deployment.md); for client integration read
 [docs/frontend-handoff.md](docs/frontend-handoff.md). The backend spec and original planning notes include
 unimplemented proposals: they are context, not proof that a feature exists or authorization to deploy it.
