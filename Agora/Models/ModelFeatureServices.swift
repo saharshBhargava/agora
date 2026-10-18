@@ -117,7 +117,16 @@ final class DemoModelClient: ModelClient {
                 let value = result.value.object ?? [:]
                 if value["error"] != nil { return response("The action could not be completed. Review the account or try a new request when you are ready.") }
                 if result.name == "calendar_create_event" { return response("The grocery trip is saved to your Agora Calendar. No invitations were sent.") }
-                return response("I checked your Agora Calendar. Busy intervals are shown in the tool result; choose a time outside those intervals for your trip.")
+                if case .array(let busy) = value["busy"] {
+                    let intervals = busy.compactMap { entry -> String? in
+                        guard let window = entry.object, case .string(let start) = window["start"],
+                              case .string(let end) = window["end"] else { return nil }
+                        return "\(start) → \(end)"
+                    }
+                    return response(intervals.isEmpty ? "Your Agora Calendar has no busy intervals in the checked window." :
+                        "Your Agora Calendar is busy at:\n" + intervals.joined(separator: "\n"))
+                }
+                return response("I could not confirm Calendar availability. Please try a new request.")
             }
             let prompt = request.messages.last(where: { $0.role == .user })?.content.compactMap {
                 if case .text(let text) = $0 { return text }; return nil
