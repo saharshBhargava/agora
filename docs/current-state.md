@@ -480,3 +480,18 @@ succeeded. Read-only production `/readyz` verification reported that exact merge
 enabled, migration `0019_watch_browser_fallback.sql` and no pending migrations. Chat adds no migration
 of its own. No production reset or test writes were performed. The native tools require a rebuilt iOS app;
 this verifies the backend release, not distribution of an iOS build or live credentialed model inference.
+
+## Home category carousels — local, October 18, 2026
+
+Home now places Wishlist first below the scan action, followed by Running low, Suggested for you and
+Upcoming trips. Category cards are replaced by headings and horizontally scrolling, snapping rows.
+All active wishlist items, low-stock items, suggestions and upcoming scheduled trips are included instead
+of short previews. Product rows reuse the authenticated image store with circular clipping; trips use
+circular date badges. Existing image editing, category destinations, errors and restock planning remain
+available. Labels and image sizes adapt to Dynamic Type. No API or stored-data changes are involved.
+
+Validation: the simulator build and all 93 selected iOS CI tests passed. A subsequent row-height correction
+passed the focused render check; standard and accessibility-size Home captures were visually inspected
+using temporary local fixtures, which were then removed. Logs: `/tmp/agora-home-carousel-tests.log` and
+`/tmp/agora-home-carousel-render-final.log`; captures: `build/home-carousel/`. No production deployment
+or distributed iOS build is claimed.
