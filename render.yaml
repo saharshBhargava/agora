@@ -7,8 +7,8 @@ services:
     plan: free
     branch: main
     rootDir: backend
-    dockerfilePath: ./backend/Dockerfile   # Render resolves these from the repo root
-    dockerContext: ./backend
+    dockerfilePath: ./Dockerfile        # both Docker paths are relative to rootDir (backend)
+    dockerContext: .
     healthCheckPath: /readyz
     autoDeployTrigger: checksPass       # deploy main only after its CI checks pass
     envVars:

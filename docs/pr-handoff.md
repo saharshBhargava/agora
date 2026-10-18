@@ -70,3 +70,12 @@ completion; see the [deployment record](frontend-handoff.md#current-deployment-r
 The original sleeping forecast and commerce checkouts were left intact at their earlier local commits.
 Before resuming one, inspect its local changes, fetch origin, and integrate current main using the team's
 normal workflow. Do not push an old branch as a replacement for main or reapply the renamed migrations.
+
+## Render build-path correction
+
+The first Render build of `99fadec` failed before Docker ran: its effective context was `backend/backend`.
+Keep `rootDir: backend`, with `dockerfilePath: ./Dockerfile` and `dockerContext: .`. Those Docker paths are
+relative to the service root, despite the generic Blueprint reference's repo-root wording. Do not restore
+the old `./backend/...` paths. The image CI job now reads and builds from `render.yaml` using
+`.github/scripts/build_render_image.py`, so an invalid effective path fails before deployment.
+This change does not alter secrets, migrations or demo data. Public API verification remains pending.
