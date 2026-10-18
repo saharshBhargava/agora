@@ -1,9 +1,9 @@
 import XCTest
-@testable import Dibs
+@testable import Agora
 
 /// Settle, partly settled and receipt check values from runs captured from the real server
 /// (stub vision, stub prices, simulated payments).
-final class SettleLogicTests: XCTestCase {
+final class DibsSettleLogicTests: XCTestCase {
     private let priyaSettled = "252defdd-68a7-473a-96c3-0f1b5e781df6"
     private let marcusSettled = "abea27ec-1781-4719-8fac-382dc040dcee"
     private let priya = "71fccf2e-7e32-4308-a0ce-8fd62cce1c68"

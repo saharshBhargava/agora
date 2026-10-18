@@ -1,6 +1,6 @@
 import XCTest
 import WebKit
-@testable import Dibs
+@testable import Agora
 
 /// Routes requests by "METHOD /path" to queued replies (the last reply repeats). No network.
 final class PriceStub: URLProtocol, @unchecked Sendable {
@@ -134,7 +134,7 @@ final class FakeBrowser: PriceBrowsing {
 
     func run(tool name: String, args: [String: Any]) async throws -> [String: Any] {
         calls.append((name, args))
-        if name == "browser_open" && failOpen { throw BrowserError("navigation_failed") }
+        if name == "browser_open" && failOpen { throw DibsBrowserError("navigation_failed") }
         if name == "browser_act" && args["action"] as? String == "reload" { reloaded = true }
         if name == "browser_observe" && observeDelay > .zero { try await Task.sleep(for: observeDelay) }
         let loading = neverRender || (renderAfterReload && !reloaded)
@@ -148,7 +148,7 @@ final class FakeBrowser: PriceBrowsing {
 }
 
 @MainActor
-final class PriceWorkerTests: XCTestCase {
+final class DibsPriceWorkerTests: XCTestCase {
     private var api: DibsAPI!
     private var browser: FakeBrowser!
     private var worker: PriceWorker!
@@ -791,8 +791,8 @@ final class PriceWorkerTests: XCTestCase {
     }
 
     func testPolicyKeepsTheBrowserOnTheStore() throws {
-        var policy = BrowserPolicy()
-        policy.allowedDomains = [BrowserPolicy.domain(of: URL(string: "https://www.qfc.com/search?query=x")!)!]
+        var policy = DibsBrowserPolicy()
+        policy.allowedDomains = [DibsBrowserPolicy.domain(of: URL(string: "https://www.qfc.com/search?query=x")!)!]
         XCTAssertNoThrow(try policy.validate(URL(string: "https://www.qfc.com/p/apple")!))
         XCTAssertNoThrow(try policy.validate(URL(string: "https://qfc.com/")!))
         XCTAssertThrowsError(try policy.validate(URL(string: "https://evil.example.com/")!))
@@ -801,9 +801,9 @@ final class PriceWorkerTests: XCTestCase {
     }
 
     func testCallValidationRefusesUnknownToolsAndFields() {
-        XCTAssertThrowsError(try BrowserCall(name: "browser_eval", arguments: [:]))
-        XCTAssertThrowsError(try BrowserCall(name: "browser_open", arguments: ["url": "https://x.com", "extra": "1"]))
-        XCTAssertThrowsError(try BrowserCall(name: "browser_wait_for", arguments: ["text": "a", "seconds": 99]))
-        XCTAssertNoThrow(try BrowserCall(name: "browser_wait_for", arguments: ["text": "results", "seconds": 12.0]))
+        XCTAssertThrowsError(try DibsBrowserCall(name: "browser_eval", arguments: [:]))
+        XCTAssertThrowsError(try DibsBrowserCall(name: "browser_open", arguments: ["url": "https://x.com", "extra": "1"]))
+        XCTAssertThrowsError(try DibsBrowserCall(name: "browser_wait_for", arguments: ["text": "a", "seconds": 99]))
+        XCTAssertNoThrow(try DibsBrowserCall(name: "browser_wait_for", arguments: ["text": "results", "seconds": 12.0]))
     }
 }

@@ -1,7 +1,7 @@
 import XCTest
-@testable import Dibs
+@testable import Agora
 
-final class ModelTests: XCTestCase {
+final class DibsModelTests: XCTestCase {
     private let priya = "252defdd-68a7-473a-96c3-0f1b5e781df6"
     private let marcus = "abea27ec-1781-4719-8fac-382dc040dcee"
 

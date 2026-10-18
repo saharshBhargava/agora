@@ -1,9 +1,9 @@
 import XCTest
-@testable import Dibs
+@testable import Agora
 
 /// The shopper screen's values: covered total and bar, cart rows, duplicates, the undo countdown,
 /// last call and the locked list. Runs come from the fixture captured from the real server.
-final class ShopperLogicTests: XCTestCase {
+final class DibsShopperLogicTests: XCTestCase {
     private let priya = "252defdd-68a7-473a-96c3-0f1b5e781df6"
     private let marcus = "abea27ec-1781-4719-8fac-382dc040dcee"
     private let eggs = "1879bc33-79c6-49c6-9d08-0716a4e4b47e"

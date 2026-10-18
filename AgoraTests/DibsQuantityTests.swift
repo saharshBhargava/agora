@@ -1,10 +1,10 @@
 import XCTest
-@testable import Dibs
+@testable import Agora
 
 /// Item quantity: the same product seen again is one chip "×2"; `priceCents` stays the price of one and
 /// every share, room and total uses the line total (unit × quantity, or the receipt's exact total), the
 /// same `lineCents` as server/src/money.ts.
-final class QuantityTests: XCTestCase {
+final class DibsQuantityTests: XCTestCase {
     private let jake = Person(id: "jake", name: "Jake", initial: "J", isShopper: true)
     private let priya = Person(id: "priya", name: "Priya", initial: "P", isShopper: false, authorizedCents: 4000)
     private let marcus = Person(id: "marcus", name: "Marcus", initial: "M", isShopper: false, authorizedCents: 4000)

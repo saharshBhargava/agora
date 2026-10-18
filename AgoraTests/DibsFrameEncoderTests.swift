@@ -1,9 +1,9 @@
 import CoreVideo
 import UIKit
 import XCTest
-@testable import Dibs
+@testable import Agora
 
-final class FrameEncoderTests: XCTestCase {
+final class DibsFrameEncoderTests: XCTestCase {
     func testLivestreamSendsFifteenFramesASecondFromAThirtyFpsCamera() {
         var last = -Double.infinity
         var sent = 0

@@ -1,7 +1,7 @@
 import XCTest
-@testable import Dibs
+@testable import Agora
 
-final class ClaimLogicTests: XCTestCase {
+final class DibsClaimLogicTests: XCTestCase {
     private let jake = Person(id: "jake", name: "Jake", initial: "J", isShopper: true)
     private let priya = Person(id: "priya", name: "Priya", initial: "P", isShopper: false, authorizedCents: 4000, approvalCode: "888888")
     private let marcus = Person(id: "marcus", name: "Marcus", initial: "M", isShopper: false, authorizedCents: 4000)
@@ -410,8 +410,8 @@ final class ClaimLogicTests: XCTestCase {
     }
 
     func testUsualPicksStorage() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ClaimLogicTests"))
-        defaults.removePersistentDomain(forName: "ClaimLogicTests")
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "DibsClaimLogicTests"))
+        defaults.removePersistentDomain(forName: "DibsClaimLogicTests")
         XCTAssertEqual(ClaimLogic.savedPicks(defaults), [])
         ClaimLogic.recordSeen(["Eggs", "Milk"], defaults: defaults)
         ClaimLogic.recordSeen(["Eggs"], defaults: defaults)

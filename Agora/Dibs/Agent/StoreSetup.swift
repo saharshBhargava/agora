@@ -123,7 +123,7 @@ enum StoreSetupScript {
     """#
 }
 
-extension BrowserToolExecutor {
+extension DibsBrowserToolExecutor {
     /// Switches the site's pickup store, or confirms it is already set: one attempt on a freshly
     /// loaded home page (the worker spaces out retries).
     func setStore(_ location: StoreLocation) async -> StoreSetupResult {

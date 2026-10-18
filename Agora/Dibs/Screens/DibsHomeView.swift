@@ -3,7 +3,7 @@ import UIKit
 
 /// The first screen: start a run as the shopper, or join one from a pasted link. Never blank: it shows
 /// at once, while the launch check for a run to resume runs underneath.
-struct HomeView: View {
+struct DibsHomeView: View {
     @Environment(AppModel.self) private var model
     @State private var linkText = ""
     @State private var starting = false
@@ -142,7 +142,7 @@ struct HomeView: View {
 #if DEBUG
 #Preview("Home") {
     let defaults = UserDefaults(suiteName: "preview.home")!
-    NavigationStack { HomeView() }
+    NavigationStack { DibsHomeView() }
         .environment(AppModel(defaults: defaults))
 }
 #endif

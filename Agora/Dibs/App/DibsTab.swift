@@ -9,12 +9,12 @@ struct DibsApp: App {
             if DebugLaunch.autoShop {
                 // Unattended device testing: `-DibsAutoShop YES` starts a run and opens the shopper camera
                 // inside the normal routes (receipt and settle included).
-                RootView()
+                DibsRootView()
                     .environment(model)
                     .preferredColorScheme(.light)
                     .task { do { try await model.autoShop() } catch { DibsLog.event("autoshop failed: \(error)") } }
             } else {
-                RootView()
+                DibsRootView()
                     .environment(model)
                     // The design is light only (paper and ink); dark mode left rows unreadable.
                     .preferredColorScheme(.light)
@@ -28,14 +28,14 @@ struct DibsApp: App {
 }
 
 /// Home at the root; every run screen is a `Route` pushed on top.
-struct RootView: View {
+struct DibsRootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         @Bindable var model = model
         NavigationStack(path: $model.path) {
-            HomeView()
+            DibsHomeView()
                 .navigationDestination(for: Route.self) { route in
                     destination(route)
                 }

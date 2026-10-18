@@ -1,7 +1,7 @@
 import XCTest
-@testable import Dibs
+@testable import Agora
 
-final class WishLogicTests: XCTestCase {
+final class DibsWishLogicTests: XCTestCase {
     private let jake = Person(id: "jake", name: "Jake", initial: "J", isShopper: true)
     private let priya = Person(id: "priya", name: "Priya", initial: "P", isShopper: false, authorizedCents: 4000)
     private let marcus = Person(id: "marcus", name: "Marcus", initial: "M", isShopper: false, authorizedCents: 4000)
@@ -120,7 +120,7 @@ final class WishLogicTests: XCTestCase {
     }
 }
 
-final class WishPicksAPITests: XCTestCase {
+final class DibsWishPicksAPITests: XCTestCase {
     private var api: DibsAPI!
 
     override func setUp() {

@@ -1,5 +1,5 @@
 import XCTest
-@testable import Dibs
+@testable import Agora
 
 /// Counts teardown calls from any context.
 final class TeardownCounter: @unchecked Sendable {
@@ -60,7 +60,7 @@ final class FetchGate {
 }
 
 @MainActor
-final class RunStoreTests: XCTestCase {
+final class DibsRunStoreTests: XCTestCase {
     private var gate: FetchGate!
     private var sockets: [FakeSocket] = []
     private var store: RunStore!

@@ -37,7 +37,7 @@ enum DebugLaunch {
 }
 
 /// Root for `-DibsAutoShop YES`: creates a run, then shows the shopper camera.
-/// Wiring in DibsApp: `if DebugLaunch.autoShop { AutoShopRoot(base: ServerConfig.current()) } else { RootView() ... }`.
+/// Wiring in DibsApp: `if DebugLaunch.autoShop { AutoShopRoot(base: ServerConfig.current()) } else { DibsRootView() ... }`.
 struct AutoShopRoot: View {
     let base: URL
     @State private var store: RunStore?

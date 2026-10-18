@@ -10,7 +10,7 @@ import WebKit
 final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     let webView: WKWebView
     let world = WKContentWorld.world(name: "DibsBrowserTools")
-    var policy: BrowserPolicy
+    var policy: DibsBrowserPolicy
     private(set) var isOpen = false
     private(set) var privateMode = false
     private(set) var epoch: UInt64 = 0
@@ -39,11 +39,11 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     static let viewport = CGRect(x: 0, y: 0, width: 390, height: 844)
 
-    init(policy: BrowserPolicy = BrowserPolicy()) {
+    init(policy: DibsBrowserPolicy = DibsBrowserPolicy()) {
         self.policy = policy
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
-        if let url = Bundle.main.url(forResource: "BrowserScripts", withExtension: "js"),
+        if let url = Bundle.main.url(forResource: "DibsBrowserScripts", withExtension: "js"),
            let source = try? String(contentsOf: url, encoding: .utf8) {
             configuration.userContentController.addUserScript(
                 WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: world))
@@ -77,7 +77,7 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     func close() {
         epoch &+= 1
         webView.stopLoading()
-        settleAll(BrowserError("stale_session"))
+        settleAll(DibsBrowserError("stale_session"))
         webView.loadHTMLString("", baseURL: nil)
         isOpen = false
         privateMode = false
@@ -95,7 +95,7 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
 
     func bridge(_ request: [String: Any], mutation: Bool = false) async throws -> [String: Any] {
-        guard isOpen else { throw BrowserError("no_browser") }
+        guard isOpen else { throw DibsBrowserError("no_browser") }
         let capturedEpoch = epoch, capturedDocument = documentEpoch
         let raw: String = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
             let id = UUID()
@@ -105,7 +105,7 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
                 switch result {
                 case .success(let value):
                     if let s = value as? String { self?.finish(id, .success(s)) }
-                    else { self?.finish(id, .failure(BrowserError("observation_unavailable"))) }
+                    else { self?.finish(id, .failure(DibsBrowserError("observation_unavailable"))) }
                 case .failure(let error):
                     self?.finish(id, .failure(error))
                 }
@@ -113,18 +113,18 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(8))
                 guard let self, self.pending[id] != nil else { return }
-                self.finish(id, .failure(BrowserError(mutation ? "outcome_unknown" : "timeout")))
+                self.finish(id, .failure(DibsBrowserError(mutation ? "outcome_unknown" : "timeout")))
             }
         }
-        guard epoch == capturedEpoch else { throw BrowserError("stale_session") }
-        guard mutation || documentEpoch == capturedDocument else { throw BrowserError("stale_reference") }
+        guard epoch == capturedEpoch else { throw DibsBrowserError("stale_session") }
+        guard mutation || documentEpoch == capturedDocument else { throw DibsBrowserError("stale_reference") }
         guard let data = raw.data(using: .utf8),
               let result = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw BrowserError("observation_unavailable")
+            throw DibsBrowserError("observation_unavailable")
         }
         if let error = result["error"] as? String {
             if error.contains("user_action_required") { privateMode = true }
-            throw BrowserError(error)
+            throw DibsBrowserError(error)
         }
         return result
     }
@@ -132,7 +132,7 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     /// Runs an async script body (which returns a JSON string) in the tools content world.
     /// Navigation away from the page fails it; `timeout` bounds the wait.
     func evaluate(_ body: String, arguments: [String: Any], timeout: Duration) async throws -> [String: Any] {
-        guard isOpen else { throw BrowserError("no_browser") }
+        guard isOpen else { throw DibsBrowserError("no_browser") }
         let raw: String = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
             let id = UUID()
             pending[id] = { continuation.resume(with: $0) }
@@ -140,12 +140,12 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
                 switch result {
                 case .success(let value):
                     if let s = value as? String { self?.finish(id, .success(s)) }
-                    else { self?.finish(id, .failure(BrowserError("script_result"))) }
+                    else { self?.finish(id, .failure(DibsBrowserError("script_result"))) }
                 case .failure(let error):
                     let info = (error as NSError).userInfo
                     if let message = info["WKJavaScriptExceptionMessage"] as? String {
                         let line = info["WKJavaScriptExceptionLineNumber"].map { " line \($0)" } ?? ""
-                        self?.finish(id, .failure(BrowserError("script_exception", message + line)))
+                        self?.finish(id, .failure(DibsBrowserError("script_exception", message + line)))
                     } else {
                         self?.finish(id, .failure(error))
                     }
@@ -153,19 +153,19 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
             }
             Task { [weak self] in
                 try? await Task.sleep(for: timeout)
-                self?.finish(id, .failure(BrowserError("timeout")))
+                self?.finish(id, .failure(DibsBrowserError("timeout")))
             }
         }
         guard let data = raw.data(using: .utf8), let result = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw BrowserError("script_result")
+            throw DibsBrowserError("script_result")
         }
         return result
     }
 
     func observe() async throws -> [String: Any] {
-        guard !privateMode else { throw BrowserError("user_action_required", "Private page. Open a different page.") }
+        guard !privateMode else { throw DibsBrowserError("user_action_required", "Private page. Open a different page.") }
         var result = try await bridge(["operation": "observe"])
-        result["url"] = BrowserPolicy.safeURL(webView.url)
+        result["url"] = DibsBrowserPolicy.safeURL(webView.url)
         if let lastStatus { result["httpStatus"] = lastStatus }
         return result
     }
@@ -185,17 +185,17 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         repeat {
             try await Task.sleep(for: .milliseconds(100))
             try Task.checkCancellation()
-            guard epoch == savedEpoch else { throw BrowserError("stale_session") }
-            if let navigationFailure { throw BrowserError("navigation_failed", navigationFailure) }
+            guard epoch == savedEpoch else { throw DibsBrowserError("stale_session") }
+            if let navigationFailure { throw DibsBrowserError("navigation_failed", navigationFailure) }
             if documentEpoch != startDocument || !webView.isLoading {
-                do { return try await observe() } catch let error as BrowserError where !error.code.contains("user_action_required") {
+                do { return try await observe() } catch let error as DibsBrowserError where !error.code.contains("user_action_required") {
                     // Committed but not readable yet (redirect or empty body): report it as loading.
-                    return ["url": BrowserPolicy.safeURL(webView.url), "loading": true, "text": "",
+                    return ["url": DibsBrowserPolicy.safeURL(webView.url), "loading": true, "text": "",
                             "note": "Page is loading. Call browser_wait_for or browser_observe."]
                 }
             }
         } while ContinuousClock.now < deadline
-        webView.stopLoading(); throw BrowserError("timeout")
+        webView.stopLoading(); throw DibsBrowserError("timeout")
     }
 
     // MARK: WKNavigationDelegate
@@ -207,7 +207,7 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         if url.absoluteString == "about:blank" { decisionHandler(mainFrame && isOpen ? .cancel : .allow); return }
         guard mainFrame else { decisionHandler(.allow); return }
         do { try policy.validate(url) } catch {
-            PriceLog.event("price browser blocked \(BrowserPolicy.safeURL(url))")
+            PriceLog.event("price browser blocked \(DibsBrowserPolicy.safeURL(url))")
             navigationFailure = error.localizedDescription
             decisionHandler(.cancel)
             return
@@ -249,7 +249,7 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         PriceLog.event("price browser renderer terminated")
         epoch &+= 1
-        settleAll(BrowserError("web_process_terminated"))
+        settleAll(DibsBrowserError("web_process_terminated"))
         isOpen = false
     }
 

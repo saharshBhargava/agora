@@ -1,8 +1,8 @@
 import CoreGraphics
 import XCTest
-@testable import Dibs
+@testable import Agora
 
-final class ScanGeometryTests: XCTestCase {
+final class DibsScanGeometryTests: XCTestCase {
     func testVisionToImageFlipsY() {
         let rect = ScanGeometry.visionToImage(CGRect(x: 0.25, y: 0.5, width: 0.5, height: 0.25), imageSize: CGSize(width: 1000, height: 2000))
         XCTAssertEqual(rect, CGRect(x: 250, y: 500, width: 500, height: 500))

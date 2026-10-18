@@ -1,7 +1,7 @@
 import XCTest
-@testable import Dibs
+@testable import Agora
 
-final class JoinLinkTests: XCTestCase {
+final class DibsJoinLinkTests: XCTestCase {
     func testAppSchemeLink() throws {
         let link = try XCTUnwrap(JoinLink.parse("dibs://join?run=abc"))
         XCTAssertEqual(link.runId, "abc")
@@ -57,7 +57,7 @@ final class JoinLinkTests: XCTestCase {
 }
 
 @MainActor
-final class HomeRoutingTests: XCTestCase {
+final class DibsHomeRoutingTests: XCTestCase {
     private var defaults: UserDefaults!
     private var suite: String!
 
@@ -184,7 +184,7 @@ private actor Counter {
     func bump() { value += 1 }
 }
 
-final class RunTextTests: XCTestCase {
+final class DibsRunTextTests: XCTestCase {
     func testRunTitle() {
         XCTAssertEqual(RunText.title(shopperName: "Jake", store: "costco"), "Jake's Costco run")
         XCTAssertEqual(RunText.title(shopperName: nil, store: "qfc"), "The Qfc run")

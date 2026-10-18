@@ -1,5 +1,5 @@
 import XCTest
-@testable import Dibs
+@testable import Agora
 
 /// Records every request and answers with a canned response. No network.
 final class StubProtocol: URLProtocol, @unchecked Sendable {
@@ -67,7 +67,7 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
     }
 }
 
-final class APITests: XCTestCase {
+final class DibsAPITests: XCTestCase {
     private var api: DibsAPI!
     private var runJSON = ""
     private var defaults: UserDefaults!

@@ -2,10 +2,11 @@ import Foundation
 import CoreFoundation
 import WebKit
 
-// Ported from Agora/Browser/BrowserPolicy.swift and BrowserToolExecutor.swift. The worker runs
-// unattended, so actions that needed a person's approval there are refused here.
+// Ported from Agora/Browser/BrowserPolicy.swift and BrowserToolExecutor.swift (Dibs-prefixed here so both
+// live in one module). The worker runs unattended, so actions that needed a person's approval there are
+// refused here.
 
-struct BrowserError: LocalizedError {
+struct DibsBrowserError: LocalizedError {
     let code: String
     let detail: String
     init(_ code: String, _ detail: String = "") {
@@ -14,7 +15,7 @@ struct BrowserError: LocalizedError {
     var errorDescription: String? { detail.isEmpty ? code : "\(code): \(detail)" }
 }
 
-struct BrowserPolicy {
+struct DibsBrowserPolicy {
     /// Registrable domains the main frame may visit (empty allows any public HTTPS host).
     var allowedDomains: [String] = []
 
@@ -25,9 +26,9 @@ struct BrowserPolicy {
               host.contains("."), !host.contains(":"),
               host.range(of: #"^[0-9.]+$"#, options: .regularExpression) == nil,
               !["localhost", "local", "internal", "test"].contains(host.components(separatedBy: ".").last ?? "")
-        else { throw BrowserError("blocked_destination", "Use a public HTTPS website on the default port, without embedded credentials.") }
+        else { throw DibsBrowserError("blocked_destination", "Use a public HTTPS website on the default port, without embedded credentials.") }
         guard allowedDomains.isEmpty || allowedDomains.contains(where: { host == $0 || host.hasSuffix("." + $0) }) else {
-            throw BrowserError("blocked_destination", "Stay on \(allowedDomains.joined(separator: ", ")).")
+            throw DibsBrowserError("blocked_destination", "Stay on \(allowedDomains.joined(separator: ", ")).")
         }
     }
 
@@ -45,7 +46,7 @@ struct BrowserPolicy {
     }
 }
 
-struct BrowserCall {
+struct DibsBrowserCall {
     let name: String
     let arguments: [String: Any]
 
@@ -65,41 +66,41 @@ struct BrowserCall {
     static let unattendedActions: Set<String> = ["click", "type", "scroll", "back", "forward", "reload"]
 
     static func validate(name: String, arguments: [String: Any]) throws {
-        guard let allowed = fields[name], Set(arguments.keys).isSubset(of: allowed) else { throw BrowserError("invalid_arguments", "Unknown tool or field.") }
+        guard let allowed = fields[name], Set(arguments.keys).isSubset(of: allowed) else { throw DibsBrowserError("invalid_arguments", "Unknown tool or field.") }
         for (key, value) in arguments {
             if key == "seconds" {
-                guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(), number.doubleValue.isFinite, (0.25...20).contains(number.doubleValue) else { throw BrowserError("invalid_arguments") }
+                guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(), number.doubleValue.isFinite, (0.25...20).contains(number.doubleValue) else { throw DibsBrowserError("invalid_arguments") }
             } else if key == "absent" {
-                guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else { throw BrowserError("invalid_arguments") }
-            } else { guard let text = value as? String, text.utf8.count <= 4000 else { throw BrowserError("invalid_arguments") } }
+                guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else { throw DibsBrowserError("invalid_arguments") }
+            } else { guard let text = value as? String, text.utf8.count <= 4000 else { throw DibsBrowserError("invalid_arguments") } }
         }
         let required: [String]
         switch name {
         case "browser_open": required = ["url"]
         case "browser_find", "browser_wait_for": required = ["text"]
         case "browser_act":
-            guard let action = arguments["action"] as? String, actions.contains(action) else { throw BrowserError("unsupported_action") }
+            guard let action = arguments["action"] as? String, actions.contains(action) else { throw DibsBrowserError("unsupported_action") }
             required = ["action"] + (["back", "forward", "reload"].contains(action) ? [] : ["documentId", "observationId"] + (action == "scroll" ? [] : ["elementId"])) + (["type", "select"].contains(action) ? ["text"] : [])
-            if let direction = arguments["direction"] as? String, !["up", "down"].contains(direction) { throw BrowserError("invalid_arguments") }
+            if let direction = arguments["direction"] as? String, !["up", "down"].contains(direction) { throw DibsBrowserError("invalid_arguments") }
         default: required = []
         }
         let missing = required.filter { !(arguments[$0] is String) }
         guard missing.isEmpty else {
-            throw BrowserError("invalid_arguments", "Required field missing: \(missing.joined(separator: ", ")). Use documentId and observationId from the latest observation.")
+            throw DibsBrowserError("invalid_arguments", "Required field missing: \(missing.joined(separator: ", ")). Use documentId and observationId from the latest observation.")
         }
     }
 }
 
 /// Runs the server's browser tool calls against a StoreBrowser.
 @MainActor
-final class BrowserToolExecutor: PriceBrowsing {
+final class DibsBrowserToolExecutor: PriceBrowsing {
     let session: StoreBrowser
     private var executing = false
 
     init(session: StoreBrowser) { self.session = session }
 
     func restrict(to url: URL) {
-        session.policy.allowedDomains = BrowserPolicy.domain(of: url).map { [$0] } ?? []
+        session.policy.allowedDomains = DibsBrowserPolicy.domain(of: url).map { [$0] } ?? []
     }
 
     func close() { session.close() }
@@ -120,18 +121,18 @@ final class BrowserToolExecutor: PriceBrowsing {
     }
 
     func run(tool name: String, args: [String: Any]) async throws -> [String: Any] {
-        try await execute(BrowserCall(name: name, arguments: args))
+        try await execute(DibsBrowserCall(name: name, arguments: args))
     }
 
-    func execute(_ call: BrowserCall) async throws -> [String: Any] {
-        guard !executing else { throw BrowserError("executor_busy") }
+    func execute(_ call: DibsBrowserCall) async throws -> [String: Any] {
+        guard !executing else { throw DibsBrowserError("executor_busy") }
         executing = true; defer { executing = false }
         let epoch = session.epoch
         let a = call.arguments
         var result: [String: Any]
         switch call.name {
         case "browser_open":
-            guard let url = URL(string: a["url"] as! String) else { throw BrowserError("invalid_arguments") }
+            guard let url = URL(string: a["url"] as! String) else { throw DibsBrowserError("invalid_arguments") }
             result = try await session.open(url)
         case "browser_observe":
             result = try await session.observe()
@@ -146,30 +147,30 @@ final class BrowserToolExecutor: PriceBrowsing {
             let text = a["text"] as! String, absent = (a["absent"] as? NSNumber)?.boolValue ?? false
             while true {
                 try Task.checkCancellation()
-                guard session.epoch == epoch else { throw BrowserError("stale_session") }
+                guard session.epoch == epoch else { throw DibsBrowserError("stale_session") }
                 do {
                     let observation = try await session.observe()
                     let found = (observation["text"] as? String ?? "").localizedCaseInsensitiveContains(text)
                     if found != absent { result = observation; break }
-                } catch let error as BrowserError where error.code.contains("stale_reference") || error.code == "timeout" {
+                } catch let error as DibsBrowserError where error.code.contains("stale_reference") || error.code == "timeout" {
                     // The page is still navigating or busy: keep waiting.
                 }
-                if ContinuousClock.now >= deadline { throw BrowserError("timeout") }
+                if ContinuousClock.now >= deadline { throw DibsBrowserError("timeout") }
                 try await Task.sleep(for: .milliseconds(250))
             }
         case "browser_act":
-            guard !session.privateMode else { throw BrowserError("user_action_required") }
+            guard !session.privateMode else { throw DibsBrowserError("user_action_required") }
             let action = a["action"] as! String
-            guard BrowserCall.unattendedActions.contains(action) else {
-                throw BrowserError("unsupported_action", "Only click, type, scroll, back, forward and reload are available.")
+            guard DibsBrowserCall.unattendedActions.contains(action) else {
+                throw DibsBrowserError("unsupported_action", "Only click, type, scroll, back, forward and reload are available.")
             }
             switch action {
             case "back":
-                guard session.webView.canGoBack else { throw BrowserError("unsupported_action") }
+                guard session.webView.canGoBack else { throw DibsBrowserError("unsupported_action") }
                 session.webView.goBack()
                 result = ["dispatched": true, "note": "Navigation dispatched. Wait for or observe the resulting page."]
             case "forward":
-                guard session.webView.canGoForward else { throw BrowserError("unsupported_action") }
+                guard session.webView.canGoForward else { throw DibsBrowserError("unsupported_action") }
                 session.webView.goForward()
                 result = ["dispatched": true, "note": "Navigation dispatched. Wait for or observe the resulting page."]
             case "reload":
@@ -179,14 +180,14 @@ final class BrowserToolExecutor: PriceBrowsing {
                 result = try await session.bridge(a.merging(["operation": "act"]) { _, new in new }, mutation: true)
             }
         case "browser_screenshot":
-            throw BrowserError("unsupported_action", "Screenshots are not available. Use browser_observe.")
+            throw DibsBrowserError("unsupported_action", "Screenshots are not available. Use browser_observe.")
         case "browser_close":
             session.close()
             return ["closed": true]
         default:
-            throw BrowserError("unsupported_action")
+            throw DibsBrowserError("unsupported_action")
         }
-        guard session.epoch == epoch else { throw BrowserError("stale_session") }
+        guard session.epoch == epoch else { throw DibsBrowserError("stale_session") }
         return result
     }
 }

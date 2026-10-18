@@ -1,6 +1,6 @@
 import CoreGraphics
 import XCTest
-@testable import Dibs
+@testable import Agora
 
 /// A synthetic 54x96 scene: a textured floor with bright items, viewed through a camera offset.
 private struct Scene {
@@ -40,7 +40,7 @@ private struct Scene {
     func box(item i: Int) -> CGRect { box(items[i]) }
 }
 
-final class CartWatcherTests: XCTestCase {
+final class DibsCartWatcherTests: XCTestCase {
     // A can on the left, an apple on the right (world pixels in a 54x96 thumbnail).
     private let can = (x: 6, y: 30, w: 12, h: 24)
     private let apple = (x: 32, y: 40, w: 14, h: 14)
@@ -672,7 +672,7 @@ final class CartWatcherTests: XCTestCase {
     }
 }
 
-final class TapGateTests: XCTestCase {
+final class DibsTapGateTests: XCTestCase {
     func testDebouncesTapsWithinTwoSeconds() {
         var g = TapGate()
         XCTAssertTrue(g.allow(CGPoint(x: 100, y: 100), at: 10, busy: []))
@@ -689,7 +689,7 @@ final class TapGateTests: XCTestCase {
     }
 }
 
-final class AddFailureClassTests: XCTestCase {
+final class DibsAddFailureClassTests: XCTestCase {
     func testWhichFailuresAreRetried() {
         // Gemini saw nothing nameable: final.
         XCTAssertFalse(ShopperCamera.isRetryable(DibsError.server(message: "no item", status: 422)))

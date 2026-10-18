@@ -21,7 +21,7 @@ struct ShopperView: View {
     /// Called after "Leave the cart?" is confirmed and the camera and price worker are stopped. The
     /// routed screen goes Home; nil (the debug auto-shop root) just stops.
     let onLeave: (() -> Void)?
-    /// Made once in `.task`, not in `init`: RootView re-creates this view on every run broadcast, and a
+    /// Made once in `.task`, not in `init`: DibsRootView re-creates this view on every run broadcast, and a
     /// camera built in `init` would churn an AVCaptureSession each time.
     @State private var camera: ShopperCamera?
     /// Finds QFC prices for unpriced chips with the in-app browser while this shopper is in the run.

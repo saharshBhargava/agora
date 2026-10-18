@@ -1,9 +1,9 @@
 import XCTest
-@testable import Dibs
+@testable import Agora
 
 /// Links that name another server must not switch servers without the person's say-so.
 @MainActor
-final class AppModelTests: XCTestCase {
+final class DibsAppModelTests: XCTestCase {
     private var defaults: UserDefaults!
     private var suite: String!
     private let bundled = URL(string: "https://dibs.ngrok.app")!

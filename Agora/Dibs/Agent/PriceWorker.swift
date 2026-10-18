@@ -24,7 +24,7 @@ struct PriceRequest: Decodable, Sendable, Equatable {
     var storeLocation: StoreLocation? = nil
 }
 
-/// The browser the worker drives. StoreBrowser (through BrowserToolExecutor) in the app; a fake in tests.
+/// The browser the worker drives. StoreBrowser (through DibsBrowserToolExecutor) in the app; a fake in tests.
 @MainActor
 protocol PriceBrowsing: AnyObject {
     /// Keeps navigation on the store's domain for this request.
@@ -234,8 +234,8 @@ final class PriceWorker {
          storeAttempts: Int = 3, storeRetryInterval: Duration = .seconds(60),
          storeSetupEnabled: Bool = PriceWorker.storeSetupFlag,
          idleClose: Duration = .seconds(120),
-         traffic: QFCTraffic = .shared,
-         makeBrowser: @escaping @MainActor () -> PriceBrowsing = { BrowserToolExecutor(session: StoreBrowser()) },
+         traffic: QFCTraffic? = nil,
+         makeBrowser: @escaping @MainActor () -> PriceBrowsing = { DibsBrowserToolExecutor(session: StoreBrowser()) },
          makeStoreBrowser: (@MainActor () -> PriceBrowsing)? = nil) {
         self.pollInterval = pollInterval
         self.poolSize = max(1, poolSize)
@@ -251,7 +251,8 @@ final class PriceWorker {
         self.storeRetryInterval = storeRetryInterval
         self.storeSetupEnabled = storeSetupEnabled
         self.idleClose = idleClose
-        self.traffic = traffic
+        // nil means the process-wide backoff; resolved here (on the main actor), not in the default argument.
+        self.traffic = traffic ?? .shared
         self.makeBrowser = makeBrowser
         self.makeStoreBrowser = makeStoreBrowser ?? makeBrowser
     }
@@ -274,8 +275,9 @@ final class PriceWorker {
         }
     }
 
-    /// Off by default (QFC rate-limits); launch with `-DibsStoreSetup YES` to switch stores.
-    static var storeSetupFlag: Bool { UserDefaults.standard.bool(forKey: "DibsStoreSetup") }
+    /// Off by default (QFC rate-limits); launch with `-DibsStoreSetup YES` to switch stores. Nonisolated
+    /// (UserDefaults is thread-safe) so it can be the main-actor init's default argument in Swift 5 mode.
+    nonisolated static var storeSetupFlag: Bool { UserDefaults.standard.bool(forKey: "DibsStoreSetup") }
 
     /// After the first poll, if no lookup started: load the home page in one browser, once per launch.
     private func warmIfIdle() {
@@ -468,7 +470,7 @@ final class PriceWorker {
             PriceLog.event("price \(request.id) bad searchUrl")
             return Outcome(requestId: request.id, name: request.name, via: .failed)
         }
-        let host = BrowserPolicy.domain(of: url) ?? "the store"
+        let host = DibsBrowserPolicy.domain(of: url) ?? "the store"
         active.append(Lookup(requestId: request.id, name: request.name, host: host))
         let start = ContinuousClock.now
         var timing = Timing()
@@ -568,7 +570,7 @@ final class PriceWorker {
     /// open → poll until rendered (25 s, then one reload and 20 s more) → /extract.
     private func fastPath(_ request: PriceRequest, browser: PriceBrowsing, api: PriceAPI,
                           timing: inout Timing) async throws -> FastResult {
-        PriceLog.event("price \(request.id) open \(BrowserPolicy.safeURL(URL(string: request.searchUrl)))")
+        PriceLog.event("price \(request.id) open \(DibsBrowserPolicy.safeURL(URL(string: request.searchUrl)))")
         var t0 = ContinuousClock.now
         _ = try await qfc(browser, request, "browser_open", ["url": request.searchUrl])
         timing.open = Self.ms(since: t0)
@@ -624,7 +626,7 @@ final class PriceWorker {
         if traffic.isPaused { throw RateLimited() }
         if tool == "browser_act", args["action"] as? String == "reload" {
             guard reloads[request.id, default: 0] < 1 else {
-                throw BrowserError("reload_limit", "The page was already reloaded once for this item. Observe instead.")
+                throw DibsBrowserError("reload_limit", "The page was already reloaded once for this item. Observe instead.")
             }
             reloads[request.id, default: 0] += 1
         }
