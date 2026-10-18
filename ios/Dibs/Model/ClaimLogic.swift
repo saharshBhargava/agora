@@ -72,11 +72,11 @@ enum ClaimLogic {
 
     // MARK: chips
 
-    /// What the shelf shows: everything not removed or dropped and on the feed (wishes, and items
-    /// once named and priced: `Chip.isOnFeed`), wishes first, then newest first.
-    static func shelfChips(_ run: Run) -> [Chip] {
+    /// What the shelf shows: everything not removed or dropped and on the feed (wishes, and named
+    /// items once priced or 5 s old: `Chip.isOnFeed(at:)`), wishes first, then newest first.
+    static func shelfChips(_ run: Run, now: Date = Date()) -> [Chip] {
         run.chips
-            .filter { $0.state != .removed && !$0.dropped && $0.isOnFeed }
+            .filter { $0.state != .removed && !$0.dropped && $0.isOnFeed(at: now) }
             .sorted { a, b in
                 let aw = a.state == .wish, bw = b.state == .wish
                 if aw != bw { return aw }
@@ -89,8 +89,8 @@ enum ClaimLogic {
     }
 
     /// My tray: the shelf chips I claimed, in shelf order.
-    static func trayChips(_ run: Run, me: String) -> [Chip] {
-        shelfChips(run).filter { isMine($0, me: me) }
+    static func trayChips(_ run: Run, me: String, now: Date = Date()) -> [Chip] {
+        shelfChips(run, now: now).filter { isMine($0, me: me) }
     }
 
     /// The small label at a chip's bottom right. `colorHex` nil means muted.

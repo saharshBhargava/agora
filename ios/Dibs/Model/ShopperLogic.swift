@@ -70,10 +70,9 @@ enum ShopperLogic {
     // MARK: cart rows
 
     /// The cart: wishes first, then newest first. Removed and dropped chips are left out, and so is
-    /// anything not on the feed yet (see `Chip.isOnFeed`). With `now`, a named chip still unpriced
-    /// `noPriceAfter` after it was added shows too ("No price found · Add price") so it isn't lost.
+    /// anything not on the feed yet (`Chip.isOnFeed(at:)`: named, and priced or `showUnpricedAfter` old).
     static func rows(_ chips: [Chip], now: Date? = nil) -> [Chip] {
-        chips.filter { $0.state != .removed && !$0.dropped && ($0.isOnFeed || gaveUpOnPrice($0, now: now)) }
+        chips.filter { $0.state != .removed && !$0.dropped && $0.isOnFeed(at: now) }
             .enumerated()
             .sorted { a, b in
                 let wa = a.element.state == .wish, wb = b.element.state == .wish
@@ -93,6 +92,8 @@ enum ShopperLogic {
         case noPrice
     }
 
+    /// How long a named item waits for its price before it shows anyway, "Finding price…".
+    static let showUnpricedAfter: TimeInterval = 5
     /// How long a row waits for a price before offering "Add price" (fallback when the price worker
     /// hasn't said it gave up).
     // TODO(price worker): also show "Add price" at once when `priceWorker.gaveUp(for: chip.name)` is true,
@@ -128,11 +129,14 @@ enum ShopperLogic {
         return chip.priceCents.map(Money.format) ?? ""
     }
 
-    /// A named, identified chip with no price `noPriceAfter` after it was added.
-    static func gaveUpOnPrice(_ chip: Chip, now: Date?) -> Bool {
-        guard let now, chip.state != .wish, chip.state != .identifying, chip.priceCents == nil,
-              !chip.name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
-        return now.timeIntervalSince1970 - chip.addedAt / 1000 >= noPriceAfter
+    /// Whether the screen needs a 1 s clock: some named item is unpriced and younger than
+    /// `noPriceAfter`, so it is about to appear (5 s) or switch to "Add price" (20 s).
+    static func needsTick(_ chips: [Chip], now: Date) -> Bool {
+        chips.contains { c in
+            c.state != .wish && c.state != .identifying && c.state != .removed && !c.dropped
+                && c.priceCents == nil && !c.name.trimmingCharacters(in: .whitespaces).isEmpty
+                && now.timeIntervalSince1970 - c.addedAt / 1000 < noPriceAfter
+        }
     }
 
     /// Whether a row can be lifted to the remove zone or swiped away.
@@ -142,11 +146,11 @@ enum ShopperLogic {
 
     /// Chips the server flagged as a possible second add, minus the ones the shopper kept. Only for
     /// chips on the feed whose original is still in the cart.
-    static func duplicates(_ chips: [Chip], kept: Set<String>) -> [Chip] {
+    static func duplicates(_ chips: [Chip], kept: Set<String>, now: Date? = nil) -> [Chip] {
         let present = Set(chips.filter { $0.state != .removed && !$0.dropped }.map(\.id))
         return chips.filter { c in
             guard let original = c.duplicateOf else { return false }
-            return present.contains(original) && present.contains(c.id) && c.isOnFeed && !kept.contains(c.id)
+            return present.contains(original) && present.contains(c.id) && c.isOnFeed(at: now) && !kept.contains(c.id)
         }
     }
 
@@ -250,11 +254,15 @@ enum ShopperLogic {
 }
 
 extension Chip {
-    /// On the feed (shopper rows, claim shelf and tray): wishes, and items once identified, named and
-    /// priced. Items still being named or priced don't pop up yet.
-    var isOnFeed: Bool {
+    /// On the feed (shopper rows, claim shelf and tray): wishes, and items once identified and named,
+    /// as soon as they are priced or `ShopperLogic.showUnpricedAfter` after they were added
+    /// ("Finding price…"). `now` nil counts only priced items.
+    func isOnFeed(at now: Date?) -> Bool {
         if state == .wish { return true }
-        return state != .identifying && !name.trimmingCharacters(in: .whitespaces).isEmpty && priceCents != nil
+        guard state != .identifying, !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        if priceCents != nil { return true }
+        guard let now else { return false }
+        return now.timeIntervalSince1970 - addedAt / 1000 >= ShopperLogic.showUnpricedAfter
     }
 }
 

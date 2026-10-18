@@ -30,7 +30,7 @@ struct ShopperView: View {
     @State private var confirmLeave = false
     /// Chips already seen removed; a chip newly removed (by anyone, the camera watcher too) gets the undo.
     @State private var removedIds: Set<String>?
-    /// Ticks every few seconds for "No price found".
+    /// Re-evaluates rows while a named item waits for its price (shows at 5 s, "Add price" at 20 s).
     @State private var clock = Date()
     /// "Removed 2% Milk · Undo · 5s" (the shared UndoToast).
     @State private var toast: Toast?
@@ -163,8 +163,8 @@ struct ShopperView: View {
         }
         .task {
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(5))
-                clock = Date()
+                try? await Task.sleep(for: .seconds(1))
+                if ShopperLogic.needsTick(store.run?.chips ?? [], now: clock) { clock = Date() }
             }
         }
         // A new identify attempt (a region) clears the hint.
@@ -201,7 +201,7 @@ struct ShopperView: View {
     private var sheet: some View {
         let chips = run?.chips ?? []
         let rows = ShopperLogic.rows(chips, now: clock)
-        let dupes = ShopperLogic.duplicates(chips, kept: kept)
+        let dupes = ShopperLogic.duplicates(chips, kept: kept, now: clock)
         let people = run?.people ?? []
         let cover = ShopperLogic.coverage(people: people, chips: chips)
         return VStack(spacing: 0) {

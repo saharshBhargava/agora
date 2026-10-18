@@ -120,16 +120,24 @@ final class ClaimLogicTests: XCTestCase {
         XCTAssertEqual(ClaimLogic.shelfChips(r).map(\.id), ["wish", "new", "old"])
     }
 
-    func testShelfShowsItemsOnlyOnceNamedAndPriced() {
+    func testShelfShowsNamedItemsPricedOrAfterFiveSeconds() {
+        let added = 1_792_293_590_000.0
         let r = run([
-            chip("eggs", 872, addedAt: 1),
-            chip("pending", nil, addedAt: 2),
-            Chip(id: "naming", name: "", state: .identifying, addedAt: 3),
-            Chip(id: "nameless", name: "", priceCents: 199, state: .open, addedAt: 4),
-            chip("wish", nil, state: .wish, addedAt: 5, wishedBy: "priya"),
+            chip("eggs", 872, addedAt: added),
+            chip("pending", nil, ["priya"], addedAt: added + 1),
+            Chip(id: "naming", name: "", state: .identifying, addedAt: added + 2),
+            Chip(id: "nameless", name: "", priceCents: 199, state: .open, addedAt: added + 3),
+            chip("wish", nil, state: .wish, addedAt: added + 4, wishedBy: "priya"),
         ])
-        XCTAssertEqual(ClaimLogic.shelfChips(r).map(\.id), ["wish", "eggs"])
-        XCTAssertTrue(ClaimLogic.trayChips(r, me: "priya").isEmpty)
+        let at = { (s: Double) in Date(timeIntervalSince1970: (added + 1) / 1000 + s) }
+        // Priced shows at once; the unpriced named chip waits 5 s; identifying and nameless never show.
+        XCTAssertEqual(ClaimLogic.shelfChips(r, now: at(4)).map(\.id), ["wish", "eggs"])
+        XCTAssertTrue(ClaimLogic.trayChips(r, me: "priya", now: at(4)).isEmpty)
+        XCTAssertEqual(ClaimLogic.shelfChips(r, now: at(5)).map(\.id), ["wish", "pending", "eggs"])
+        XCTAssertEqual(ClaimLogic.trayChips(r, me: "priya", now: at(5)).map(\.id), ["pending"])
+        XCTAssertEqual(ClaimLogic.priceText(r.chips[1]), "Finding price…")
+        // The server lets anyone claim an unpriced chip (it counts $0 toward the cap until priced).
+        XCTAssertEqual(ClaimLogic.decide(r.chips[1], roomChips: [], me: "marcus", authorizedCents: 4000, taxRate: 0), .claim)
     }
 
     func testChipTag() {

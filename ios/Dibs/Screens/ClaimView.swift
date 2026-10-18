@@ -138,8 +138,10 @@ struct ClaimScreen: View {
 
     private var shopper: Person? { run.shopper }
     private var open: Bool { run.isJoinable }
-    private var shelf: [Chip] { ClaimLogic.shelfChips(run) }
-    private var tray: [Chip] { ClaimLogic.trayChips(run, me: me.id) }
+    private var shelf: [Chip] { ClaimLogic.shelfChips(run, now: clock) }
+    private var tray: [Chip] { ClaimLogic.trayChips(run, me: me.id, now: clock) }
+    /// Re-evaluates the shelf while a named item waits for its price (it shows after 5 s).
+    @State private var clock = Date()
     private var trayTotal: Int { ClaimLogic.trayTotal(tray, me: me.id) }
     private var room: Int? { ClaimLogic.roomLeft(run: run, me: me.id) }
     private var roomChips: [Chip] { ClaimLogic.roomChips(run, me: me.id) }
@@ -190,6 +192,12 @@ struct ClaimScreen: View {
         .animation(.easeOut(duration: 0.2), value: toast)
         .background(Color.paper.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                if ShopperLogic.needsTick(run.chips, now: clock) { clock = Date() }
+            }
+        }
         .sheet(item: $overCap) { chip in
             let sheet = OverCapSheet(
                 chip: chip,
