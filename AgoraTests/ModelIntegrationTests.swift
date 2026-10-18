@@ -287,13 +287,13 @@ final class ModelIntegrationTests: XCTestCase {
             let contents = try XCTUnwrap(body["contents"] as? [[String: Any]])
             let parts = try XCTUnwrap(contents.first?["parts"] as? [[String: Any]])
             XCTAssertNotNil(parts.first?["inlineData"])
-            return try .json(self.response(.gemini, text: #"{"items":[{"name":"Milk","category":"Food","unit":"unit","quantity":1,"confidence":0.9}]}"#))
+            return try .json(self.response(.gemini, text: #"{"items":[{"name":"Milk","brand":"Organic Valley","variant":"Whole","packageSize":"1/2 gallon","category":"Food","unit":"unit","quantity":1,"confidence":0.9}]}"#))
         }
         let services: [InventoryRecognizing] = [ModelInventoryService(client: client(.gemini)),
             GeminiInventoryService(key: "gemini-private-key", model: "gemini-flash-latest", http: http)]
         for service in services {
             let items = try await service.recognize(file: file, kind: .image, progress: { _ in }, cleanupNotice: { _ in })
-            XCTAssertEqual(items.map(\.name), ["Milk"])
+            XCTAssertEqual(items.map(\.name), ["Organic Valley Milk, Whole, 1/2 gallon"])
         }
         XCTAssertEqual(calls, 2)
     }
@@ -302,7 +302,9 @@ final class ModelIntegrationTests: XCTestCase {
         let valid: [String: Any] = ["name": "Milk", "category": "Food", "unit": "unit", "quantity": 1, "confidence": 0.9]
         var invalid: [[String: Any]] = []
         for (field, value) in [("name", String(repeating: "n", count: 121)), ("unit", String(repeating: "u", count: 21)),
-                               ("category", String(repeating: "c", count: 41)), ("name", " ")] {
+                               ("category", String(repeating: "c", count: 41)), ("name", " "),
+                               ("brand", String(repeating: "b", count: 81)), ("variant", String(repeating: "v", count: 81)),
+                               ("packageSize", String(repeating: "s", count: 41))] {
             var item = valid; item[field] = value; invalid.append(item)
         }
         var negative = valid; negative["quantity"] = -1; invalid.append(negative)
@@ -311,6 +313,34 @@ final class ModelIntegrationTests: XCTestCase {
             let text = String(decoding: try JSONSerialization.data(withJSONObject: ["items": items]), as: UTF8.self)
             XCTAssertThrowsError(try InventoryRecognitionContract.decode(text))
         }
+    }
+
+    func testRecognitionNamesUseKnownDetailsWithoutDuplicatesOrInventedValues() throws {
+        let cases: [(String, String, String, String, String)] = [
+            ("Milk", "Organic Valley", "Whole", "1/2 gallon", "Organic Valley Milk, Whole, 1/2 gallon"),
+            ("Organic Valley Whole Milk, 1/2 gallon", "Organic Valley", "Whole", "1/2 gallon", "Organic Valley Whole Milk, 1/2 gallon"),
+            (" Blue   upholstered armchair ", "", "", "", "Blue upholstered armchair"),
+            ("Milk", "unknown", "N/A", "unreadable", "Milk"),
+            ("Dovetail soap dish", "Dove", "", "", "Dove Dovetail soap dish"),
+            ("Soap", " Dove ", " Sensitive skin ", " 500 mL ", "Dove Soap, Sensitive skin, 500 mL"),
+            (String(repeating: "A", count: 120), "Brand", "Variant", "1 L", String(repeating: "A", count: 120))
+        ]
+        for (name, brand, variant, size, expected) in cases {
+            let json: [String: Any] = ["items": [["name": name, "brand": brand, "variant": variant, "packageSize": size,
+                "category": "Household", "unit": "unit", "quantity": 2, "confidence": 0.9]]]
+            let items = try InventoryRecognitionContract.decode(String(decoding: JSONSerialization.data(withJSONObject: json), as: UTF8.self))
+            XCTAssertEqual(items.first?.name, expected)
+            XCTAssertEqual(items.first?.quantity, 2) // Labelled volume must never become the observed count.
+            XCTAssertEqual(items.first?.unit, "unit")
+        }
+        let legacy = try InventoryRecognitionContract.decode(#"{"items":[{"name":"Milk","category":"Food","unit":"unit","quantity":1,"confidence":0.9}]}"#)
+        XCTAssertEqual(legacy.first?.name, "Milk")
+    }
+
+    func testRecognitionKeepsDifferentVariantsAndSizesSeparate() throws {
+        let items = try InventoryRecognitionContract.decode(#"{"items":[{"name":"Milk","brand":"Organic Valley","variant":"Whole","packageSize":"1/2 gallon","category":"Food","unit":"unit","quantity":1,"confidence":0.9},{"name":"Milk","brand":"Organic Valley","variant":"2%","packageSize":"1 gallon","category":"Food","unit":"unit","quantity":2,"confidence":0.9}]}"#)
+        XCTAssertEqual(items.map(\.name), ["Organic Valley Milk, Whole, 1/2 gallon", "Organic Valley Milk, 2%, 1 gallon"])
+        XCTAssertEqual(items.map(\.quantity), [1, 2])
     }
 
     func testPhotoRecognition400UsesContextAndDoesNotExposeProviderBody() async throws {
@@ -503,7 +533,7 @@ extension ModelIntegrationTests {
                 baseURL: URL(string: "https://inventory.model-tests.invalid"), http: session), calendar: calendar)
             let household = UUID(), inventoryID = UUID(), recognitionID = UUID()
             var item: [String: Any] = ["id": inventoryID.uuidString, "household_id": household.uuidString,
-                "display_name": "Milk", "unit": "cartons", "quantity": 1, "status": "active"]
+                "display_name": "Organic Valley Milk, Whole, 1/2 gallon", "unit": "cartons", "quantity": 1, "status": "active"]
             var submissions: [[String: Any]] = []
             var keys: [String] = []
             ModelWireProtocol.handler = { request in
@@ -519,6 +549,7 @@ extension ModelIntegrationTests {
                         XCTAssertEqual(body["provider"] as? String ?? "gemini", provider.rawValue)
                         let entries = try XCTUnwrap(body["items"] as? [[String: Any]])
                         XCTAssertEqual(entries.count, 1); XCTAssertEqual(entries[0]["quantity"] as? Double, 4.5)
+                        XCTAssertEqual(entries[0]["display_name"] as? String, "Organic Valley Milk, Whole, 1/2 gallon")
                         XCTAssertNil(body["image"]); XCTAssertNil(body["file_uri"]); XCTAssertNil(body["frame_keys"])
                         if submissions.count == 1 { return try .json(["title": "unavailable", "detail": "Try again"], status: 503) }
                         item["quantity"] = 4.5
@@ -526,7 +557,7 @@ extension ModelIntegrationTests {
                     }
                     return try .json([item])
                 }
-                let text = #"{"items":[{"name":"Milk","category":"dairy","unit":"cartons","quantity":2,"confidence":0.93},{"name":"Uncertain jar","category":"other","unit":"unit","quantity":1,"confidence":0.3}]}"#
+                let text = #"{"items":[{"name":"Milk","brand":"Organic Valley","variant":"Whole","packageSize":"1/2 gallon","category":"dairy","unit":"cartons","quantity":2,"confidence":0.93},{"name":"Uncertain jar","brand":"","variant":"","packageSize":"","category":"other","unit":"unit","quantity":1,"confidence":0.3}]}"#
                 return try .json(self.response(provider, text: text))
             }
             await store.refresh(); XCTAssertNil(store.error)
@@ -541,6 +572,7 @@ extension ModelIntegrationTests {
                 provider: ModelInventoryService(client: model), store: store, identity: model.identity)
             try await waitUntil { !controller.busy }
             XCTAssertEqual(controller.drafts.count, 2)
+            XCTAssertEqual(controller.drafts.first?.name, "Organic Valley Milk, Whole, 1/2 gallon")
             XCTAssertEqual(controller.drafts.first?.inventoryItemID, inventoryID)
             controller.drafts[0].quantity = "4.5"; controller.drafts[1].included = false
             await controller.save(item: capture, store: store, library: library)
