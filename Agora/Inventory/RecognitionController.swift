@@ -15,8 +15,11 @@ final class RecognitionController: ObservableObject {
     @Published private(set) var progress: CaptionProgress = .preparing
     @Published private(set) var message: String?
     @Published private(set) var cleanupNotice: String?
+    @Published private(set) var modelDescription = ""
+    @Published private(set) var mediaDisclosure = ""
     @Published private(set) var submission: SavedRecognition?
     private var model = ""
+    private var modelProvider: ModelProviderKind = .gemini
     private var automaticStarted = false
     private var task: Task<Void, Never>?
     var locked: Bool { submission != nil && submission?.rejected != true }
@@ -25,22 +28,23 @@ final class RecognitionController: ObservableObject {
 
     func restore(_ saved: SavedRecognition?) {
         guard let saved, !busy else { return }
-        submission = saved; model = saved.model; locationID = saved.locationID; purchasedOn = saved.purchasedOn ?? ""
+        submission = saved; model = saved.model; modelProvider = saved.provider ?? .gemini; locationID = saved.locationID; purchasedOn = saved.purchasedOn ?? ""
         drafts = saved.items.map { item in
             var draft = RecognitionDraft(.init(name: item.displayName, category: item.category, unit: item.unit,
                                               quantity: item.quantity, confidence: item.confidence), inventory: [])
             draft.inventoryItemID = item.inventoryItemID
             return draft
         }
+        modelDescription = "\(modelProvider.title) · \(model)"
         didRecognize = true
         if completed { message = "Saved to inventory." }
         else if !saved.rejected { message = "A save needs confirmation. Retry to safely check its result." }
     }
 
-    func recognize(item: CaptureItem, file: URL, model: String, provider: InventoryRecognizing, store: InventoryStore) {
+    func recognize(item: CaptureItem, file: URL, model: String, provider: InventoryRecognizing, store: InventoryStore, identity: ModelIdentity? = nil) {
         guard !busy, !locked else { return }
         let version = store.context
-        self.model = model; busy = true; message = nil; cleanupNotice = nil
+        self.model = model; modelProvider = identity?.provider ?? .gemini; busy = true; message = nil; cleanupNotice = nil
         task = Task {
             defer { busy = false; task = nil }
             do {
@@ -53,7 +57,7 @@ final class RecognitionController: ObservableObject {
                 if items.isEmpty { message = "No inventory items found. Try a clearer photo or another capture." }
             } catch {
                 if Task.isCancelled || error is CancellationError { message = "Recognition cancelled." }
-                else if let failure = error as? CaptionHTTPFailure { message = GeminiProvider.responseError(failure.status).localizedDescription }
+                else if let failure = error as? CaptionHTTPFailure { message = "The model server could not complete the request (HTTP \(failure.status))." }
                 else { message = error.localizedDescription }
             }
         }
@@ -75,9 +79,15 @@ final class RecognitionController: ObservableObject {
     func generate(item: CaptureItem, file: URL, settings: SettingsStore, store: InventoryStore,
                   provider: InventoryRecognizing? = nil) {
         do {
-            let model = GeminiProvider.normalizedModel(settings.model)
-            recognize(item: item, file: file, model: model,
-                      provider: try provider ?? GeminiInventoryService(key: settings.apiKey(), model: model), store: store)
+            if let provider {
+                recognize(item: item, file: file, model: settings.model, provider: provider, store: store)
+            } else {
+                let client = try settings.client(for: .inventory, kind: item.kind)
+                modelDescription = settings.featureDescription(.inventory)
+                mediaDisclosure = settings.mediaDisclosure(for: .inventory, kind: item.kind)
+                recognize(item: item, file: file, model: client.identity.model,
+                          provider: ModelInventoryService(client: client), store: store, identity: client.identity)
+            }
         } catch { message = error.localizedDescription }
     }
 
@@ -127,7 +137,7 @@ final class RecognitionController: ObservableObject {
                 guard store.context == version else { throw CancellationError() }
                 pending = SavedRecognition(key: UUID(), accountID: accountID, householdID: householdID,
                     capturedAt: item.createdAt, mediaKind: item.kind == .video ? "video" : "photos", model: model,
-                    locationID: locationID, merchantID: merchant?.id, purchasedOn: date.isEmpty ? nil : date, items: items)
+                    locationID: locationID, merchantID: merchant?.id, purchasedOn: date.isEmpty ? nil : date, items: items, provider: modelProvider)
             }
             guard pending.accountID == accountID, pending.householdID == householdID else {
                 throw BrowserError("different_account", "Open the original account and household to finish this save.")

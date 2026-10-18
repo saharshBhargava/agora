@@ -62,13 +62,17 @@ class Settings(BaseSettings):
     s3_secret_access_key: SecretStr | None = None
 
     # Vision: primary provider plus optional fallback. "replay" serves cached/fixture results only.
-    vision_provider: Literal["perceptron", "gemini", "replay"] = "replay"
-    vision_fallback: Literal["perceptron", "gemini", "replay", "none"] = "none"
+    vision_provider: Literal["perceptron", "gemini", "openai-compatible", "replay"] = "replay"
+    vision_fallback: Literal["perceptron", "gemini", "openai-compatible", "replay", "none"] = "none"
     perceptron_api_key: SecretStr | None = None
     perceptron_base_url: str = "https://api.perceptron.inc/v1"
     perceptron_model: str = "perceptron-mk1.5"
     gemini_api_key: SecretStr | None = None
     gemini_model: str = "gemini-flash-latest"
+    # Local/LAN servers implement OpenAI Chat Completions; no key is sent unless supplied explicitly.
+    openai_base_url: str = "http://localhost:1234/v1"
+    openai_model: str = ""
+    openai_api_key: SecretStr | None = None
     vision_timeout_s: float = 45.0
     replay_dir: Path = Path(__file__).resolve().parent.parent / "seed" / "replay"
 
@@ -107,6 +111,19 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _guard_prod(self) -> "Settings":
+        if "openai-compatible" in (self.vision_provider, self.vision_fallback):
+            try:
+                uri = urlsplit(self.openai_base_url)
+                valid = (uri.scheme in ("http", "https") and uri.hostname and uri.port != 0
+                         and not (uri.username or uri.password or uri.query or uri.fragment)
+                         and not any(c.isspace() or ord(c) < 32 for c in self.openai_base_url))
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError("AGORA_OPENAI_BASE_URL must be an HTTP(S) URL without credentials, query or fragment")
+            if not self.openai_model.strip() or len(self.openai_model) > 120 or any(
+                    ord(c) < 32 for c in self.openai_model):
+                raise ValueError("AGORA_OPENAI_MODEL must name a model (up to 120 characters)")
         if self.env == "prod":
             if self.auth_mode == "dev":
                 raise ValueError("AGORA_AUTH_MODE=dev is not allowed when AGORA_ENV=prod")

@@ -94,9 +94,13 @@ async def add_item(body: ItemIn, request: Request, user: Principal = CurrentUser
 
 @router.post("/recognitions", response_model=RecognitionOut, status_code=201)
 async def save_recognition(body: RecognitionIn, request: Request, user: Principal = CurrentUser) -> RecognitionOut:
-    """Atomically save user-confirmed Gemini results. Never stores or fetches media, or queues recognition."""
+    """Atomically save user-confirmed model results. Never stores or fetches media, or queues recognition."""
     key = idempotency.key_from(request)
-    digest = idempotency.request_hash("inventory.recognition", body.model_dump(mode="json"))
+    metadata = body.model_dump(mode="json")
+    if body.provider == "gemini":
+        metadata.pop("provider")  # Preserve hashes of requests persisted by pre-provider clients.
+    digest = idempotency.request_hash("inventory.recognition", metadata)
+    provider = f"{body.provider}-client"
     async with request.app.state.db.scoped(user.user_id) as conn:
         household_id = await require_household(conn, body.household_id, user.user_id)
         # Serialize concurrent retries before looking up their result, inside this transaction.
@@ -110,9 +114,9 @@ async def save_recognition(body: RecognitionIn, request: Request, user: Principa
             """INSERT INTO scans (household_id, user_id, location_id, captured_at, media_kind, status,
                                   provider, model, media_deleted_at, processed_at, confirmed_at,
                                   purchased_from_merchant_id, purchased_on)
-               VALUES ($1, $2, $3, $4, $5, 'confirmed', 'gemini-client', $6, now(), now(), now(), $7, $8)
+               VALUES ($1, $2, $3, $4, $5, 'confirmed', $9, $6, now(), now(), now(), $7, $8)
                RETURNING id""", household_id, user.user_id, body.location_id, body.captured_at, body.media_kind,
-            body.model, body.purchased_from_merchant_id, body.purchased_on)
+            body.model, body.purchased_from_merchant_id, body.purchased_on, provider)
         item_ids = []
         seen = set()
         for entry in body.items:
@@ -149,7 +153,7 @@ async def save_recognition(body: RecognitionIn, request: Request, user: Principa
         if not await idempotency.claim(conn, user.user_id, key, digest, 201, result.model_dump(mode="json")):
             raise Problem(409, "request_in_progress", "Retry this request with the same Idempotency-Key.")
         await audit(conn, "inventory.recognition_confirmed", actor_id=user.user_id, household_id=household_id,
-                    target_type="scan", target_id=scan_id, meta={"items": len(item_ids), "provider": "gemini-client"})
+                    target_type="scan", target_id=scan_id, meta={"items": len(item_ids), "provider": provider})
         await notify(conn, household_id, "inventory.updated", scan_id)
     return result
 

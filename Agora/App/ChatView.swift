@@ -65,13 +65,13 @@ struct ChatView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Image(systemName: "globe.americas.fill").font(.system(size: 42)).foregroundStyle(.teal)
                             Text("A conversation.\nA browser you share.").font(.largeTitle.bold())
-                            Text("Ask Gemini to explore a page, find an answer, or help with a task. Open the live preview whenever you want to take over.").foregroundStyle(.secondary)
-                            Text("Start by adding your Gemini API key in Settings.").font(.footnote).foregroundStyle(.secondary)
+                            Text("Ask Agora to explore a page, find an answer, or help with a task. Open the live preview whenever you want to take over.").foregroundStyle(.secondary)
+                            Text("Choose your model connection in Settings.").font(.footnote).foregroundStyle(.secondary)
                         }.padding(.vertical, 40)
                     }
                     ForEach(agent.messages) { message in
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(message.role == "user" ? "YOU" : message.role == "assistant" ? "GEMINI" : "AGORA").font(.caption2.bold()).foregroundStyle(.secondary)
+                            Text(message.role == "user" ? "YOU" : "AGORA").font(.caption2.bold()).foregroundStyle(.secondary)
                             Text(message.text).textSelection(.enabled)
                         }
                         .padding(14)
@@ -95,7 +95,7 @@ struct ChatView: View {
                 else if agent.paused { Button("Resume") { agent.resume() } }
             }
             HStack(alignment: .bottom) {
-                TextField("Message Gemini", text: $draft, axis: .vertical)
+                TextField("Message Agora", text: $draft, axis: .vertical)
                     .lineLimit(1...5).focused($composing).padding(10)
                     .background(.quaternary, in: RoundedRectangle(cornerRadius: 14))
                 Button {

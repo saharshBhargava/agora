@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct ChatMessage: Identifiable {
     let id = UUID()
@@ -23,17 +24,25 @@ final class AgentCoordinator: ObservableObject {
     private let calendar: CalendarConnection?
     private let executor: BrowserToolExecutor
     private let repository = TaskRepository()
-    private var history: [[String: Any]] = []
+    private var history: [ModelMessage] = []
+    private var settingsSubscription: AnyCancellable?
     private var task: Task<Void, Never>?
     private var generation = UUID()
     private var calendarMutationInFlight: UUID?
     private var approvalReply: CheckedContinuation<Bool, Never>?
     var providerOverride: ModelProvider?
+    var modelClientOverride: ModelClient?
 
     init(settings: SettingsStore, browser: BrowserSession, calendar: CalendarConnection? = nil) {
         self.calendar = calendar
         self.settings = settings; self.browser = browser; executor = BrowserToolExecutor(session: browser)
         browser.onHumanInteraction = { [weak self] in self?.stop(reason: "Paused for you. Press Resume when ready.", paused: true) }
+        settingsSubscription = settings.$chatRevision.dropFirst().sink { [weak self] _ in
+            guard let self else { return }
+            self.stop(reason: "Chat model settings changed. Start a new task.")
+            self.history.removeAll()
+            if !self.messages.isEmpty { self.messages.append(ChatMessage(role: "notice", text: "Model settings changed. The next message starts a new conversation context.")) }
+        }
         if repository.needsRecovery {
             messages.append(ChatMessage(role: "notice", text: "The previous task was interrupted. Inspect the website or Google Calendar before retrying any action; actions are never replayed automatically."))
         }
@@ -41,13 +50,17 @@ final class AgentCoordinator: ObservableObject {
     func send(_ text: String) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, text.utf8.count <= 16000, !running else { return }
-        let provider: ModelProvider
-        do { provider = try providerOverride ?? GeminiProvider(key: settings.apiKey(), model: settings.model) }
+        let provider: ModelClient
+        do {
+            if let modelClientOverride { provider = modelClientOverride }
+            else if let providerOverride { provider = LegacyModelClient(providerOverride) }
+            else { provider = try settings.client(for: .chat) }
+        }
         catch { AppLog.failure(.agent, "task.start_failed", error: error); messages.append(ChatMessage(role: "notice", text: error.localizedDescription)); return }
         browser.policy = settings.policy
         messages.append(ChatMessage(role: "user", text: text))
         let id = UUID(); generation = id; running = true; paused = false; status = "Thinking…"
-        let initial = history + [["role": "user", "parts": [["text": text]]]]
+        let initial = history + [ModelMessage(role: .user, content: [.text(text)])]
         history = initial
         task = Task { [weak self] in
             await AppLog.$taskID.withValue(id.uuidString) {
@@ -89,12 +102,12 @@ final class AgentCoordinator: ObservableObject {
         let reference = call.arguments["elementId"] as? String
         let elements = browser.lastObservation["elements"] as? [[String: Any]] ?? []
         let target = elements.first { $0["id"] as? String == reference }?["name"] as? String ?? reference ?? "page"
-        approval = ActionApproval(title: "Allow Gemini to \(action)?", detail: "\(browser.state.title) · \(browser.state.url?.host ?? "Browser")\nTarget: \(target)\(value.map { "\nValue: \($0)" } ?? "")\nReview the page first. This approval applies once to this action.")
+        approval = ActionApproval(title: "Allow Agora to \(action)?", detail: "\(browser.state.title) · \(browser.state.url?.host ?? "Browser")\nTarget: \(target)\(value.map { "\nValue: \($0)" } ?? "")\nReview the page first. This approval applies once to this action.")
         AppLog.event(.agent, "approval.requested")
         status = "Waiting for your approval"
         return await withCheckedContinuation { approvalReply = $0 }
     }
-    private func run(provider: ModelProvider, contents initial: [[String: Any]], id: UUID) async {
+    private func run(provider: ModelClient, contents initial: [ModelMessage], id: UUID) async {
         var contents = initial
         var failures = 0
         var turn = 0
@@ -108,23 +121,28 @@ final class AgentCoordinator: ObservableObject {
                 turn += 1
                 AppLog.event(.agent, "turn.started", count: turn)
                 try Task.checkCancellation(); guard generation == id else { return }
-                guard try JSONSerialization.data(withJSONObject: contents).count < 1_500_000 else { throw BrowserError("conversation_limit", "Start a new chat to continue.") }
+                guard try contents.reduce(0, { try $0 + $1.byteCount() }) < 1_500_000 else { throw BrowserError("conversation_limit", "Start a new chat to continue.") }
                 status = "Thinking…"
-                let response = try await provider.nextTurn(contents: contents, tools: BrowserCall.schemas + (calendar?.connected == true ? CalendarCall.schemas : []))
+                let schemas = BrowserCall.schemas.filter { provider.capabilities.images || $0["name"] as? String != "browser_screenshot" } + (calendar?.connected == true ? CalendarCall.schemas : [])
+                let request = ModelRequest(instructions: AgentInstructions.text, messages: contents,
+                                           tools: try schemas.map { try ModelToolDefinition(legacy: $0) })
+                let response = try await provider.generate(request, onEvent: { _ in })
+                try validateModelResponse(response.message, request: request)
                 try Task.checkCancellation(); guard generation == id else { return }
-                contents.append(response)
-                let parts = response["parts"] as? [[String: Any]] ?? []
-                let text = parts.filter { $0["thought"] as? Bool != true }.compactMap { $0["text"] as? String }.joined(separator: "\n")
+                contents.append(response.message)
+                let text = response.text
                 if !text.isEmpty { messages.append(ChatMessage(role: "assistant", text: text)) }
-                let calls = parts.compactMap { $0["functionCall"] as? [String: Any] }
+                let calls = response.message.toolCalls
                 if calls.isEmpty {
                     AppLog.event(.agent, "task.completed")
                     history = contents; status = "Ready"
                     try repository.record(task: id, operation: "task", phase: "complete"); return
                 }
                 guard calls.count <= 8 else { throw BrowserError("tool_budget_exhausted") }
-                var replies: [[String: Any]] = []
-                for raw in calls {
+                var replies: [ModelToolResult] = []
+                var images: [ModelContent] = []
+                for modelCall in calls {
+                    let raw = modelCall.raw
                     try Task.checkCancellation(); guard generation == id else { return }
                     var result: [String: Any]
                     do {
@@ -169,15 +187,12 @@ final class AgentCoordinator: ObservableObject {
                         if error.localizedDescription.contains("outcome_unknown") { throw error }
                     }
                     try Task.checkCancellation(); guard generation == id else { return }
-                    var response: [String: Any] = ["name": raw["name"] as? String ?? "unknown", "response": result]
-                    if let callID = raw["id"] { response["id"] = callID }
-                    if let image = result.removeValue(forKey: "image") as? String {
-                        response["response"] = result
-                        replies.append(["functionResponse": response])
-                        replies.append(["inlineData": ["mimeType": "image/jpeg", "data": image]])
-                    } else { replies.append(["functionResponse": response]) }
+                    if let image = result.removeValue(forKey: "image") as? String, let data = Data(base64Encoded: image) {
+                        images.append(.image(data, mimeType: "image/jpeg"))
+                    }
+                    replies.append(ModelToolResult(id: modelCall.id, name: modelCall.name, value: try ModelJSON.from(result)))
                 }
-                contents.append(["role": "user", "parts": replies])
+                contents.append(ModelMessage(role: .user, content: images, toolResults: replies))
                 history = contents // Only commit complete, correlated tool exchanges.
                 if failures >= 3 { throw BrowserError("repeated_tool_errors", "Review the browser and try again.") }
             }

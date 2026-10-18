@@ -32,7 +32,7 @@ final class URLSessionCaptionHTTPClient: CaptionHTTPClient {
         return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }
     private func checked(_ response: URLResponse, count: Int = 0) throws -> HTTPURLResponse {
-        guard let http = response as? HTTPURLResponse else { throw CaptionFailure(code: "network_response", message: "No response from Gemini.") }
+        guard let http = response as? HTTPURLResponse else { throw CaptionFailure(code: "network_response", message: "No response from the model server.") }
         AppLog.event(.caption, "http.response", status: http.statusCode, count: count)
         guard (200..<300).contains(http.statusCode) else { throw CaptionHTTPFailure(status: http.statusCode) }
         return http

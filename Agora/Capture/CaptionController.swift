@@ -12,6 +12,8 @@ final class CaptionController: ObservableObject {
     @Published private(set) var progress: CaptionProgress = .preparing
     @Published private(set) var message: String?
     @Published private(set) var cleanupNotice: String?
+    @Published private(set) var modelDescription = ""
+    @Published private(set) var mediaDisclosure = ""
     private var task: Task<Void, Never>?
     private var needsSave = false
     private var jobID = UUID()
@@ -24,14 +26,16 @@ final class CaptionController: ObservableObject {
     func generate(item: CaptureItem, file: URL, settings: SettingsStore, library: MediaLibrary) {
         guard !busy else { return }
         do {
-            let model = GeminiProvider.normalizedModel(settings.model)
-            let provider = GeminiCaptionService(key: try settings.apiKey(), model: model)
-            start(item: item, file: file, model: model, provider: provider) { caption in
+            let client = try settings.client(for: .captions, kind: item.kind)
+            let provider = ModelCaptionService(client: client)
+            modelDescription = settings.featureDescription(.captions)
+            mediaDisclosure = settings.mediaDisclosure(for: .captions, kind: item.kind)
+            start(item: item, file: file, model: client.identity.model, provider: provider, identity: client.identity) { caption in
                 try await library.saveCaption(caption, for: item.id)
             }
         } catch { message = error.localizedDescription }
     }
-    func start(item: CaptureItem, file: URL, model: String, provider: CaptionGenerating,
+    func start(item: CaptureItem, file: URL, model: String, provider: CaptionGenerating, identity: ModelIdentity? = nil,
                save: @escaping @MainActor (SavedCaption) async throws -> Void) {
         guard !busy else { return }
         let style = style, instruction = instruction
@@ -50,7 +54,7 @@ final class CaptionController: ObservableObject {
                             } else { self.progress = stage }
                         }, text: { [weak self] value in if self?.jobID == id { self?.partialText = value } }, cleanupNotice: { [weak self] value in if self?.jobID == id { self?.cleanupNotice = value } })
                     try Task.checkCancellation()
-                    let caption = SavedCaption(text: result, style: style, model: model, generatedAt: Date())
+                    let caption = SavedCaption(text: result, style: style, model: model, generatedAt: Date(), provider: identity?.provider)
                     progress = .saving
                     // Once saving starts, finish the atomic local write; Cancel is disabled.
                     generated = caption; draft = caption.text; needsSave = true
@@ -61,7 +65,7 @@ final class CaptionController: ObservableObject {
                     if Task.isCancelled || error is CancellationError || (error as NSError).code == NSURLErrorCancelled {
                         message = "Cancelled. Your previously saved caption is unchanged."
                     } else if let failure = error as? CaptionHTTPFailure {
-                        message = GeminiProvider.responseError(failure.status).localizedDescription
+                        message = "The model server could not complete the request (HTTP \(failure.status))."
                     } else if progress == .saving { message = "Caption generated, but saving failed. Use Save edits to retry. \(error.localizedDescription)" }
                     else { message = error.localizedDescription }
                     AppLog.failure(.caption, "job.failed", error: error)

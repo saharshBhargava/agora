@@ -47,7 +47,7 @@ struct RecognitionView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(itemSummary).font(.headline).accessibilityIdentifier("recognition.summary")
                                 if controller.busy {
-                                    ProgressView(controller.saving ? "Adding to inventory…" : controller.progress == .generating ? "Gemini is working…" : controller.progress.title)
+                                    ProgressView(controller.saving ? "Adding to inventory…" : controller.progress == .generating ? "Identifying items…" : controller.progress.title)
                                         .accessibilityIdentifier("recognition.progress")
                                 } else if !controller.drafts.isEmpty {
                                     Text("Check the details below.").font(.subheadline).foregroundStyle(.secondary)
@@ -56,7 +56,11 @@ struct RecognitionView: View {
                             Spacer(minLength: 0)
                         }
                     } footer: {
-                        Text("Photos and videos go directly to Gemini. Only confirmed item details go to inventory.")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(controller.modelDescription.isEmpty ? settings.featureDescription(.inventory) : controller.modelDescription)
+                            Text(controller.busy ? controller.mediaDisclosure : settings.mediaDisclosure(for: .inventory, kind: item.kind))
+                            Text("Only confirmed item details go to inventory.")
+                        }
                     }
                     Section("Purchased from") {
                         TextField("Store or website, e.g. Costco", text: Binding(
@@ -184,7 +188,7 @@ private struct RecognitionItemEditor: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }.disabled(!draft.included)
-            Text("Gemini confidence: \(Int((draft.confidence * 100).rounded()))% — verify before saving")
+            Text("Model confidence: \(Int((draft.confidence * 100).rounded()))% — verify before saving")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

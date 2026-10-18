@@ -154,18 +154,72 @@ Teammates' own Google accounts stay ordinary, empty accounts: use them to show "
    project, then **Create API key**. Copy the key privately. Check the project's available quota/billing.
 2. Render, then **Environment**: set `AGORA_GEMINI_API_KEY` and save. Backend scans now use Gemini vision. Without a key
    they only work for pre-recorded replay fixtures, and the server logs a warning instead of crashing.
-3. The iOS chat, caption and current Capture → inventory recognition flows use a key entered in the app's
-   **Settings** tab. Capture calls Gemini directly from the device, then saves reviewed JSON metadata to the
-   API; it does not require the backend's vision key. That backend key enables the separate `/v1/scans`
-   server-processing flow. Use a separate tester key/project so
+3. The iOS Gemini connection uses a key entered in **Settings → Connected accounts**, or its connection
+   editor in **Settings → Models**. Chat, captions and Capture → inventory recognition call the selected
+   model directly from the device, then save reviewed inventory JSON metadata to the API. They do not
+   require the backend's vision key, which enables the separate `/v1/scans` server-processing flow.
+   Use a separate tester key/project so
    on-device usage does not consume the backend's quota or require sharing the backend credential. Do not
    embed a provider key in a distributed app binary; this Settings flow is for trusted demo testers.
+
+### Choose models in the iOS app
+
+Chat, captions and inventory recognition can each use Gemini or an OpenAI-compatible model. Backend vision
+configuration is separate from these direct app requests.
+
+1. Open **Settings → Models**. Existing Gemini settings migrate to the built-in connection and profile;
+   the Gemini key remains in Keychain and its current Settings key field continues to work.
+2. For a local model, start your server with a loaded model, then choose **Add connection**, select
+   **Local OpenAI-compatible**, enter a name and its base URL (for example `http://192.168.1.20:1234/v1`),
+   and save. Reopen the connection to save an optional server key and choose **Test connection and load models**.
+   Simulator `localhost` reaches your Mac; a physical iPhone needs the Mac's LAN address and a server listening
+   on that interface. Plain HTTP is accepted for local addresses; use HTTPS for remote servers.
+3. Choose **Add model profile**, select that connection, and enter its exact model identifier or use
+   **Load available models**. Enable the capabilities your model/server supports. Chat requires tool calling;
+   photo captions require images; inventory also requires structured output. Streaming is optional. Local video input
+   uses sampled image frames without audio. Gemini can use native video via Google's Files API.
+4. Use the profile's capability probes to check actual requests, then save it. A successful model list only
+   confirms endpoint access; it does not verify tools, images, schemas or streaming.
+5. Set the **Default** profile and optionally assign different profiles to **Chat**, **Captions** and
+   **Inventory recognition**. **Use default** follows the global choice. A profile that cannot handle a
+   feature reports a configuration error; the app does not silently send the request to another provider.
+
+Changing the selected chat model/endpoint/key cancels active chat work and starts fresh provider context.
+Captions and confirmed inventory metadata keep their original provider/model labels when settings change.
+Local keys are isolated by connection and destination. Changing an endpoint requires saving its credential
+for that destination. Browser and Calendar tool validation and approval rules apply to both providers.
 
 ## 5. Perceptron (optional)
 
 If the Perceptron sponsor gives you a key, set these in Render: `AGORA_PERCEPTRON_API_KEY=<key>`,
 `AGORA_VISION_PROVIDER=perceptron`, `AGORA_VISION_FALLBACK=gemini`. If Perceptron errors or times out,
 Gemini takes over for that frame automatically.
+
+### Local OpenAI-compatible vision (optional)
+
+Backend scans can use a vision model served by LM Studio, llama.cpp or another server implementing
+`POST /v1/chat/completions` with image input and JSON-schema structured output. Load the model, start its
+server, and configure the backend (for example in `backend/.env`):
+
+```dotenv
+AGORA_VISION_PROVIDER=openai-compatible
+AGORA_OPENAI_BASE_URL=http://localhost:1234/v1
+AGORA_OPENAI_MODEL=your-loaded-vision-model
+AGORA_VISION_FALLBACK=none
+# AGORA_OPENAI_API_KEY=only-if-your-server-requires-one
+```
+
+The base URL includes `/v1`; the backend appends `/chat/completions`. The model ID is the exact identifier
+loaded by your server. The connection sends inline JPEGs and requires schema output; a text-only model
+or a server without these capabilities reports an error. No cloud provider is substituted unless you
+explicitly set `AGORA_VISION_FALLBACK`. Redirects are blocked, keys are optional, and endpoint URLs must
+omit embedded credentials, queries and fragments. Use HTTPS outside a trusted local network.
+
+`localhost` refers to the backend host. A Render container cannot reach a laptop's loopback server; run
+the backend and model on the same machine, or configure an address reachable from that backend.
+The optional variables are documented beside the existing provider settings in `render.yaml`; its
+Gemini defaults stay suitable for the hosted demo. See [LM Studio's OpenAI-compatible API](https://lmstudio.ai/docs/developer/openai-compat)
+and [structured output](https://lmstudio.ai/docs/developer/openai-compat/structured-output).
 
 ## 6. Point the iOS app at it
 
@@ -309,7 +363,7 @@ Which command to use, by what failed:
 | Render only (database still up) | `uv run python -m app.tools.local_demo --tunnel --database-url "<tiger url>"` | Everything, live |
 | Render **and** Tiger | `uv run python -m app.tools.local_demo --tunnel --import-snapshot ../demo-snapshot.zip` | Everything up to your last snapshot |
 | Venue wifi | Use a phone hotspot for the laptop and phone, then either command above | Same |
-| No internet at all | Google sign-in, Calendar and Gemini chat can't work on any setup. Scans and inventory work locally with replay fixtures (`AGORA_VISION_PROVIDER=replay`). The iOS app currently only accepts HTTPS backends, so show this via `http://localhost:8000/docs` or the backup video | Seeded data + replayed scans |
+| No internet at all | Google sign-in, Calendar and Gemini need internet. Previously configured local model profiles can still generate captions/recognition or chat on a reachable local server, while network tools remain unavailable. Backend scans can use local vision or replay (`AGORA_VISION_PROVIDER=replay`); inventory saves still need a reachable backend and valid authentication. For backup, use `http://localhost:8000/docs` or a recorded video | Local models and seeded/replayed inventory |
 
 Each `--tunnel` run gets a new URL. Rebuild the iOS app after starting it (the script updates the config for you).
 

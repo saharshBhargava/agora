@@ -99,14 +99,17 @@ async def _seed(db: Database, user_id: UUID) -> None:
         stores = [merchants["PCC Community Markets"], merchants["Safeway"], merchants["QFC"], market]
 
         await _detections_and_purchases(conn, household_id, user_id, stores, rng)
-        # Include a recent reviewed camera capture alongside the server-recognized history.
-        capture_id = await conn.fetchval(
-            "SELECT id FROM scans WHERE household_id = $1 ORDER BY captured_at DESC LIMIT 1", household_id)
-        if capture_id:
+        # Include recent reviewed captures from both supported client model connections.
+        captures = await conn.fetch(
+            "SELECT id FROM scans WHERE household_id = $1 ORDER BY captured_at DESC LIMIT 2", household_id)
+        for capture, (provider, model) in zip(captures, (
+                ("gemini-client", "gemini-flash-latest"),
+                ("openai-compatible-client", "Qwen2.5-VL-7B-Instruct")), strict=False):
+            capture_id = capture["id"]
             await conn.execute(
-                """UPDATE scans SET provider = 'gemini-client', model = 'gemini-flash-latest',
+                """UPDATE scans SET provider = $2, model = $3,
                           frame_keys = '{}', frame_hashes = '{}', raw_video_key = NULL,
-                          media_deleted_at = now() WHERE id = $1""", capture_id)
+                          media_deleted_at = now() WHERE id = $1""", capture_id, provider, model)
             await conn.execute(
                 """UPDATE scan_detections SET bbox = NULL, frame_index = NULL, count = 1,
                           fill_fraction = NULL, auto_accepted = false WHERE scan_id = $1""", capture_id)

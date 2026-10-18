@@ -33,6 +33,11 @@ services:
         value: gemini
       - key: AGORA_VISION_FALLBACK
         value: replay
+      # Optional local/LAN model server: change provider to openai-compatible and fallback to none.
+      # Configure these in Environment only when using that connection; localhost is this container.
+      # AGORA_OPENAI_BASE_URL=http://your-reachable-model-host:1234/v1
+      # AGORA_OPENAI_MODEL=<loaded vision model ID>
+      # AGORA_OPENAI_API_KEY=<optional server key>
       - key: AGORA_GEMINI_API_KEY
         sync: false
       - key: AGORA_PERCEPTRON_API_KEY

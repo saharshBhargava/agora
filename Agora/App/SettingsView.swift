@@ -8,9 +8,14 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 NavigationLink {
+                    ModelSettingsView(settings: settings)
+                } label: {
+                    settingsRow("Models", detail: "Connections and feature assignments", symbol: "cpu")
+                }
+                NavigationLink {
                     PreferencesSettingsView(settings: settings, workspace: workspace)
                 } label: {
-                    settingsRow("Preferences", detail: "Model and browser preferences", symbol: "slider.horizontal.3")
+                    settingsRow("Preferences", detail: "Browser preferences", symbol: "slider.horizontal.3")
                 }
                 NavigationLink {
                     ConnectedAccountsSettingsView(settings: settings, workspace: workspace)
@@ -48,40 +53,17 @@ struct SettingsView: View {
 private struct PreferencesSettingsView: View {
     @ObservedObject var settings: SettingsStore
     let workspace: ChatWorkspace
-    @State private var message = ""
     @State private var clearing = false
-    @State private var models: [String] = []
-    @State private var loadingModels = false
+    @State private var message = ""
 
     var body: some View {
         Form {
-            Section("Assistant model") {
-                TextField("Model", text: $settings.model).textInputAutocapitalization(.never).autocorrectionDisabled()
-                Button(loadingModels ? "Loading models…" : "Load available models") {
-                    loadingModels = true
-                    Task { @MainActor in
-                        defer { loadingModels = false }
-                        do {
-                            models = try await GeminiProvider.availableModels(key: settings.apiKey())
-                            message = models.isEmpty ? "No chat models were returned for this key." : "Choose a model below. Listing a model does not guarantee quota or function-calling access."
-                        } catch { message = error.localizedDescription }
-                    }
-                }.disabled(!settings.hasKey || loadingModels)
-                if !models.isEmpty {
-                    Picker("Available models", selection: $settings.model) {
-                        if !models.contains(settings.model) { Text(settings.model).tag(settings.model) }
-                        ForEach(models, id: \.self) { Text($0).tag($0) }
-                    }
-                }
-            }
             Section("Browser access") {
                 Label("All website domains allowed", systemImage: "globe")
                 Text("Browse HTTPS websites without adding domains. Redirects to other HTTPS sites are allowed. Local hostnames, IP addresses and URLs containing credentials remain unsupported.").font(.footnote).foregroundStyle(.secondary)
                 Text("Use Private mode before entering sensitive information. Login and payment detection also blocks model observations. Website data persists between chats; chat text is kept only in memory.").font(.footnote).foregroundStyle(.secondary)
                 Button("Clear cookies and website data", role: .destructive) { clearing = true }
-            }
-            if !message.isEmpty {
-                Section { Text(message).foregroundStyle(.secondary) }
+                if !message.isEmpty { Text(message).font(.footnote).foregroundStyle(.secondary) }
             }
         }
         .navigationTitle("Preferences")
@@ -136,7 +118,7 @@ private struct ConnectedAccountsSettingsView: View {
                     }
                 }
                 Link("Get an API key in Google AI Studio", destination: URL(string: "https://aistudio.google.com/apikey")!)
-                Text("Your key stays in this device’s Keychain and is sent only to Google’s API. Chat and browser evidence are sent to Gemini while a task runs.").font(.footnote).foregroundStyle(.secondary)
+                Text("Your Gemini key stays in this device’s Keychain and is sent only to Google’s API. Chat, captions, and inventory recognition use the model profiles assigned under Models.").font(.footnote).foregroundStyle(.secondary)
             }
         }
         .navigationTitle("Connected accounts")

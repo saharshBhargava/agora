@@ -7,6 +7,8 @@ struct SavedCaption: Codable, Equatable {
     let model: String
     let generatedAt: Date
     var editedAt: Date?
+    var provider: ModelProviderKind? = nil // Older saved captions used Gemini.
+    var effectiveProvider: ModelProviderKind { provider ?? .gemini }
 }
 
 enum CaptionStyle: String, Codable, CaseIterable, Identifiable {
@@ -29,8 +31,8 @@ enum CaptionProgress: Equatable {
     var title: String {
         switch self {
         case .preparing: return "Preparing media…"
-        case .uploading: return "Uploading to Gemini…"
-        case .processing: return "Gemini is processing the video…"
+        case .uploading: return "Uploading media…"
+        case .processing: return "Processing the video…"
         case .generating: return "Writing caption…"
         case .retrying: return "Temporary connection issue. Retrying…"
         case .saving: return "Saving caption…"

@@ -168,7 +168,8 @@ class RecognitionIn(Strict):
     household_id: UUID
     captured_at: datetime
     media_kind: Literal["photos", "video"]
-    model: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9._-]+$")
+    provider: Literal["gemini", "openai-compatible"] = "gemini"
+    model: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/ -]*$")
     location_id: UUID | None = None
     purchased_from_merchant_id: UUID | None = None
     purchased_on: PurchaseDate | None = None

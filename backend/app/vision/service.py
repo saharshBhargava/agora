@@ -11,19 +11,32 @@ from app.vision.base import PROMPT_VERSION, RawDetection, VisionError, VisionPro
 log = logging.getLogger("agora.vision")
 
 
+def cache_version(provider: VisionProvider) -> str:
+    return getattr(provider, "cache_version", PROMPT_VERSION)
+
+
+@dataclass
+class CachedFrame:
+    detections: list[RawDetection]
+    provider: str
+    model: str
+
+
 @dataclass
 class VisionRun:
     frames: list[list[RawDetection]]
     fresh: dict[int, VisionProvider] = field(default_factory=dict)  # frame index -> provider that answered
     latency_ms: int = 0
+    cached_sources: list[tuple[str, str]] = field(default_factory=list)
 
     @property
     def provider(self) -> str:
-        return "+".join(sorted({p.name for p in self.fresh.values()})) or "cache"
+        return "+".join(sorted({p.name for p in self.fresh.values()} | {p for p, _ in self.cached_sources})) or "cache"
 
     @property
     def model(self) -> str:
-        return "+".join(sorted({p.model for p in self.fresh.values()})) or PROMPT_VERSION
+        models = {p.model for p in self.fresh.values()} | {m for _, m in self.cached_sources}
+        return "+".join(sorted(models)) or PROMPT_VERSION
 
 
 class VisionService:
@@ -38,14 +51,21 @@ class VisionService:
         self.semaphore = asyncio.Semaphore(concurrency)
 
     async def lookup(self, conn: asyncpg.Connection, household_id: UUID,
-                     digests: list[str]) -> list[list[RawDetection] | None]:
+                     digests: list[str]) -> list[CachedFrame | None]:
         providers = [p for p in (self.primary, self.fallback) if p is not None]
         rows = await conn.fetch(
-            """SELECT frame_sha256, result FROM vision_cache
-               WHERE household_id = $1 AND frame_sha256 = ANY($2) AND prompt_version = $3
-                 AND (provider, model) IN (SELECT * FROM unnest($4::text[], $5::text[]))""",
-            household_id, digests, PROMPT_VERSION, [p.name for p in providers], [p.model for p in providers])
-        cached = {r["frame_sha256"]: parse_items(r["result"]) for r in rows}
+            """SELECT c.frame_sha256, c.result, c.provider, c.model FROM vision_cache c
+               JOIN unnest($3::text[], $4::text[], $5::text[]) WITH ORDINALITY
+                    AS p(provider, model, prompt_version, priority)
+                 ON (c.provider, c.model, c.prompt_version) = (p.provider, p.model, p.prompt_version)
+               WHERE c.household_id = $1 AND c.frame_sha256 = ANY($2)
+               ORDER BY p.priority""",
+            household_id, digests, [p.name for p in providers], [p.model for p in providers],
+            [cache_version(p) for p in providers])
+        cached = {}
+        for row in rows:
+            cached.setdefault(row["frame_sha256"],
+                              CachedFrame(parse_items(row["result"]), row["provider"], row["model"]))
         return [cached.get(d) for d in digests]
 
     async def _one(self, frame: bytes) -> tuple[list[RawDetection], VisionProvider]:
@@ -58,11 +78,12 @@ class VisionService:
                 log.warning("vision.primary_failed code=%s fallback=%s", error.code, self.fallback.name)
                 return await self.fallback.detect(frame), self.fallback
 
-    async def detect(self, frames: list[bytes], cached: list[list[RawDetection] | None]) -> VisionRun:
+    async def detect(self, frames: list[bytes], cached: list[CachedFrame | None]) -> VisionRun:
         started = time.perf_counter()
         misses = [i for i, c in enumerate(cached) if c is None]
         answers = await asyncio.gather(*(self._one(frames[i]) for i in misses))
-        run = VisionRun(frames=[c or [] for c in cached])
+        run = VisionRun(frames=[c.detections if c else [] for c in cached],
+                        cached_sources=[(c.provider, c.model) for c in cached if c is not None])
         for i, (detections, provider) in zip(misses, answers, strict=True):
             run.frames[i] = detections
             run.fresh[i] = provider
@@ -74,5 +95,5 @@ class VisionService:
             await conn.execute(
                 """INSERT INTO vision_cache (household_id, frame_sha256, provider, model, prompt_version, result)
                    VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING""",
-                household_id, digests[i], provider.name, provider.model, PROMPT_VERSION,
+                household_id, digests[i], provider.name, provider.model, cache_version(provider),
                 {"items": [d.to_json() for d in run.frames[i]]})

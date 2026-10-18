@@ -9,7 +9,7 @@ struct CalendarOnboardingView: View {
                 Spacer()
                 Image(systemName: "calendar.badge.plus").font(.system(size: 54)).foregroundStyle(.teal)
                 Text("Make time for\nwhat you need.").font(.largeTitle.bold())
-                Text("Connect your Google Calendar to get started with Agora. Gemini can find a free time and add shopping trips when you approve them.")
+                Text("Connect your Google Calendar to get started with Agora. Agora can find a free time and add shopping trips when you approve them.")
                     .font(.title3).foregroundStyle(.secondary)
                 Text("Sign in with Google and allow Calendar access. Events are added to your primary calendar. You can disconnect at any time.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -47,7 +47,7 @@ struct CalendarSettingsSection: View {
         Section("Google Calendar") {
             Label(calendar.connected ? "Connected" : "Connection required", systemImage: calendar.connected ? "checkmark.circle.fill" : "calendar.badge.exclamationmark")
             if let email = calendar.email { Text(email) }
-            Text("Gemini checks availability and adds approved events to your primary calendar.").font(.footnote).foregroundStyle(.secondary)
+            Text("Agora checks availability and adds approved events to your primary calendar.").font(.footnote).foregroundStyle(.secondary)
             if let message = calendar.message { Text(message).font(.footnote).foregroundStyle(.secondary) }
             Button("Reconnect Google Calendar") { stopAgent(); Task { await calendar.connect() } }.disabled(calendar.connecting)
             Button("Sign out") { stopAgent(); Task { await calendar.signOut() } }.disabled(calendar.connecting)

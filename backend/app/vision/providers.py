@@ -1,13 +1,22 @@
 import base64
 import json
 import re
+from hashlib import sha256 as hash_bytes
 from pathlib import Path
 
 import httpx
 
 from app.config import Settings
 from app.media import sha256
-from app.vision.base import PROMPT, RESPONSE_SCHEMA, RawDetection, VisionError, VisionProvider, parse_items
+from app.vision.base import (
+    PROMPT,
+    PROMPT_VERSION,
+    RESPONSE_SCHEMA,
+    RawDetection,
+    VisionError,
+    VisionProvider,
+    parse_items,
+)
 
 
 def _data_uri(frame: bytes) -> str:
@@ -16,6 +25,8 @@ def _data_uri(frame: bytes) -> str:
 
 def _raise_for_status(response: httpx.Response) -> None:
     # Provider error bodies can echo our input; only the status code is kept.
+    if 300 <= response.status_code < 400:
+        raise VisionError("provider_redirect", retryable=False)
     if response.status_code in (401, 403):
         raise VisionError("provider_auth", retryable=False)
     if response.status_code == 429:
@@ -24,6 +35,65 @@ def _raise_for_status(response: httpx.Response) -> None:
         raise VisionError("provider_unavailable")
     if response.status_code >= 400:
         raise VisionError(f"provider_http_{response.status_code}", retryable=False)
+
+
+def _chat_items(response: httpx.Response, *, require_stop: bool = False) -> list[RawDetection]:
+    try:
+        choice = response.json()["choices"][0]
+        message = choice["message"]
+        finish = choice.get("finish_reason")
+        if finish != "stop" and (require_stop or finish is not None):
+            raise VisionError("incomplete_output")
+        if message.get("refusal") or message.get("tool_calls"):
+            raise VisionError("malformed_output")
+        content = message["content"]
+        if isinstance(content, list):
+            content = "".join(p["text"] for p in content
+                              if isinstance(p, dict) and isinstance(p.get("text"), str))
+        if not isinstance(content, str):
+            raise VisionError("malformed_output")
+        return parse_items(content)
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError) as error:
+        raise VisionError("malformed_output") from error
+
+
+class OpenAICompatibleProvider:
+    """Vision over a configured Chat Completions endpoint. Never discovers or substitutes a cloud model."""
+
+    name = "openai-compatible"
+
+    def __init__(self, settings: Settings, client: httpx.AsyncClient):
+        self.model, self.client = settings.openai_model, client
+        self.url = settings.openai_base_url.rstrip("/") + "/chat/completions"
+        # Isolate identically named models hosted by different servers without storing private endpoint URLs.
+        endpoint_hash = hash_bytes(str(httpx.URL(self.url)).encode()).hexdigest()
+        self.cache_version = f"{PROMPT_VERSION}:{endpoint_hash}"
+        self.headers = {}
+        if settings.openai_api_key and settings.openai_api_key.get_secret_value():
+            self.headers["Authorization"] = f"Bearer {settings.openai_api_key.get_secret_value()}"
+        self.timeout = settings.vision_timeout_s
+
+    async def detect(self, frame: bytes) -> list[RawDetection]:
+        body = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": PROMPT},
+                {"type": "image_url", "image_url": {"url": _data_uri(frame)}},
+            ]}],
+            "temperature": 0,
+            "max_tokens": 4096,
+            "response_format": {"type": "json_schema", "json_schema": {
+                "name": "inventory", "strict": True, "schema": RESPONSE_SCHEMA}},
+        }
+        try:
+            response = await self.client.post(self.url, json=body, headers=self.headers,
+                                              timeout=self.timeout, follow_redirects=False)
+        except httpx.TimeoutException as error:
+            raise VisionError("provider_timeout") from error
+        except httpx.HTTPError as error:
+            raise VisionError("provider_unreachable") from error
+        _raise_for_status(response)
+        return _chat_items(response, require_stop=True)
 
 
 class PerceptronProvider:
@@ -58,24 +128,18 @@ class PerceptronProvider:
     async def detect(self, frame: bytes) -> list[RawDetection]:
         try:
             response = await self.client.post(self.url, json=self._body(frame), headers=self.headers,
-                                              timeout=self.timeout)
+                                              timeout=self.timeout, follow_redirects=False)
             if response.status_code == 400 and self.structured:
                 # Model or tier without schema-constrained output: fall back to prompt-only JSON once.
                 self.structured = False
                 response = await self.client.post(self.url, json=self._body(frame), headers=self.headers,
-                                                  timeout=self.timeout)
+                                                  timeout=self.timeout, follow_redirects=False)
         except httpx.TimeoutException as error:
             raise VisionError("provider_timeout") from error
         except httpx.HTTPError as error:
             raise VisionError("provider_unreachable") from error
         _raise_for_status(response)
-        try:
-            message = response.json()["choices"][0]["message"]["content"]
-        except (ValueError, KeyError, IndexError, TypeError) as error:
-            raise VisionError("malformed_output") from error
-        if isinstance(message, list):  # content parts
-            message = "".join(p.get("text", "") for p in message if isinstance(p, dict))
-        return parse_items(message)
+        return _chat_items(response)
 
 
 class GeminiProvider:
@@ -100,7 +164,8 @@ class GeminiProvider:
             "generationConfig": {"responseMimeType": "application/json", "temperature": 0, "maxOutputTokens": 4096},
         }
         try:
-            response = await self.client.post(self.url, json=body, headers=self.headers, timeout=self.timeout)
+            response = await self.client.post(self.url, json=body, headers=self.headers, timeout=self.timeout,
+                                              follow_redirects=False)
         except httpx.TimeoutException as error:
             raise VisionError("provider_timeout") from error
         except httpx.HTTPError as error:
@@ -108,8 +173,9 @@ class GeminiProvider:
         _raise_for_status(response)
         try:
             candidate = response.json()["candidates"][0]
-            text = "".join(p.get("text", "") for p in candidate["content"]["parts"] if not p.get("thought"))
-        except (ValueError, KeyError, IndexError, TypeError) as error:
+            text = "".join(p["text"] for p in candidate["content"]["parts"]
+                           if isinstance(p, dict) and not p.get("thought") and isinstance(p.get("text"), str))
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError) as error:
             raise VisionError("malformed_output") from error
         if candidate.get("finishReason") not in (None, "STOP"):
             raise VisionError("incomplete_output")
@@ -137,6 +203,8 @@ class ReplayProvider:
 
 
 def make_provider(kind: str, settings: Settings, client: httpx.AsyncClient) -> VisionProvider | None:
+    if kind == "openai-compatible":
+        return OpenAICompatibleProvider(settings, client)
     if kind == "perceptron":
         return PerceptronProvider(settings, client)
     if kind == "gemini":
