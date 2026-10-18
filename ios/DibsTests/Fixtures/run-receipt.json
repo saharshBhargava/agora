@@ -1,0 +1,143 @@
+{
+ "id": "7179778c-09f4-44c8-9870-2446deed8eae",
+ "state": "receipt",
+ "store": "costco",
+ "shopperId": "jake",
+ "people": [
+  {
+   "id": "jake",
+   "name": "Jake",
+   "initial": "J",
+   "payoutPan": "4111111111111111",
+   "isShopper": true,
+   "authorizedCents": null,
+   "authId": null,
+   "approvalCode": null
+  },
+  {
+   "id": "71fccf2e-7e32-4308-a0ce-8fd62cce1c68",
+   "name": "Priya",
+   "initial": "P",
+   "isShopper": false,
+   "authorizedCents": 4000,
+   "authId": "6817922959393860000001",
+   "approvalCode": "888888",
+   "payoutPan": null
+  },
+  {
+   "id": "4ca8c39e-8d01-450b-b805-3eae20ca2be7",
+   "name": "Marcus",
+   "initial": "M",
+   "isShopper": false,
+   "authorizedCents": 4000,
+   "authId": "6817922959393860000002",
+   "approvalCode": "888888",
+   "payoutPan": null
+  }
+ ],
+ "chips": [
+  {
+   "id": "60c55743-28e5-4a59-9e04-57d84b031371",
+   "name": "Kirkland Eggs 24 ct",
+   "priceCents": 872,
+   "priceSource": "receipt",
+   "photoUrl": null,
+   "region": null,
+   "quantity": 1,
+   "claimers": [
+    "71fccf2e-7e32-4308-a0ce-8fd62cce1c68",
+    "4ca8c39e-8d01-450b-b805-3eae20ca2be7"
+   ],
+   "state": "matched",
+   "wishedBy": null,
+   "duplicateOf": null,
+   "putBack": false,
+   "dropped": false,
+   "overCap": [],
+   "removedAt": null,
+   "addedAt": 1792295939804
+  },
+  {
+   "id": "14885ace-551d-49bc-8e36-10a118b97202",
+   "name": "Paper Towels 12 pk",
+   "priceCents": 2399,
+   "priceSource": "receipt",
+   "photoUrl": null,
+   "region": null,
+   "quantity": 1,
+   "claimers": [
+    "71fccf2e-7e32-4308-a0ce-8fd62cce1c68"
+   ],
+   "state": "matched",
+   "wishedBy": null,
+   "duplicateOf": null,
+   "putBack": false,
+   "dropped": false,
+   "overCap": [],
+   "removedAt": null,
+   "addedAt": 1792295939809
+  },
+  {
+   "id": "93fe34b3-9c82-454f-8cc1-874b9216e1e7",
+   "name": "2% Milk",
+   "priceCents": 429,
+   "priceSource": "receipt",
+   "photoUrl": null,
+   "region": null,
+   "quantity": 1,
+   "claimers": [],
+   "state": "matched",
+   "wishedBy": null,
+   "duplicateOf": null,
+   "putBack": false,
+   "dropped": false,
+   "overCap": [],
+   "removedAt": null,
+   "addedAt": 1792295939810
+  }
+ ],
+ "taxRate": 0,
+ "lastCallEndsAt": 1792295941227,
+ "receipt": {
+  "lines": [
+   {
+    "text": "KS EGGS 24CT",
+    "cents": 872,
+    "quantity": 1,
+    "isTax": false
+   },
+   {
+    "text": "PAPER TOWEL 12PK",
+    "cents": 2399,
+    "quantity": 1,
+    "isTax": false
+   },
+   {
+    "text": "2% MILK",
+    "cents": 429,
+    "quantity": 1,
+    "isTax": false
+   }
+  ],
+  "matches": [
+   {
+    "chipId": "60c55743-28e5-4a59-9e04-57d84b031371",
+    "lineIndex": 0,
+    "confidence": 1
+   },
+   {
+    "chipId": "14885ace-551d-49bc-8e36-10a118b97202",
+    "lineIndex": 1,
+    "confidence": 1
+   },
+   {
+    "chipId": "93fe34b3-9c82-454f-8cc1-874b9216e1e7",
+    "lineIndex": 2,
+    "confidence": 1
+   }
+  ],
+  "unmatchedLines": []
+ },
+ "settle": {},
+ "payout": null
+}
