@@ -1,5 +1,15 @@
 # Current state — mandatory read before resuming work
 
+## Combined native integration — October 18, 2026
+
+The pending native image displays/startup preloading, automatic-watch browser fallback, Home/Lists
+carousels and scan/review flow are now committed together and reconciled with main through PR #40.
+This supersedes earlier descriptions of these source files as uncommitted. The merge candidate keeps
+backend application code and migrations identical to current main; its only backend addition is the
+disposable native-browser integration-test server. CI now includes Capture, Inventory and Trip tests
+alongside the existing authentication, shopping, images, watches and trip-planning checks.
+Source integration does not distribute an iOS app; rebuild the app to use these changes.
+
 ## Local checkout reconciliation — October 18, 2026
 
 The shared checkout's local changes were saved in checkpoint `a45161a`, retained by
