@@ -47,7 +47,12 @@ struct AutoShopRoot: View {
     var body: some View {
         Group {
             if let store, let ids {
-                ShopperView(store: store, api: DibsAPI(base: base), runId: ids.runId, personId: ids.personId)
+                // No AppModel or receipt route here: the locked screen hides "I've paid · snap the receipt".
+                // The stack only gives the shopper screen its paper bar (keeps the status bar off the dark camera).
+                NavigationStack {
+                    ShopperView(store: store, api: DibsAPI(base: base), runId: ids.runId, personId: ids.personId,
+                                onSnapReceipt: nil)
+                }
             } else if let error {
                 VStack(spacing: 16) {
                     Text(error).multilineTextAlignment(.center)

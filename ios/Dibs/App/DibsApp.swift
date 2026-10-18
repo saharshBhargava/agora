@@ -63,7 +63,8 @@ struct RootView: View {
         case .claim(let ref):
             ClaimView(ref: ref, onSettle: { model.path.append(.settle(ref)) })
         case .shopper(let ref):
-            ShopperView(store: model.store, api: model.api, runId: ref.runId, personId: ref.personId)
+            ShopperView(store: model.store, api: model.api, runId: ref.runId, personId: ref.personId,
+                        onSnapReceipt: { model.openReceipt(ref) })
         case .settle(let ref):
             SettleView(ref: ref)
         }
