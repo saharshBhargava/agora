@@ -74,6 +74,17 @@ describe('GeminiVision', () => {
     expect(text).toContain('["Coca-Cola Zero Sugar","Apple"]');
     expect(identifyPrompt(undefined, [])).toBe('What is this item?');
   });
+  it('readReceipt asks for the tax line so settle can split it', async () => {
+    let sys = '';
+    const fetchImpl = (async (_u: string, init: { body: string }) => {
+      sys = JSON.parse(init.body).systemInstruction.parts[0].text;
+      return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ lines: [{ text: 'APPLE', cents: 110 }, { text: 'TAX', cents: 40 }] }) }] } }] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const lines = await new GeminiVision({ apiKey: 'k', fetchImpl }).readReceipt((await jpeg(200, 200)).toString('base64'));
+    expect(sys).toContain('TAX');
+    expect(sys).not.toMatch(/skip[^.]*\btax\b/i);
+    expect(lines).toContainEqual({ text: 'TAX', cents: 40, quantity: 1 });
+  });
   it('readReceipt maps lines and drops junk', async () => {
     const lines = [
       { text: 'MILK', cents: 429 },
