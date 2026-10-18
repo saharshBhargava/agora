@@ -1,6 +1,0 @@
-packages:
-  - server
-  - web
-allowBuilds:
-  esbuild: true
-  sharp: true

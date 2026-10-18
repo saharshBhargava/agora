@@ -15,7 +15,6 @@ Documentation map:
 - [backend/README.md](backend/README.md): code layout, API overview, local development and tests.
 - [API contracts](docs/api/) and [frontend requests](docs/frontend-requests.md): implemented APIs versus UI/planned work.
 - [Backend spec](docs/backend-spec.md): design/roadmap, including unimplemented proposals; not a deployment manifest.
-- [Dibs README](docs/dibs/README.md): the separate shared-grocery-run app in `ios/`, `server/`, `web/` (see "Dibs" below).
 
 ## Shipping to production (continuous delivery)
 
@@ -111,21 +110,3 @@ When an endpoint changes, update its contract in `docs/api/`, and add or adjust 
 of existing settings, changing `render.yaml` is not necessary and must not introduce infrastructure changes.
 Record separately: repository baseline, actual live commit, migration state, dated verification, and unverified
 work. Do not claim a merge was deployed, a backup was tested, or a roadmap item was implemented without evidence.
-
-## Dibs (separate app in `ios/`, `server/`, `web/`)
-
-Dibs is its own app with its own Node server, storage and people; Agora's rules above (RLS, migrations,
-demo seed, audit/notify) apply to `backend/`, not to Dibs. Details: [docs/dibs/README.md](docs/dibs/README.md).
-
-- Tests: `pnpm install && pnpm -r test`, `pnpm -C server exec tsc --noEmit`, `scripts/smoke.sh`; iOS with
-  `cd ios && xcodegen generate` then `xcodebuild test -scheme Dibs` on a simulator. CI: `.github/workflows/dibs.yml`.
-- Hosting is a laptop + tunnel (`scripts/demo-server.sh`). Do not add a Render service for it, and do not point
-  Render at the root `Dockerfile` (that image is Dibs; `render.yaml` must keep `rootDir: backend`).
-- Keep `PAYMENTS=sim` (the Cybersource sandbox mode needs its own keys). Secrets (`GEMINI_API_KEY`,
-  `AGORA_DEMO_PASSWORD`) live in the gitignored `server/.env`; never log or commit them. Every run action needs
-  that person's key.
-- Model output is untrusted here too: names and receipt lines are validated and clamped. A live price is read
-  from QFC's search page by a deterministic parser, falling back to Gemini reading that page's text, and the
-  receipt line replaces it at settle. The Gemini fallback does not meet Agora's "model text is never a price
-  source" rule, so do not reuse it in `backend/` as is.
-

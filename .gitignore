@@ -12,10 +12,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-node_modules/
-web/out/
-server/dist/
-server/.data/
-.env
 # Local public OAuth/client and optional backend configuration
 Config/Local.xcconfig

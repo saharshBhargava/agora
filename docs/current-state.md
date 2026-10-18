@@ -246,7 +246,6 @@ a Gmail account just to let the frontend team sign in. See [frontend handoff](fr
 - **Runtime contract:** current routers/schemas/migrations and deployed OpenAPI, plus [API contracts](api/).
 - **Frontend integration:** [frontend handoff](frontend-handoff.md); [frontend requests](frontend-requests.md) is backlog where marked.
 - **Recreating/local fallback:** [SETUP.md](../SETUP.md) and [backend README](../backend/README.md).
-- **Dibs (separate app):** [Dibs README](dibs/README.md) and the dated Dibs section below.
 - **Historical design/reference:** [backend spec](backend-spec.md), [original planning notes](Dubhacks%20Planning%201.md),
   [judging rubric](RUBRIC.md). These are not evidence of implementation or instructions to change hosting.
 
@@ -464,8 +463,8 @@ PR CI passed **602 tests on both Postgres and TimescaleDB**, Ruff, Docker build 
 rehearsal. The local complete run had 601 passes and one disk-full failure; that isolated case passed after
 removing owned build artifacts. Eight focused native tests passed. Live public searches retrieved PS5
 disc/digital, Xbox Series X versions and a Lodge skillet. A disposable ordinary-account flow for PS5 and
-Xbox persisted explicit selections and served authenticated image bytes. No production-account writes were
-used for these checks. The native editor and Choose/retry messages require a rebuilt iOS app.
+Xbox persisted explicit selections and served authenticated image bytes. No production-account writes
+were used for these checks. The native editor and Choose/retry messages require a rebuilt iOS app.
 
 Production verified at `190de200` with migrations through 0018 and none pending.
 [Deploy](https://github.com/saharshBhargava/agora/actions/runs/39113668150) passed; anonymous image access
@@ -549,9 +548,10 @@ Alternatives remain optional under Change image. A rebuilt app is required for t
 Validation: 604 backend tests passed before integrating the current wishlist release, then all 650 passed
 on the integrated isolated checkout. PR Postgres/TimescaleDB, Docker and release rehearsal checks passed.
 Live ordinary-account checks on disposable PostgreSQL automatically selected and served PS5 and Xbox
-manufacturer images without a selection request. All eight final native tests passed, including the older-server
-case where alternatives exist but no main asset was assigned. Both post-merge CI database suites passed 650
- tests. Production was verified at `d818b2791a05fc92e3667715437dff2ac4172a3f`, migration 0019 with no pending migrations. The [deploy run](https://github.com/saharshBhargava/agora/actions/runs/39115437795)
+manufacturer images without a selection request. All eight final native tests passed, including
+the older-server case where alternatives exist but no main asset was assigned. Both post-merge CI database
+suites passed 650 tests. Production was verified at `d818b2791a05fc92e3667715437dff2ac4172a3f`, migration
+0019 with no pending migrations. The [deploy run](https://github.com/saharshBhargava/agora/actions/runs/39115437795)
 passed, and anonymous image access returned 401. The backend is live; distributing the native changes
 requires rebuilding the app.
 
@@ -701,27 +701,3 @@ cleared images on sign-out. Pending-first batch and authenticated transport regr
 Logs: `/tmp/agora-startup-images-tests.log`, `/tmp/agora-startup-images-final.log`; results:
 `/tmp/agora-startup-images-final.xcresult`. The tested source was applied back to the shared checkout
 and compared byte-for-byte. A rebuilt iOS app is required; no app distribution is claimed.
-
-## Dibs shared grocery run beside Agora — October 18, 2026 UTC
-
-Dibs (`ios/`, `server/`, `web/`, `scripts/{dev,demo-server,smoke}.sh`, root `package.json`, `Dockerfile`,
-`railway.json`) was merged in as a separate app; it changes no Agora file, API, migration or deployment.
-It is a shared grocery run: the shopper's iPhone livestreams the cart (15 fps), finds items on device with Apple
-Vision, the Dibs server names them with Gemini and the phone's hidden browser prices them on qfc.com; claimers
-join on the web or in the app and split items; Visa holds, captures and the payout are simulated. Each person
-gets a per-run secret key on REST and WebSocket, and runs leave the server without authorization ids or full
-card numbers. Run and env details: [Dibs README](dibs/README.md).
-
-| Item | State |
-|---|---|
-| Hosting | Laptop + HTTPS tunnel via `scripts/demo-server.sh`. **Not on Render**; `render.yaml` still pins `rootDir: backend`, so the Dibs root `Dockerfile` is not used by Agora's deploy. `railway.json` was never deployed. |
-| Identity | None shared with Agora: a typed name and a per-run key. No Agora account, household or demo-account link yet. |
-| Agora data | The "+ Wish" page can read the demo household's open lists, wishlist suggestions and run-outs through the Dibs server when `TEAM_API_BASE_URL` and `AGORA_DEMO_PASSWORD` are set; this adapter is tested with mocked responses only, not against the live API. Without them it suggests from past Dibs runs. |
-| CI | `.github/workflows/dibs.yml`: server + web tests, typecheck and smoke on PRs and main; the Dibs iOS suite on PRs only. Agora's `backend`/`ios` workflows and `deploy` are unaffected by Dibs paths. |
-
-Verification on branch `dibs-mock-demo` (31713d0): server 248 and web 142 tests, server/web typecheck,
-iOS 307 simulator tests; a live run with the shopper on a physical iPhone and a web claimer covered join,
-claim, wish, key refusal, checkout and last call, a Gemini-read receipt with tax, capture and the simulated
-payout. This records the demo build on a laptop, not a hosted deployment or a distributed iOS build.
-Next steps (Dibs as a tab in the Agora app, shared sign-in, settle → inventory write-back) are in the
-[merge plan](superpowers/plans/2026-10-18-dibs-merge-plan.md); none is implemented.
