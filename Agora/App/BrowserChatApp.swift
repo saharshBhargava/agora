@@ -1,4 +1,5 @@
 import SwiftUI
+import GoogleSignIn
 
 @main
 struct BrowserChatApp: App {
@@ -9,7 +10,7 @@ struct BrowserChatApp: App {
         WindowGroup {
             CalendarGate(calendar: workspace.calendar, onDisconnect: { workspace.agent.newChat() }) {
                 TabView(selection: $selectedTab) {
-                    HomeView(selectedTab: $selectedTab)
+                    HomeView(selectedTab: $selectedTab, calendar: workspace.calendar, backend: workspace.backend)
                         .tabItem { Label("Home", systemImage: "house") }
                         .tag(AppTab.home)
                     ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser)
@@ -24,6 +25,9 @@ struct BrowserChatApp: App {
                 }
             }
             .tint(.teal)
+            .onOpenURL { url in
+                if workspace.calendar.configurationIssue == nil { _ = GIDSignIn.sharedInstance.handle(url) }
+            }
             .onChange(of: scenePhase) { _, phase in
                 AppLog.event(.app, phase == .active ? "scene.active" : phase == .background ? "scene.background" : "scene.inactive")
                 if phase != .active { workspace.agent.stop(reason: "Paused while the app is inactive. Press Resume to continue.", paused: true) }
@@ -39,12 +43,14 @@ final class ChatWorkspace: ObservableObject {
     let agent: AgentCoordinator
     let api: AgoraClient
     let calendar: CalendarConnection
+    let backend: AgoraAPIClient
     init() {
         AppLog.event(.app, "workspace.created")
         let settings = SettingsStore(); self.settings = settings
         let browser = BrowserSession(policy: settings.policy); self.browser = browser
         let api = AgoraClient(); self.api = api
-        let calendar = CalendarConnection(client: api); self.calendar = calendar
+        let calendar = CalendarConnection(); self.calendar = calendar
+        backend = AgoraAPIClient(calendar: calendar)
         agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar)
     }
 }

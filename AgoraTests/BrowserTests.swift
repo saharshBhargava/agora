@@ -70,6 +70,39 @@ final class BrowserIntegrationTests: XCTestCase {
         let injected = try await session.webView.evaluateJavaScript("window.pwned === true")
         XCTAssertEqual(injected as? Bool, false)
     }
+    final class ClickAndTypeProvider: ModelProvider {
+        let session: BrowserSession
+        var turns = 0
+        init(session: BrowserSession) { self.session = session }
+        func nextTurn(contents: [[String: Any]], tools: [[String: Any]]) async throws -> [String: Any] {
+            turns += 1
+            guard turns <= 2 else { return ["role": "model", "parts": [["text": "Search complete."]]] }
+            let observation = try await session.observe()
+            let label = turns == 1 ? "Search" : "Search now"
+            let elements = try XCTUnwrap(observation["elements"] as? [[String: Any]])
+            let element = try XCTUnwrap(elements.first { $0["name"] as? String == label })
+            var args: [String: Any] = ["action": turns == 1 ? "type" : "click", "documentId": observation["documentId"]!, "observationId": observation["observationId"]!, "elementId": element["id"]!]
+            if turns == 1 { args["text"] = "automatic search" }
+            return ["role": "model", "parts": [["functionCall": ["name": "browser_act", "args": args]]]]
+        }
+    }
+    func testAgentClicksAndTypesWithoutApproval() async throws {
+        let agent = AgentCoordinator(settings: SettingsStore(), browser: session)
+        let provider = ClickAndTypeProvider(session: session)
+        agent.providerOverride = provider
+        defer { agent.stop() }
+        agent.send("Search for automatic search")
+        let deadline = ContinuousClock.now + .seconds(10)
+        while agent.running && agent.approval == nil && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertNil(agent.approval)
+        XCTAssertFalse(agent.running)
+        XCTAssertEqual(provider.turns, 3)
+        let executor = BrowserToolExecutor(session: session)
+        let result = try await executor.execute(BrowserCall(["name": "browser_wait_for", "args": ["text": "Results for automatic search", "seconds": 3]]))
+        XCTAssertTrue((result["text"] as? String ?? "").contains("Results for automatic search"))
+    }
     func testReplacedNodeCannotReceiveAnAction() async throws {
         let observation = try await session.observe()
         let element = (observation["elements"] as! [[String: Any]]).first { $0["name"] as? String == "Search now" }!

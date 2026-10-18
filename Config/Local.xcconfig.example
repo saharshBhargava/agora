@@ -1,0 +1,7 @@
+// Copy to Config/Local.xcconfig and replace these examples with your iOS OAuth client.
+// Both values are public client identifiers, not secrets.
+AGORA_GOOGLE_IOS_CLIENT_ID = 123456789-example.apps.googleusercontent.com
+AGORA_GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.123456789-example
+
+// Optional inventory backend. Keep the $() so xcconfig doesn't interpret // as a comment.
+// AGORA_API_BASE_URL = https:/$()/your-api.example.com

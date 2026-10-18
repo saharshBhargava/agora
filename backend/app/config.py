@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     oidc_audience: str | None = None
     oidc_jwks_url: str | None = None
 
-    # First-party Google OAuth (confidential web client; the phone never receives its secret).
+    # Native iOS sign-in: optional inventory API authentication, no Calendar credentials required.
+    google_ios_client_id: str | None = None
+
+    # Legacy server-side Google OAuth (confidential web client; the phone never receives its secret).
     google_client_id: str | None = None
     google_client_secret: SecretStr | None = None
     google_redirect_uri: str | None = None
@@ -82,7 +85,9 @@ class Settings(BaseSettings):
             if self.auth_mode == "oidc" and not (self.oidc_issuer and self.oidc_audience and self.oidc_jwks_url):
                 raise ValueError("OIDC issuer, audience and JWKS URL are required in prod")
         google = (self.google_client_id, self.google_client_secret, self.google_redirect_uri, self.google_token_key)
-        if any(google) or self.auth_mode == "google":
+        if self.auth_mode == "google" and not self.google_ios_client_id and not all(google):
+            raise ValueError("Set AGORA_GOOGLE_IOS_CLIENT_ID for native Google authentication")
+        if any(google):
             if not all(google):
                 raise ValueError("Google client ID, secret, redirect URI and token encryption key are required")
             try:

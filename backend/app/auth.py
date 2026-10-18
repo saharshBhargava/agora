@@ -35,12 +35,24 @@ def mint_dev_token(settings: Settings, subject: str) -> tuple[str, int]:
 class TokenVerifier:
     def __init__(self, settings: Settings):
         self.settings = settings
-        self._jwks = jwt.PyJWKClient(settings.oidc_jwks_url, cache_keys=True) if settings.auth_mode == "oidc" else None
+        self._native_google = settings.auth_mode == "google" and bool(settings.google_ios_client_id)
+        jwks_url = "https://www.googleapis.com/oauth2/v3/certs" if self._native_google else settings.oidc_jwks_url
+        self._jwks = (jwt.PyJWKClient(jwks_url, cache_keys=True)
+                      if self._native_google or settings.auth_mode == "oidc" else None)
 
     def verify(self, token: str) -> str:
         """Return the token's subject, or raise Problem(401). Algorithms are pinned; ``none`` is never accepted."""
         try:
-            if self._jwks is not None:
+            if self._native_google:
+                key = self._jwks.get_signing_key_from_jwt(token).key
+                claims = jwt.decode(
+                    token, key, algorithms=["RS256"], audience=self.settings.google_ios_client_id,
+                    issuer=["https://accounts.google.com", "accounts.google.com"],
+                    options={"require": ["exp", "sub", "iss", "aud", "iat"]},
+                )
+                if claims.get("azp", self.settings.google_ios_client_id) != self.settings.google_ios_client_id:
+                    raise jwt.InvalidAudienceError("Unexpected authorized party")
+            elif self._jwks is not None:
                 key = self._jwks.get_signing_key_from_jwt(token).key
                 claims = jwt.decode(token, key, algorithms=["RS256", "ES256"], audience=self.settings.oidc_audience,
                                     issuer=self.settings.oidc_issuer, options={"require": ["exp", "sub", "iss", "aud"]})
@@ -53,7 +65,7 @@ class TokenVerifier:
         subject = claims["sub"]
         if not isinstance(subject, str) or not 1 <= len(subject) <= 255:
             raise Problem(401, "invalid_token", "Sign in again.")
-        return subject
+        return "google:" + subject if self._native_google else subject
 
 
 def _bearer(request: Request) -> str:
@@ -102,19 +114,24 @@ async def current_principal(request: Request) -> Principal:
             raise Problem(401, "invalid_token", "Sign in again.")
         request.state.user_id = row["id"]
         return Principal(user_id=row["id"], subject=row["auth_subject"], handle=row["handle"])
-    if state.settings.auth_mode == "google":
+    if state.settings.auth_mode == "google" and not state.settings.google_ios_client_id:
         raise Problem(401, "invalid_token", "Sign in with Google.")
     subject = await run_in_threadpool(state.verifier.verify, token)
     async with state.db.system() as conn:
         row = await conn.fetchrow("SELECT id, handle FROM users WHERE auth_subject = $1 AND deleted_at IS NULL",
                                   subject)
     if row is None:
-        if state.settings.auth_mode != "oidc":
+        if state.settings.auth_mode not in ("oidc", "google"):
             raise Problem(401, "unknown_user", "Sign in again.")
-        # First OIDC sign-in: derive a placeholder handle the user can change later.
-        handle = "user_" + subject.encode().hex()[-12:]
-        user_id = await ensure_user(state.db, subject, handle, "New user")
-        row = {"id": user_id, "handle": handle}
+        # Preserve the Google subject/handle used by the earlier server-side OAuth flow.
+        handle = ("g_" + hashlib.sha256(subject.removeprefix("google:").encode()).hexdigest()[:28]
+                  if state.settings.auth_mode == "google" else "user_" + subject.encode().hex()[-12:])
+        await ensure_user(state.db, subject, handle, "New user")
+        async with state.db.system() as conn:
+            row = await conn.fetchrow("SELECT id, handle FROM users WHERE auth_subject = $1 AND deleted_at IS NULL",
+                                      subject)
+        if row is None:
+            raise Problem(401, "account_unavailable", "This account is unavailable.")
     request.state.user_id = row["id"]
     return Principal(user_id=row["id"], subject=subject, handle=row["handle"])
 

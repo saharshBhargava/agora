@@ -38,7 +38,7 @@ struct BrowserCall {
         guard required.allSatisfy({ arguments[$0] is String }) else { throw BrowserError("invalid_arguments", "Required field missing.") }
     }
     static var schemas: [[String: Any]] {
-        let descriptions = ["browser_open": "Open an allowed HTTPS URL and observe.", "browser_observe": "Read fresh bounded page text and element references.", "browser_find": "Observe and find elements or text matching text.", "browser_wait_for": "Wait up to 20 seconds for text to be present (or absent).", "browser_act": "Act on current references. Actions: click, type, clear, select, check, uncheck, focus, scroll, back, forward, reload. Mutations require user approval.", "browser_screenshot": "Capture only the browser, except on private pages.", "browser_close": "Close the browser only when explicitly requested by the user; requires confirmation."]
+        let descriptions = ["browser_open": "Open an allowed HTTPS URL and observe.", "browser_observe": "Read fresh bounded page text and element references.", "browser_find": "Observe and find elements or text matching text.", "browser_wait_for": "Wait up to 20 seconds for text to be present (or absent).", "browser_act": "Act on current references. Actions: click, type, clear, select, check, uncheck, focus, scroll, back, forward, reload. Click, type, and scroll execute without an approval prompt. Other actions require user approval.", "browser_screenshot": "Capture only the browser, except on private pages.", "browser_close": "Close the browser only when explicitly requested by the user; requires confirmation."]
         return fields.keys.sorted().map { name in
             var properties: [String: Any] = [:]
             for field in fields[name]! {

@@ -1,4 +1,5 @@
 import SwiftUI
+import GoogleSignInSwift
 
 struct CalendarOnboardingView: View {
     @ObservedObject var calendar: CalendarConnection
@@ -10,19 +11,17 @@ struct CalendarOnboardingView: View {
                 Text("Make time for\nwhat you need.").font(.largeTitle.bold())
                 Text("Connect your Google Calendar to get started with Agora. Gemini can find a free time and add shopping trips when you approve them.")
                     .font(.title3).foregroundStyle(.secondary)
-                Text("Your Google account signs you into Agora. Events are added to your primary calendar. You can disconnect at any time.")
+                Text("Sign in with Google and allow Calendar access. Events are added to your primary calendar. You can disconnect at any time.")
                     .font(.footnote).foregroundStyle(.secondary)
                 if let message = calendar.message { Text(message).font(.callout).foregroundStyle(.secondary).accessibilityIdentifier("calendarConnectionMessage") }
                 if let email = calendar.email { Text(email).font(.callout) }
-                Button {
-                    Task { await calendar.connect() }
-                } label: {
-                    HStack {
-                        if calendar.connecting { ProgressView() }
-                        Text(calendar.connecting ? "Connecting…" : "Connect Google Calendar").frame(maxWidth: .infinity)
-                    }.padding(.vertical, 8)
+                if calendar.connecting {
+                    ProgressView("Connecting to Google…")
                 }
-                .buttonStyle(.borderedProminent).disabled(calendar.connecting)
+                GoogleSignInButton {
+                    Task { await calendar.connect() }
+                }
+                .disabled(calendar.connecting || calendar.configurationIssue != nil)
                 .accessibilityIdentifier("connectGoogleCalendar")
                 if calendar.email != nil {
                     HStack {
@@ -71,6 +70,9 @@ struct CalendarGate<Content: View>: View {
             else { CalendarOnboardingView(calendar: calendar) }
         }
         .task { await calendar.refresh() }
+        .onChange(of: calendar.accountID) { old, new in
+            if old != nil && old != new { onDisconnect() }
+        }
         .onChange(of: calendar.connected) { _, connected in
             if !connected { onDisconnect() }
         }
