@@ -181,7 +181,8 @@ struct ClaimScreen: View {
                 }
             }
 
-            Tray(chips: tray, people: run.people, me: me.id, targeted: trayTargeted) { leave($0) }
+            Tray(chips: tray, people: run.people, me: me.id, targeted: trayTargeted,
+                 onLeave: { leave($0) }, onRaise: { offerRaise($0) })
                 .dropDestination(for: String.self) { items, _ in
                     trayTargeted = false
                     let ids = items.compactMap(DragPayload.fromShelf)
@@ -201,13 +202,18 @@ struct ClaimScreen: View {
         .sheet(item: $overCap) { chip in
             let sheet = OverCapSheet(
                 chip: chip,
+                mode: ClaimLogic.overCapMode(for: chip, me: me.id),
                 roomCents: room ?? 0,
                 authorizedCents: me.authorizedCents ?? 0,
                 targetCents: raiseTarget(for: chip),
                 raiseOff: raiseOff,
                 busy: busy,
                 onRaise: { Task { await raise(for: chip) } },
-                onDismiss: { overCap = nil }
+                onDismiss: { overCap = nil },
+                onLeave: {
+                    overCap = nil
+                    leave(chip)
+                }
             )
             sheet
                 .presentationDetents([.height(sheet.height), .large])
@@ -457,6 +463,9 @@ struct ClaimScreen: View {
                 .accessibilityAction(named: ClaimLogic.isMine(chip, me: me.id) ? "Leave" : "Claim") {
                     if ClaimLogic.isMine(chip, me: me.id) { leave(chip) } else { tryClaim(chip) }
                 }
+                .accessibilityActions {
+                    if chip.overCap.contains(me.id) { Button("Raise your cap") { tryClaim(chip) } }
+                }
         }
     }
 
@@ -470,9 +479,18 @@ struct ClaimScreen: View {
             raiseOff = false
             overCap = chip
             Haptics.refused()
+        case .raiseForClaimed:
+            offerRaise(chip)
         case .alreadyMine, .notClaimable:
             break
         }
+    }
+
+    /// A chip of mine that went over my hold after I claimed it: the raise-only sheet.
+    private func offerRaise(_ chip: Chip) {
+        guard chip.overCap.contains(me.id), overCap == nil else { return }
+        raiseOff = false
+        overCap = chip
     }
 
     private func claim(_ chip: Chip) {
@@ -513,11 +531,19 @@ struct ClaimScreen: View {
         guard me.authorizedCents != nil, !busy else { return }
         busy = true
         defer { busy = false }
+        let mode = ClaimLogic.overCapMode(for: chip, me: me.id)
+        let target = raiseTarget(for: chip)
         do {
-            try await actions.raise(raiseTarget(for: chip))
+            try await actions.raise(target)
             overCap = nil
-            // The raise was for this chip: claim it now that it fits.
-            claim(chip)
+            switch mode {
+            case .claim:
+                // The raise was for this chip: claim it now that it fits.
+                claim(chip)
+            case .raiseOnly:
+                // Already mine: the server re-checks over cap on a raise (setAuthorization) and clears the flag.
+                toast = .notice(ClaimLogic.raisedLine(targetCents: target))
+            }
         } catch DibsError.server(_, let status) where status == 403 {
             raiseOff = true
         } catch {

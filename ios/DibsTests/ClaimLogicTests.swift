@@ -226,6 +226,49 @@ final class ClaimLogicTests: XCTestCase {
         XCTAssertEqual(ClaimLogic.neededHold(for: tray[0], roomChips: tray, taxRate: 0), 872)
     }
 
+    // MARK: raise only (an item I already claimed went over my hold)
+
+    func testAClaimedChipThatWentOverCapOffersTheRaiseOnly() {
+        // The shopper corrected the price $1.10 -> $45; the server keeps my claim and lists me in overCap.
+        let over = Chip(id: "coffee", name: "Coffee", priceCents: 4500, claimers: ["priya"], state: .claimed, overCap: ["priya"])
+        let counted = [chip("milk", 500, ["priya"]), over]
+        XCTAssertEqual(ClaimLogic.decide(over, roomChips: counted, me: "priya", authorizedCents: 4000, taxRate: 0), .raiseForClaimed)
+        XCTAssertEqual(ClaimLogic.overCapMode(for: over, me: "priya"), .raiseOnly)
+        // Mine and within the hold: nothing to do.
+        XCTAssertEqual(ClaimLogic.decide(counted[0], roomChips: counted, me: "priya", authorizedCents: 4000, taxRate: 0), .alreadyMine)
+        // In overCap but not claimed (a wish that landed over my cap): raise, then claim.
+        let landed = Chip(id: "bagels", name: "Bagels", priceCents: 4500, state: .open, overCap: ["priya"])
+        XCTAssertEqual(ClaimLogic.decide(landed, roomChips: [counted[0]], me: "priya", authorizedCents: 4000, taxRate: 0), .overCap)
+        XCTAssertEqual(ClaimLogic.overCapMode(for: landed, me: "priya"), .claim)
+    }
+
+    func testRaiseOnlyTargetUsesTheSameRuleAsTheClaimPath() {
+        func target(_ price: Int, others: [Int], held: Int = 4000, tax: Double = 0) -> Int {
+            let over = Chip(id: "over", name: "Over", priceCents: price, claimers: ["priya"], state: .claimed, overCap: ["priya"])
+            let counted = others.enumerated().map { chip("c\($0.offset)", $0.element, ["priya"]) } + [over]
+            return ClaimLogic.raiseTarget(for: over, roomChips: counted, authorizedCents: held, taxRate: tax)
+        }
+        // Tray is $50.00 on a $40 hold: needs $50, but at least $20 more -> $60.
+        XCTAssertEqual(target(4500, others: [500]), 6000)
+        // Tray is $68.72: rounded up to $70.
+        XCTAssertEqual(target(6000, others: [872]), 7000)
+        // Tax counts: 6000 * 1.1025 = 6615 -> $70.
+        XCTAssertEqual(target(6000, others: [], tax: 0.1025), 7000)
+        // The chip is counted once even though it is already in my tray.
+        let over = Chip(id: "over", name: "Over", priceCents: 4500, claimers: ["priya"], state: .claimed, overCap: ["priya"])
+        XCTAssertEqual(ClaimLogic.neededHold(for: over, roomChips: [chip("m", 500, ["priya"]), over], taxRate: 0), 5000)
+        // Never above the most the server allows.
+        XCTAssertEqual(target(120000, others: [], held: 90000), ClaimLogic.maxHoldCents)
+    }
+
+    func testRaiseOnlyCopy() {
+        let over = Chip(id: "over", name: "Over", priceCents: 4500, claimers: ["priya"], state: .claimed, overCap: ["priya"])
+        XCTAssertEqual(ClaimLogic.raiseOnlyButton(targetCents: 6000), "Raise to $60")
+        XCTAssertEqual(ClaimLogic.raisedLine(targetCents: 6000), "Hold raised to $60")
+        XCTAssertEqual(ClaimLogic.overHoldLine(over, roomCents: -500), "$45.00 · $5.00 over your hold")
+        XCTAssertEqual(ClaimLogic.overHoldLine(over, roomCents: 0), "$45.00 · over your hold")
+    }
+
     func testRaiseCopy() {
         XCTAssertEqual(ClaimLogic.overCapTitle(targetCents: 6000), "Over your cap. Raise it to $60?")
         XCTAssertEqual(ClaimLogic.raiseButton(targetCents: 6500), "Raise to $65 and claim")

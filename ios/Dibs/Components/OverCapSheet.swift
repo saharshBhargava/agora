@@ -1,9 +1,12 @@
 import SwiftUI
 
-/// "Over your cap. Raise it to $60?" (canvas OverCap.dc.html, web ClaimScreen over-cap dialog). Raising
-/// grows the hold by $20 and then claims the chip; "Not now" closes it.
+/// "Over your cap. Raise it to $60?" (canvas OverCap.dc.html, web ClaimScreen over-cap dialog).
+/// `.claim`: raising grows the hold and then claims the chip; "Not now" closes it.
+/// `.raiseOnly`: the chip is already mine and a later price put it past my hold; "Raise to $X" only raises
+/// (the server clears the over-cap flag), "Leave it" leaves the chip.
 struct OverCapSheet: View {
     let chip: Chip
+    var mode: ClaimLogic.OverCapMode = .claim
     let roomCents: Int
     let authorizedCents: Int
     /// The hold "Raise" asks for (`ClaimLogic.raiseTarget`).
@@ -13,6 +16,8 @@ struct OverCapSheet: View {
     var busy = false
     var onRaise: () -> Void = {}
     var onDismiss: () -> Void = {}
+    /// Raise only: "Leave it".
+    var onLeave: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -22,7 +27,8 @@ struct OverCapSheet: View {
                     Text(chip.name)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(Color.ink)
-                    Text(ClaimLogic.overCapLine(chip, roomCents: roomCents))
+                    Text(mode == .raiseOnly ? ClaimLogic.overHoldLine(chip, roomCents: roomCents)
+                                            : ClaimLogic.overCapLine(chip, roomCents: roomCents))
                         .font(.system(size: 14))
                         .foregroundStyle(Color.muted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -48,14 +54,15 @@ struct OverCapSheet: View {
                     if busy {
                         ProgressView().tint(.white)
                     } else {
-                        Text(ClaimLogic.raiseButton(targetCents: targetCents))
+                        Text(mode == .raiseOnly ? ClaimLogic.raiseOnlyButton(targetCents: targetCents)
+                                                : ClaimLogic.raiseButton(targetCents: targetCents))
                     }
                 }
                 .buttonStyle(.dibs)
                 .disabled(busy)
             }
-            Button(action: onDismiss) {
-                Text("Not now")
+            Button(action: mode == .raiseOnly ? onLeave : onDismiss) {
+                Text(mode == .raiseOnly ? "Leave it" : "Not now")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Color.ink)
                     .frame(maxWidth: .infinity, minHeight: 48)
@@ -85,6 +92,15 @@ struct OverCapSheet: View {
             sheet
                 .presentationDetents([.height(sheet.height)])
                 .presentationBackground(Color.card)
+        }
+}
+
+#Preview("Over cap, already mine") {
+    Color.paper.ignoresSafeArea()
+        .sheet(isPresented: .constant(true)) {
+            let sheet = OverCapSheet(chip: Chip(id: "coffee", name: "Kirkland Coffee 3 lb", priceCents: 4500, claimers: ["p"], overCap: ["p"]),
+                                     mode: .raiseOnly, roomCents: -500, authorizedCents: 4000, targetCents: 6000)
+            sheet.presentationDetents([.height(sheet.height)])
         }
 }
 

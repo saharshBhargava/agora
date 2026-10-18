@@ -161,6 +161,9 @@ enum ClaimLogic {
         case overCap
         /// Already in my tray: nothing to do.
         case alreadyMine
+        /// Already mine, but a later price put it past my hold (the server lists me in `overCap`):
+        /// offer the raise only, the claim already exists.
+        case raiseForClaimed
         /// A wish or a chip still being identified.
         case notClaimable
     }
@@ -169,7 +172,7 @@ enum ClaimLogic {
     /// `authorizedCents` nil skips the cap check.
     static func decide(_ chip: Chip, roomChips: [Chip], me: String, authorizedCents: Int?, taxRate: Double) -> ClaimDecision {
         if chip.state == .wish || chip.state == .identifying { return .notClaimable }
-        if chip.claimers.contains(me) { return .alreadyMine }
+        if chip.claimers.contains(me) { return chip.overCap.contains(me) ? .raiseForClaimed : .alreadyMine }
         if let held = authorizedCents, roomFor(prices(with: chip, roomChips), authorizedCents: held, taxRate: taxRate) < 0 {
             return .overCap
         }
@@ -202,6 +205,34 @@ enum ClaimLogic {
     /// "Raise to $60 and claim".
     static func raiseButton(targetCents: Int) -> String {
         "Raise to \(Money.whole(targetCents)) and claim"
+    }
+
+    /// What the over-cap sheet does after raising.
+    enum OverCapMode: Equatable {
+        /// Raise, then claim the chip (a new claim that did not fit, or a wish that landed over my cap).
+        case claim
+        /// Raise only: the chip is already mine and went over my hold afterwards.
+        case raiseOnly
+    }
+
+    static func overCapMode(for chip: Chip, me: String) -> OverCapMode {
+        chip.claimers.contains(me) ? .raiseOnly : .claim
+    }
+
+    /// "Raise to $65" (raise only: the claim already exists).
+    static func raiseOnlyButton(targetCents: Int) -> String {
+        "Raise to \(Money.whole(targetCents))"
+    }
+
+    /// "Hold raised to $65".
+    static func raisedLine(targetCents: Int) -> String {
+        "Hold raised to \(Money.whole(targetCents))"
+    }
+
+    /// Raise-only sheet: "$45.00 · $5.00 over your hold".
+    static func overHoldLine(_ chip: Chip, roomCents: Int) -> String {
+        let price = chip.priceCents.map(Money.format) ?? "Price not known yet"
+        return roomCents < 0 ? "\(price) · \(Money.format(-roomCents)) over your hold" : "\(price) · over your hold"
     }
 
     /// "Your hold grows by $20. You still only pay for what you claim." (canvas OverCap.dc.html)

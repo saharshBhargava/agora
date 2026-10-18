@@ -29,6 +29,8 @@ struct Tray: View {
     /// "$40.00 held · $4.36 your share · $31.28 room" while a chip is over the tray.
     var previewLine: String?
     var onLeave: (Chip) -> Void = { _ in }
+    /// A tap on a row that went over my hold ("Raise your cap or leave"): open the raise sheet.
+    var onRaise: (Chip) -> Void = { _ in }
 
     private static let rowHeight: CGFloat = 64
     private static let rowGap: CGFloat = 8
@@ -110,12 +112,18 @@ struct Tray: View {
         return n * Self.rowHeight + max(0, n - 1) * Self.rowGap
     }
 
+    @ViewBuilder
     private func row(_ chip: Chip) -> some View {
+        let over = chip.overCap.contains(me)
         TrayRow(chip: chip, people: people, me: me)
+            .onTapGesture { if over { onRaise(chip) } }
             .draggable(DragPayload.tray(chip.id)) {
                 TrayRow(chip: chip, people: people, me: me).frame(width: 300)
             }
             .accessibilityAction(named: "Leave") { onLeave(chip) }
+            .accessibilityActions {
+                if over { Button("Raise your cap") { onRaise(chip) } }
+            }
     }
 }
 
@@ -134,14 +142,20 @@ struct TrayRow: View {
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Color.white)
                     .lineLimit(1)
-                Text(ClaimLogic.splitLabel(chip, people: people, me: me))
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.white.opacity(0.85))
-                    .lineLimit(1)
                 if chip.overCap.contains(me) {
-                    Text("Raise your cap or leave")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color(hex: 0xFF8A80))
+                    // Takes the split line's place so the row keeps its height; a tap opens the raise sheet.
+                    HStack(spacing: 3) {
+                        Text("Raise your cap or leave")
+                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
+                    }
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color(hex: 0xFF8A80))
+                    .lineLimit(1)
+                } else {
+                    Text(ClaimLogic.splitLabel(chip, people: people, me: me))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.white.opacity(0.85))
+                        .lineLimit(1)
                 }
             }
             Spacer(minLength: 8)
