@@ -386,3 +386,19 @@ explains why it thinks so, and turns that into a shopping list per store in one 
 - Scheduling the trip in Google Calendar (P3; will use the list's `needed_by` as the deadline).
 - Checkout from a list, and turning ticked lines into purchases/restocks (receipts, P1 follow-up).
 - Price-drop lines (`reason: "price_drop"` is reserved).
+
+---
+
+## Planned feature: six-hour suggestion and price-watch refresh
+
+**Status:** requirement recorded; scheduled generation and price monitoring are not implemented.
+See [backend refresh design](backend-spec.md#45-prices-deals-small-businesses).
+
+- Refresh shopping suggestions and enabled wishlist price watches every **6 hours** through backend jobs,
+  including while the app is closed. Do not use a six-hour iOS timer as the scheduler.
+- Show the last successful update and next scheduled check on the Suggestions and Wishlist prices views.
+  If a refresh fails, retain previous results with their timestamps and show the failure separately.
+- Fetch saved results on foreground, after local actions, and on relevant live updates. The six-hour
+  cadence governs generation and price checks, not how quickly the UI reflects existing changes.
+- Refreshes preserve accept/reject/snooze decisions, user price targets and feedback. Repeated unchanged
+  offers should not produce duplicate suggestions or alerts, and refreshing does not authorize purchases.

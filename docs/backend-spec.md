@@ -289,6 +289,20 @@ The worker groups list items by merchant, takes the earliest run-out date as the
 
 ### 4.5 Prices, deals, small businesses
 
+**Planned refresh requirement:** regenerate shopping suggestions and check enabled wishlist price watches
+every **6 hours**. This is a requirement for the upcoming feature, not an implemented scheduler. Wishlist
+storage and suggestion decisions already exist; scheduled generation, merchant price collection and price
+watches still need implementation.
+
+Use durable backend jobs so refreshes do not depend on the iOS app being open. Schedule suggestion refreshes
+per household and price checks per enabled watch, with deduplication and bounded retries. After downtime,
+coalesce missed intervals into one current refresh rather than replaying every missed check. Preserve user
+targets, accepted items, feedback, rejections and snoozes; a refresh must not reset user decisions or imply
+permission to purchase. Record last successful refresh and next scheduled check separately from failures,
+and leave prior results visibly dated when a refresh fails. The six-hour generation/check cadence is
+separate from UI fetching: clients should display saved changes promptly. Reliable unattended execution
+requires available worker capacity and configured price/model providers.
+
 - `price_observations` comes from receipts (real prices you paid), seeded history for demo merchants, and optionally agent-browsed product pages.
 - A continuous aggregate `price_daily` (min/avg per product per merchant per day) drives "lowest in 30 days" and target-price alerts.
 - **Small-business routing**: when a run-out is coming, rank merchants that carry the product by `price + distance penalty − small_business_bonus` and explain the pick ("$0.40 more than Safeway, 0.6 mi, locally owned"). That's a direct "merchant outcomes" story for Commerce Impact.
