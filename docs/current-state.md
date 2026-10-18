@@ -235,6 +235,18 @@ for these verification checks. Existing-item backfill is part of the additive pr
 A follow-up preserves Unicode characters during identity comparison; its focused image suite has 65 passes. The shared workspace's
 earlier exact-only search/fallback notes are superseded by [this contract](api/item-images.md).
 
+## Automatic image defaults — October 18, 2026
+
+This supersedes the required-choice flow above. New discoveries and cached results automatically select
+the best relevant image. Existing unresolved items with saved candidates are adopted at worker startup;
+version checks protect against stale workers, and explicit choices/removals/photos remain untouched.
+`best_match` displays candidate evidence without relabeling it as exact SKU verification. Native source
+removes the Choose prompt and keeps **Change image** as an optional override. No new migration is needed.
+Validation: 604 backend tests passed on disposable PostgreSQL, including automatic selection, cached
+results, idempotent retroactive adoption, stale-worker protection and manual override preservation. Real
+public-page searches for PS5 and Xbox Series X selected and served images through an ordinary local account
+without a selection request. All eight focused native tests passed, including automatic best-match display.
+Deployment is pending at this entry.
 
 ## Automatic wishlist price checks — release preparation, October 18, 2026
 

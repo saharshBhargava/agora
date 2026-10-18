@@ -240,8 +240,27 @@ def name_words(text):
     return set(re.findall(r"[^\W_]+", expanded_name(text), re.UNICODE)) - {"a", "the", "of", "and"}
 
 
+def image_rank(image):
+    """Choose a useful default without relabeling a plausible image as an exact SKU match."""
+    evidence = image.get("verification") or {}
+    requested = evidence.get("requested") or {}
+    title = evidence.get("title") or evidence.get("observed", {}).get("name", "")
+    extra = name_words(title) - name_words(requested.get("name", ""))
+    official = any(
+        re.search(pattern, requested.get("name", ""), re.I)
+        and (image.get("source_url") or "").rstrip("/").casefold() == url.rstrip("/").casefold()
+        for pattern, _, _, url in PRODUCT_HINTS
+    )
+    return (
+        evidence.get("status") != "exact",
+        not official,
+        {"Product.image": 0, "img.alt": 1, "og:image": 2}.get(evidence.get("image_binding"), 3),
+        len(extra & {"bundle", "special", "limited", "pro", "digital", "refurbished", "renewed", "used"}),
+    )
+
+
 def assess_product(identity, node, *, binding="Product.image", official=False):
-    """Discovery accepts incomplete names; only evidence decides automatic vs confirmation."""
+    """Discovery accepts incomplete names; evidence records exact identity versus a plausible product match."""
     strict = verify_product(identity, node) if binding == "Product.image" else None
     if strict:
         return strict
@@ -379,7 +398,7 @@ def assess_product(identity, node, *, binding="Product.image", official=False):
         "observed": source,
         "image_binding": binding,
         "visual_check": "not_performed",
-        "scope": "named_product" if automatic else "needs_confirmation",
+        "scope": "named_product" if automatic else "name_candidate",
         "title": source["name"],
         "missing_attributes": unspecified,
     }

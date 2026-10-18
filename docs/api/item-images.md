@@ -4,7 +4,7 @@ Inventory, wishlist/suggestion and shopping-list item responses include `image_p
 path returning an image descriptor. Native watch cards and offers use their parent wishlist image; this is
 the matched or user-selected image of the watched item, not evidence of current retailer stock.
 
-Items without a verified or explicitly selected image show a neutral “No matching image found” placeholder.
+Items without a relevant downloaded image show a neutral “No matching image found” placeholder.
 Demo artwork is labeled as sample imagery and never counts as an exact match. Product discovery is asynchronous and
 never blocks creating/saving an item. Native recognition still saves metadata only; retaining a photo is a
 separate, explicit action in **Change image**. Tap or long-press an item's thumbnail for the same image editor.
@@ -47,14 +47,16 @@ Descriptor example:
 ```
 
 `status` is `queued`, `ready`, or `fallback` for transport compatibility. `display_path` is null when no
-accepted image exists. `match_status` is `exact`, `user_confirmed`, `demo`, `needs_confirmation`, or `unresolved`; only `exact`
+accepted image exists. `match_status` is `exact`, `best_match`, `user_confirmed`, `demo`, or `unresolved`; only `exact`
 establishes an automatic source-backed product match. `identity`, `missing_identity`, and `unresolved_reason`
-explain what is known. Unresolved reasons include `choose_variant`, `search_pending`, and `no_verified_match`.
-`needs_confirmation` exposes relevant `choices` while leaving `asset` and `display_path` null.
-Each choice includes a readable `title`; candidates do not become display images until selected.
+explain what is known. Unresolved reasons include `search_pending` and `no_verified_match`.
+`best_match` means the server automatically selected its best relevant image without claiming an exact SKU
+verification. It returns `status: ready`, `asset` and `display_path`, with `user_selected: false`.
+Each alternative in `choices` includes a readable `title`; these are optional overrides under **Change image**.
+No confirmation or product-version selection is required to display an image.
 An uploaded photo or explicit choice is user-confirmed, not automatically verified.
 `asset` is nullable. `match_kind` distinguishes `product`, `representative`, and `photo`. Each automatic asset
-includes `verification` with version 2, exact status, match basis, requested/observed attributes, image binding,
+includes `verification` with version 2, exact or candidate status, match basis, requested/observed attributes, image binding,
 and visual-check outcome. This records source evidence, not a guarantee that published metadata or packaging
 is current. Old assets without this evidence are hidden from automatic display and candidate selection. Source attribution records
 provenance; it is not a claim that the source grants a particular license.
@@ -111,15 +113,17 @@ not restrict discovery to known products. The server always evaluates results ag
 JSON-LD `Product.image`, descriptive image alt text and Open Graph images supply candidates. Banners,
 logos, accessories and explicit conflicting attributes are filtered out. Distinct titles/versions are
 prioritized before alternate angles. Manufacturer landing-page hints help PS5 and Xbox Series X even
-when their pages omit JSON-LD. Generic “Milk” is searched, but the server cannot silently choose its brand.
+when their pages omit JSON-LD. Generic “Milk” is searched and receives the best relevant result; this does not change the item’s saved brand or identity.
 
 A valid matching GTIN or consistent complete product identity can establish an automatic exact match.
 A precise branded product name bound to structured Product metadata (or an exact named product on its
 known official page) can establish a `product_name` match with `scope: named_product`; this is not a claim
 of SKU/barcode verification. Extra/unspecified variants remain `candidate` evidence with
-`scope: needs_confirmation`. Social metadata is always a candidate. Specified attributes must agree,
-including quantities and equivalent units; the model cannot promote ambiguous candidates. Users can
-select a pictured edition, refine the text, or upload their own photo.
+`scope: name_candidate`. Social metadata is always candidate evidence. Both kinds can be selected automatically;
+selection never upgrades the underlying verification evidence. Specified attributes must agree, including
+quantities and equivalent units. Ranking prefers exact identity, known official sources, structured metadata,
+and standard versions over unspecified special editions, bundles or refurbished variants. Distinct products
+are downloaded before repeat angles. Users can optionally choose another image, refine the text, or upload a photo.
 
 Discovery returns evidence already collected after 60 seconds, reserving the remainder of the 90-second
 job deadline for image downloads. Each search has a 15-second limit. Known pages are read first so a slow
@@ -133,7 +137,7 @@ identity check. Without a model, only source metadata is verified and evidence e
 `visual_check: not_performed`. The OpenAI-compatible model must support image input for this check; an
 unsupported model leaves the image unresolved. Private user uploads never go through this model call.
 
-Page content and model output remain untrusted. Unsupported sources stay unresolved; relevant ambiguous images require user confirmation.
+Page content and model output remain untrusted. Unsupported sources stay unresolved; relevant candidates receive an automatic default.
 
 Image downloads validate and pin public DNS addresses, verify TLS for the source hostname, revalidate
 redirects, refuse private network targets, cap bytes and decode/re-encode the actual image. Merchant/image
@@ -176,3 +180,11 @@ provided attributes. Stored quantity (how many the household owns) is never trea
 The legacy `representative` selection mode now clears the image; the app labels that action “Remove image”.
 The public category illustration endpoints remain available for compatibility, but unresolved descriptors
 have no display image and ordinary app thumbnails do not use that artwork as product imagery.
+
+## Automatic defaults for existing items
+
+At worker startup, existing unresolved bindings with usable saved candidates receive the best image without
+new web searches. This is idempotent, emits `image.updated`, and increments the binding version so an old
+worker cannot undo the selection. Explicit choices, removals and photos are preserved. New searches and
+shared-cache results use the same ranking. No additional schema migration is needed. Clients must render
+a version-2 candidate asset when the descriptor says `best_match`, and retain **Change image** as an override.

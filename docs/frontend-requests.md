@@ -472,12 +472,12 @@ Price-watch capability responses now include `discovery_status` (`available`, `m
 interpret a failed capability request or a service 404 as unavailable retailer discovery. Scheduled
 research uses server model/provider settings; foreground model credentials remain on the phone.
 
-## Item image discovery and choices
+## Automatic item images
 
 The image API supports inventory, wishlist and list descriptors, product-image candidates and private
 photos; see [the contract](api/item-images.md). Native source in the shared workspace integrates these
-across item views. `needs_confirmation` means show a **Choose** action and candidate titles; do not display
-a candidate as the item image before selection. All item names are searchable, with optional details.
+across item views. Render the server-selected `asset` for both `exact` and `best_match`; do not require
+a confirmation step. Keep titled alternatives in **Change image**. All item names are searchable, with optional details.
 A new native build is required for the updated editor and service-unavailable/retry messages.
 
 

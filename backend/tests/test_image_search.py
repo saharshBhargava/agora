@@ -1,6 +1,7 @@
-"""Broad discovery must not silently choose a brand/variant the user never supplied."""
+"""Automatically choose relevant images while preserving explicit user overrides."""
 
 import json
+from uuid import UUID
 
 import pytest
 
@@ -69,7 +70,7 @@ def test_candidate_path_does_not_bypass_explicit_conflicts(changes):
     assert assess_product(identity, changes) is None
 
 
-async def test_candidate_can_be_chosen_and_shared_cache_never_auto_selects_it(app, client):
+async def test_best_match_is_automatic_including_cache_and_retroactive_backfill(app, client):
     class MilkProvider(Provider):
         async def fetch(self, url, domains):
             product = {
@@ -86,8 +87,9 @@ async def test_candidate_can_be_chosen_and_shared_cache_never_auto_selects_it(ap
     headers, _, item, path = await new_item(client, "Milk")
     await service.resolve({**await payload(app, item), "refresh": True}, 1)
     result = (await client.get("/" + path, headers=headers)).json()
-    assert result["asset"] is None and result["display_path"] is None
-    assert result["match_status"] == "needs_confirmation" and result["unresolved_reason"] == "choose_variant"
+    assert result["asset"] is not None and result["display_path"] is not None
+    assert result["status"] == "ready" and not result["user_selected"]
+    assert result["match_status"] == "best_match" and result["unresolved_reason"] is None
     choice = result["choices"][0]
     assert choice["title"] == "Farm Milk 1 l" and choice["verification"]["status"] == "candidate"
     response = await select(client, headers, path, {"mode": "candidate", "asset_id": choice["id"]})
@@ -97,4 +99,49 @@ async def test_candidate_can_be_chosen_and_shared_cache_never_auto_selects_it(ap
     second_headers, _, second, second_path = await new_item(client, "Milk")
     await service.resolve(await payload(app, second), 1)
     cached = (await client.get("/" + second_path, headers=second_headers)).json()
-    assert cached["asset"] is None and cached["choices"][0]["id"] == choice["id"]
+    assert cached["asset"]["id"] == choice["id"] and not cached["user_selected"]
+    assert provider.searches == 2  # Shared cached assets need no second search.
+    # Recreate the previous release's unresolved candidate state for an existing item.
+    async with app.state.db.system() as conn:
+        await conn.execute(
+            "UPDATE item_images SET asset_id=NULL,status='fallback' WHERE item_id=$1", UUID(second["id"])
+        )
+    await service.start()
+    await service.start()
+    adopted = (await client.get("/" + second_path, headers=second_headers)).json()
+    assert adopted["status"] == "ready" and adopted["asset"]["id"] == choice["id"]
+    assert adopted["version"] == cached["version"] + 1  # Idempotent startup and stale-worker fence.
+    await service.finish("inventory", UUID(second["id"]), cached["version"], [], None)
+    assert (await client.get("/" + second_path, headers=second_headers)).json()["asset"] is not None
+    assert (await client.get("/" + path, headers=headers)).json()["user_selected"]
+    cleared = await select(client, second_headers, second_path, {"mode": "representative"})
+    assert cleared.status_code == 200
+    await service.start()
+    assert (await client.get("/" + second_path, headers=second_headers)).json()["asset"] is None
+
+
+async def test_console_gets_standard_version_automatically_with_other_versions_available(app, client):
+    class ConsoleProvider(Provider):
+        async def fetch(self, url, domains):
+            return (
+                url,
+                """<img src="https://images.example.com/pro.jpg" alt="PS5 Pro console">
+                <img src="https://images.example.com/digital.jpg" alt="PS5 digital edition console">
+                <img src="https://images.example.com/disc.jpg" alt="PS5 disc edition console">
+                <img src="https://images.example.com/accessory.jpg" alt="PS5 controller">""",
+            )
+
+    headers, _, item, path = await new_item(client, "PS5")
+    provider = ConsoleProvider()
+    await ItemImageService(app.state.db, provider, Download()).resolve(await payload(app, item), 1)
+    result = (await client.get("/" + path, headers=headers)).json()
+    assert result["asset"]["title"] == "PS5 disc edition console"
+    assert result["status"] == "ready" and result["match_status"] == "best_match"
+    assert len(result["choices"]) == 3 and not result["user_selected"]
+    digital = next(c for c in result["choices"] if "digital" in c["title"])
+    changed = await select(client, headers, path, {"mode": "candidate", "asset_id": digital["id"]})
+    assert changed.json()["asset"]["id"] == digital["id"]
+    await ItemImageService(app.state.db, provider, Download()).finish(
+        "inventory", UUID(item["id"]), result["version"], [UUID(result["asset"]["id"])], None
+    )
+    assert (await client.get("/" + path, headers=headers)).json()["asset"]["id"] == digital["id"]

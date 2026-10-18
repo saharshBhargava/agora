@@ -98,7 +98,7 @@ def extract_images(html, url, query, identity=None):
     for candidate in found:
         if candidate["evidence"] == "og:image":
             candidate["verification"]["status"] = "candidate"
-            candidate["verification"]["scope"] = "needs_confirmation"
+            candidate["verification"]["scope"] = "name_candidate"
     found.sort(key=lambda c: (c["verification"]["status"] != "exact", c["evidence"] != "Product.image"))
     # Preserve distinct versions before spending the limited image-download budget on alternate angles.
     unique, repeated, titles = [], [], set()
@@ -194,7 +194,8 @@ Expand abbreviations and try alternate queries when useful. Never invent image U
 Search, read promising discovered pages, and select an extracted candidate ID. Avoid accessories, logos,
 wrong variants and multi-product collages.
 The server grades every candidate against the ORIGINAL item. Prefer exact results.
-Uncertain candidates need user confirmation.
+Choose the best relevant product image even when the item does not specify a version.
+The server automatically selects a default; users can change it later.
 Stop if no suitable image exists. Do not log in or submit forms."""
 
 
