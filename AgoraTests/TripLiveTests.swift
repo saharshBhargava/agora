@@ -76,7 +76,7 @@ final class TripLiveTests: XCTestCase {
         options.durationMinutes = 30; options.timezone = "America/Los_Angeles"
         await trips.plan(options: options)
         XCTAssertNil(trips.error, trips.error ?? "")
-        let proposal = try XCTUnwrap(trips.proposals.first { $0.canSchedule }, "Seeded run-outs must yield a shopping trip")
+        let proposal = try XCTUnwrap(trips.proposals.first { $0.canSchedule && $0.list.source == "generated" }, "Seeded run-outs must yield a shopping trip")
         XCTAssertFalse(proposal.list.items.isEmpty)
         XCTAssertTrue(proposal.list.items.contains { $0.explanation != nil })
         let plannedEvents = try await api.requestJSON("v1/demo/calendar/events") as? [[String: Any]]
@@ -119,6 +119,61 @@ final class TripLiveTests: XCTestCase {
         }
         try await render(TripsView(store: restored), name: "Scheduled shopping trips")
         _ = try await restoredAPI.request("v1/lists/\(proposal.list.id)", method: "PATCH", body: ["status": "done"])
+    }
+
+    func testManualListCreationItemsPersistenceAndPlanning() async throws {
+        var probe = URLRequest(url: URL(string: "http://127.0.0.1:18765/healthz")!)
+        probe.timeoutInterval = 2
+        do { _ = try await URLSession.shared.data(for: probe) }
+        catch { throw XCTSkip("Start the isolated API with tests.support.ios_inventory_server on port 18765.") }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TripLiveHTTP.self]
+        let http = URLSession(configuration: configuration)
+        defer { http.invalidateAndCancel() }
+        let origin = URL(string: "https://trips-live.example.com")!
+        let session = TripLiveSession()
+        let calendar = CalendarConnection(http: http, demoBaseURL: origin, sessionStore: session)
+        await calendar.connectDemo(handle: "demo", password: "")
+        XCTAssertTrue(calendar.connected, calendar.message ?? "Sign-in failed")
+        XCTAssertTrue(calendar.isDemoAccount)
+        let api = AgoraClient(calendar: calendar, baseURL: origin, http: http)
+        let inventory = InventoryStore(api: api, calendar: calendar)
+        await inventory.refresh()
+        XCTAssertNil(inventory.error)
+        let trips = TripStore(api: api, inventory: inventory, calendar: calendar)
+        await trips.refresh()
+        XCTAssertNil(trips.error)
+
+        let merchants = try await inventory.merchants(search: "Target")
+        let merchant = try XCTUnwrap(merchants.first)
+        let id = try await trips.createList(name: "  Weekend supplies  ", merchantID: merchant.id)
+        let created = try XCTUnwrap(trips.lists.first { $0.id == id })
+        XCTAssertEqual(created.name, "Weekend supplies")
+        XCTAssertEqual(created.merchant?.id, merchant.id)
+        XCTAssertTrue(created.items.isEmpty)
+        try await render(TripCreateListSheet(store: trips, created: { _ in }), name: "Create manual list")
+        try await render(TripAddItemSheet(store: trips, listID: id), name: "Add manual item")
+        try await trips.addItem(listID: id, draft: TripItemDraft(title: "Dish soap", quantity: "2", unit: "bottles", note: "Unscented"))
+        try await trips.addItem(listID: id, draft: TripItemDraft(title: "Apples", quantity: "1", unit: "bag"))
+        let restored = TripStore(api: api, inventory: inventory, calendar: calendar)
+        await restored.refresh()
+        let list = try XCTUnwrap(restored.lists.first { $0.id == id })
+        XCTAssertEqual(list.source, "user")
+        XCTAssertEqual(list.openCount, 2)
+        let item = try XCTUnwrap(list.items.first { $0.title == "Dish soap" })
+        XCTAssertEqual(item.quantity, 2); XCTAssertEqual(item.unit, "bottles"); XCTAssertEqual(item.note, "Unscented")
+        XCTAssertNil(item.explanation)
+        try await render(TripListView(store: restored, listID: id), name: "Manual shopping checklist")
+        await restored.setChecked(listID: id, itemID: item.id, checked: true)
+        XCTAssertNil(restored.error)
+        XCTAssertEqual(restored.lists.first { $0.id == id }?.openCount, 1)
+        var options = TripPlanningOptions()
+        options.days = 14; options.startHour = 0; options.endHour = 24
+        await restored.plan(options: options)
+        XCTAssertNil(restored.error)
+        XCTAssertTrue(restored.proposals.contains { $0.id == id && $0.canSchedule })
+        // Leave the shared demo fixture usable for the other live test.
+        _ = try await api.request("v1/lists/\(id)", method: "PATCH", body: ["status": "archived"])
     }
 
     private func render<Content: View>(_ content: Content, name: String) async throws {

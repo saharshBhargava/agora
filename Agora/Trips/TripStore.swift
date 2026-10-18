@@ -12,7 +12,7 @@ final class TripStore: ObservableObject {
     @Published private(set) var notice: String?
     @Published private(set) var context = UUID()
     private let api: AgoraClient
-    private let inventory: InventoryStore
+    let inventory: InventoryStore
     private let calendar: CalendarConnection
     private var subscriptions: Set<AnyCancellable> = []
     private var householdID: UUID?
@@ -242,6 +242,48 @@ final class TripStore: ObservableObject {
         let result = try await api.fetch("v1/trips/\(trip.id)/outcome", as: TripRecord.self, method: "PATCH", body: body)
         try check(version); upsert(result)
     }
+    func createList(name: String, merchantID: UUID?) async throws -> UUID {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.count <= 80 else {
+            throw BrowserError("invalid_list", "Enter a list name of 1–80 characters.")
+        }
+        guard canUse, !busy, let householdID else { throw CancellationError() }
+        let version = context
+        busy = true; loadID = UUID(); loading = false; error = nil; notice = nil
+        defer { if context == version { busy = false } }
+        var body: [String: Any] = ["name": name, "household_id": householdID.uuidString]
+        if let merchantID { body["merchant_id"] = merchantID.uuidString }
+        let list = try await api.fetch("v1/lists", as: TripList.self, method: "POST", body: body)
+        try check(version)
+        guard list.householdId == householdID else { throw BrowserError("invalid_server_response") }
+        lists.insert(list, at: 0); proposals = []
+        return list.id
+    }
+
+    func addItem(listID: UUID, draft: TripItemDraft) async throws {
+        let body = try draft.body()
+        guard canUse, !busy, let index = lists.firstIndex(where: { $0.id == listID && $0.status == "open" }) else {
+            throw BrowserError("list_unavailable", "Refresh and choose an open shopping list.")
+        }
+        let version = context
+        busy = true; loadID = UUID(); loading = false; error = nil; notice = nil
+        defer { if context == version { busy = false } }
+        let item = try await api.fetch("v1/lists/\(listID)/items", as: TripListItem.self, method: "POST", body: body)
+        try check(version)
+        // Retain the confirmed write even if the subsequent refresh fails. Never repeat the POST.
+        lists[index].items.append(item); lists[index].openCount += item.checked ? 0 : 1
+        proposals = []
+        do {
+            let list = try await api.fetch("v1/lists/\(listID)", as: TripList.self)
+            try check(version)
+            guard list.id == listID, list.householdId == householdID else { throw BrowserError("invalid_server_response") }
+            lists[index] = list
+        } catch {
+            try check(version)
+            notice = "Item saved. Pull to refresh for the latest list."
+        }
+    }
+
     func setChecked(listID: UUID, itemID: UUID, checked: Bool) async {
         guard canUse, !busy, let list = lists.first(where: { $0.id == listID }), list.status == "open",
               list.items.contains(where: { $0.id == itemID }) else { return }
