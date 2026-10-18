@@ -46,7 +46,11 @@ function GridChip({ chip, me, people, fresh, onClaim, onTap }: { chip: ChipT; me
 }
 
 export function Grid({ chips, me, people, onLift, onClaim, onTap }: GridProps) {
-  const ordered = useMemo(() => [...chips].sort((a, b) => b.addedAt - a.addedAt), [chips]);
+  // Wishes lead the shelf, then the newest chip first.
+  const ordered = useMemo(
+    () => [...chips].sort((a, b) => Number(b.state === 'wish') - Number(a.state === 'wish') || b.addedAt - a.addedAt),
+    [chips],
+  );
   const seen = useRef<Set<string> | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
@@ -84,7 +88,7 @@ export function Grid({ chips, me, people, onLift, onClaim, onTap }: GridProps) {
 
   return (
     <div className="grid-scroll">
-      <div className="grid" role="list">
+      <div className="grid" role="list" aria-label="In the cart">
         {ordered.map((chip) => (
           <div role="listitem" key={chip.id} className="grid-cell">
             <GridChip chip={chip} me={me} people={people} fresh={fresh.has(chip.id)} onClaim={onClaim} onTap={onTap} />

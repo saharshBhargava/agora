@@ -6,7 +6,12 @@ export function WishSheet({ onWish, busy }: { onWish: (name: string) => void | P
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   if (!open) {
-    return <button type="button" className="btn btn-secondary" onClick={() => setOpen(true)}>Wish</button>;
+    return (
+      <button type="button" className="btn btn-pill" onClick={() => setOpen(true)}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        <span>Wish</span>
+      </button>
+    );
   }
   return (
     <form
@@ -21,8 +26,8 @@ export function WishSheet({ onWish, busy }: { onWish: (name: string) => void | P
       }}
     >
       <input aria-label="Wish" placeholder="Bagels" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-      <button type="submit" className="btn" disabled={busy || !name.trim()}>Add</button>
-      <button type="button" className="btn btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
+      <button type="submit" className="btn btn-sm" disabled={busy || !name.trim()}>Add</button>
+      <button type="button" className="btn btn-sm btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
     </form>
   );
 }

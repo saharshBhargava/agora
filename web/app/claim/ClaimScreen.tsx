@@ -5,10 +5,12 @@ import { api } from '@/lib/api';
 import { ApiError } from '@/lib/api-error';
 import { useRun } from '@/lib/socket';
 import { useCountdown } from '@/lib/countdown';
+import { useHighlight } from '@/lib/highlight';
 import { formatCents } from '@/lib/money';
-import { myShare } from '@/lib/share';
+import { myShare, roomFor } from '@/lib/share';
+import { runTitle } from '@/lib/tile';
 import { Board } from '@/components/Board';
-import { HeldBadge } from '@/components/HeldBadge';
+import { AvatarStack } from '@/components/Avatar';
 import { LiveView } from '@/components/LiveView';
 import { WishSheet } from '@/components/WishSheet';
 import type { Chip } from '@/lib/types';
@@ -21,7 +23,7 @@ export default function ClaimScreen() {
   const router = useRouter();
   const runId = params.get('run') ?? '';
   const personId = params.get('person') ?? '';
-  const { run, send, connected, lastFrame, lastCallEndsAt, errorEvent, ended } = useRun(runId || null, personId || null);
+  const { run, send, connected, lastFrame, lastCallEndsAt, identifyingRegion, errorEvent, ended } = useRun(runId || null, personId || null);
   const secs = useCountdown(run?.state === 'lastCall' ? (lastCallEndsAt ?? run.lastCallEndsAt ?? null) : null);
 
   const [large, setLarge] = useState(false);
@@ -56,6 +58,7 @@ export default function ClaimScreen() {
   }, [overCap]);
 
   const chips = useMemo(() => (run?.chips ?? []).filter((c) => c.state !== 'removed' && !c.dropped), [run]);
+  const highlight = useHighlight(chips, identifyingRegion ?? null);
 
   if (!runId) return <p className="error" role="alert">This link is missing its run.</p>;
   if (!personId) return <p className="muted" role="status">Joining</p>;
@@ -63,7 +66,7 @@ export default function ClaimScreen() {
   if (!run || !me) return <p className="muted" role="status">{connected ? 'Loading the run' : 'Connecting'}</p>;
   if (me.isShopper) {
     return (
-      <div className="card">
+      <div className="card closed-panel">
         <p>This page is for claimers.</p>
         <a className="btn" href={`/shopper?run=${encodeURIComponent(runId)}&person=${encodeURIComponent(personId)}`}>Go to the cart</a>
       </div>
@@ -75,7 +78,10 @@ export default function ClaimScreen() {
   const cap = me.authorizedCents ?? 0;
   const mine = chips.filter((c) => c.claimers.includes(personId));
   const trayTotal = mine.reduce((s, c) => s + myShare(c.priceCents, c.claimers, personId), 0);
+  const room = roomFor(mine.map((c) => c.priceCents ?? 0), cap, run.taxRate);
   const settleHref = `/settle?run=${encodeURIComponent(runId)}&person=${encodeURIComponent(personId)}`;
+  const others = run.people.filter((p) => p.id !== personId);
+  const stack = [...others, me];
 
   const raise = async () => {
     setBusy(true);
@@ -92,27 +98,55 @@ export default function ClaimScreen() {
 
   return (
     <>
-      <button type="button" className="liveview-toggle" aria-label="Toggle live view size" onClick={() => setLarge((l) => !l)}>
-        <LiveView frame={lastFrame} shopperName={shopper?.name ?? 'Shopper'} small={!large} />
-      </button>
-      {me.authorizedCents !== null && (
-        <div className="claim-held">
-          <HeldBadge cents={me.authorizedCents} approvalCode={me.approvalCode} />
+      <header className="claim-head">
+        <div className="claim-title">
+          <h1>{runTitle(shopper?.name, run.store)}</h1>
+          <span className="claim-status">
+            <span className={`live-dot${open ? '' : ' live-dot-off'}`} aria-hidden="true" />
+            <span>{open ? 'Live' : 'Closed'} · {run.people.length} in the run</span>
+          </span>
         </div>
-      )}
+        <AvatarStack list={stack} people={run.people} me={personId} size="sm" label={`In the run: ${stack.map((p) => p.name).join(', ')}`} />
+      </header>
+
+      <button type="button" className="liveview-toggle" aria-label="Toggle live view size" onClick={() => setLarge((l) => !l)}>
+        <LiveView frame={lastFrame} shopperName={shopper?.name ?? 'Shopper'} small={!large} highlight={highlight} />
+      </button>
+
+      <div className="share-row">
+        <div className="share-main">
+          <span className="share-label">Your share</span>
+          <span className="money share-big">{formatCents(trayTotal)}</span>
+        </div>
+        {me.authorizedCents !== null && (
+          <div className={`share-side${room < 0 ? ' share-over' : ''}`} data-testid="held">
+            <div><strong>{formatCents(me.authorizedCents)}</strong> held</div>
+            <div><strong>{formatCents(room)}</strong> room left</div>
+            {me.approvalCode && <div className="mono">auth {me.approvalCode}</div>}
+          </div>
+        )}
+      </div>
       {!connected && <p className="muted" role="status">Reconnecting…</p>}
 
       {run.state === 'lastCall' && (
-        <div className="banner" role="status">
+        <div className="banner banner-live" role="status">
           <span>{`${shopper?.name ?? 'The shopper'} is checking out · last call · ${secs ?? 0}s`}</span>
         </div>
       )}
       {!open && (
         <div className="banner" role="status">
           <span>Your tray is {formatCents(trayTotal)} across {mine.length} {mine.length === 1 ? 'item' : 'items'}</span>
-          <a className="btn" href={settleHref}>See settle</a>
+          <a className="btn btn-sm" href={settleHref}>See settle</a>
         </div>
       )}
+
+      <div className="section-head">
+        <div className="section-title">
+          <h2>In the cart</h2>
+          <span className="section-hint">Hold a chip, drag it to your tray</span>
+        </div>
+        {open && <WishSheet busy={busy} onWish={async (name) => { try { await api.wish(runId, name, personId); } catch (e) { setNotice(e instanceof Error ? e.message : 'Could not add the wish'); } }} />}
+      </div>
 
       <Board
         chips={chips}
@@ -124,8 +158,6 @@ export default function ClaimScreen() {
         onLeave={(chipId) => send({ t: 'leave', chipId })}
         onOverCap={(chip) => { setRaiseOff(false); setOverCap(chip); }}
       />
-
-      {open && <WishSheet busy={busy} onWish={async (name) => { try { await api.wish(runId, name, personId); } catch (e) { setNotice(e instanceof Error ? e.message : 'Could not add the wish'); } }} />}
 
       {overCap && (
         <div className="toast claim-toast" role="status">

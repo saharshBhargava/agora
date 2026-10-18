@@ -3,7 +3,8 @@ import { forwardRef, useCallback, useImperativeHandle, useState, type KeyboardEv
 import { useDndMonitor, useDraggable, useDroppable, type Active } from '@dnd-kit/core';
 import type { Chip as ChipT, Person } from '@/lib/types';
 import { formatCents } from '@/lib/money';
-import { myShare, roomFor } from '@/lib/share';
+import { listNames, myShare, roomFor } from '@/lib/share';
+import { tileColor } from '@/lib/tile';
 import { UndoToast } from './UndoToast';
 
 export type TrayProps = {
@@ -34,26 +35,36 @@ function liftedOf(active: Active): Lifted | null {
   return d?.chip && d.from ? { chip: d.chip, from: d.from } : null;
 }
 
-export const TrayChipView = forwardRef<HTMLButtonElement, { chip: ChipT; me: string } & React.ButtonHTMLAttributes<HTMLButtonElement>>(function TrayChipView({ chip, me, className, ...rest }, ref) {
+export const TrayChipView = forwardRef<HTMLButtonElement, { chip: ChipT; me: string; people?: Person[] } & React.ButtonHTMLAttributes<HTMLButtonElement>>(function TrayChipView({ chip, me, people = [], className, style, ...rest }, ref) {
   const n = chip.claimers.length;
   const share = chip.priceCents === null ? null : myShare(chip.priceCents, chip.claimers, me);
+  const others = chip.claimers.filter((id) => id !== me).map((id) => people.find((p) => p.id === id)?.name ?? 'someone');
   return (
     <button
       ref={ref}
       type="button"
       className={`tray-chip${className ? ` ${className}` : ''}`}
+      style={{ '--tile': tileColor(chip.id), ...style } as React.CSSProperties}
       aria-label={`${chip.name}, your share ${share === null ? 'not known yet' : formatCents(share)}${n > 1 ? `, split ${n} ways` : ''}`}
       {...rest}
     >
+      <span className="tray-thumb" aria-hidden="true">
+        {chip.photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={chip.photoUrl} alt="" draggable={false} />
+        ) : chip.name.charAt(0)}
+      </span>
+      <span className="tray-chip-text">
+        <span className="tray-chip-name">{chip.name}</span>
+        <span className="tray-chip-with">{others.length ? `Split with ${listNames(others)}` : 'Just you'}</span>
+        {chip.overCap.includes(me) && <span className="tray-overcap">Raise your cap or leave</span>}
+      </span>
       <span className="tray-chip-share">{share === null ? '~$?' : formatCents(share)}</span>
-      {n > 1 && <span className="chip-badge tray-split">÷{n}</span>}
-      <span className="tray-chip-name">{chip.name}</span>
-      {chip.overCap.includes(me) && <span className="tray-overcap">Raise your cap or leave</span>}
     </button>
   );
 });
 
-function TrayChip({ chip, me, onLeave }: { chip: ChipT; me: string; onLeave: (chip: ChipT) => void }) {
+function TrayChip({ chip, me, people, onLeave }: { chip: ChipT; me: string; people: Person[]; onLeave: (chip: ChipT) => void }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `tray:${chip.id}`,
     data: { chip, from: 'tray' },
@@ -69,6 +80,7 @@ function TrayChip({ chip, me, onLeave }: { chip: ChipT; me: string; onLeave: (ch
       ref={setNodeRef}
       chip={chip}
       me={me}
+      people={people}
       className={isDragging ? 'chip-source' : undefined}
       {...listeners}
       {...attributes}
@@ -77,7 +89,7 @@ function TrayChip({ chip, me, onLeave }: { chip: ChipT; me: string; onLeave: (ch
   );
 }
 
-export function Tray({ chips, me, people: _people, authorizedCents, taxRate, expanded, onClaim, onLeave, onOverCap, apiRef }: TrayProps) {
+export function Tray({ chips, me, people, authorizedCents, taxRate, expanded, onClaim, onLeave, onOverCap, apiRef }: TrayProps) {
   const [lifted, setLifted] = useState<Lifted | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const { setNodeRef, isOver } = useDroppable({ id: 'tray' });
@@ -144,16 +156,20 @@ export function Tray({ chips, me, people: _people, authorizedCents, taxRate, exp
         aria-label="Your tray"
       >
         <div className="tray-handle" aria-hidden="true" />
+        <div className="tray-top">
+          <h2 className="tray-title">Your tray</h2>
+          <p className="tray-summary">{summary}</p>
+        </div>
         {authorizedCents !== null && (
-          <p className={`tray-header${overCapPreview ? ' tray-header-over' : ''}`}>
+          // The live preview while a chip is lifted; at rest the screen shows held and room above the shelf.
+          <p className={`tray-header${overCapPreview ? ' tray-header-over' : ''}${isExpanded || overCapPreview ? '' : ' sr-only'}`}>
             {`${formatCents(authorizedCents)} held · ${formatCents(totalShare)} your share · ${formatCents(room ?? 0)} room`}
           </p>
         )}
-        <p className="tray-summary">{summary}</p>
         {overCapPreview && <p className="tray-warn">Over your cap. Raise it?</p>}
         <div className="tray-chips">
-          {chips.map((c) => <TrayChip key={c.id} chip={c} me={me} onLeave={leave} />)}
-          {chips.length === 0 && <p className="muted tray-empty">Lift a chip and drop it here to claim it.</p>}
+          {chips.map((c) => <TrayChip key={c.id} chip={c} me={me} people={people} onLeave={leave} />)}
+          {chips.length === 0 && <p className="tray-empty">Hold a chip and drop it here to claim it.</p>}
         </div>
       </section>
     </>

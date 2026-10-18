@@ -7,6 +7,8 @@ const p = (id: string, initial: string): Person => ({
   id, name: initial, initial, isShopper: false, authorizedCents: 4000, authId: null, approvalCode: null, payoutPan: null,
 });
 const people = [p('a', 'A'), p('b', 'B')];
+people[1].name = 'Marcus';
+const shopper: Person = { ...p('s', 'J'), name: 'Jake', isShopper: true, authorizedCents: null };
 const base: ChipT = {
   id: 'c1', name: 'Kirkland Eggs 24 ct', priceCents: 872, priceSource: 'sticker', photoUrl: null, region: null,
   quantity: 1, claimers: [], state: 'open', wishedBy: null, duplicateOf: null, putBack: false, dropped: false,
@@ -53,4 +55,28 @@ test('identifying chip is dimmed and not liftable', () => {
   const { container } = render(<Chip chip={{ ...base, state: 'identifying' }} me="a" people={people} />);
   expect(container.querySelector('[data-identifying]')).not.toBeNull();
   expect(container.querySelector('[data-liftable="true"]')).toBeNull();
+});
+
+test('border label: ÷2 in my blue when I share it, the name for one other, open for nobody', () => {
+  const { rerender, container } = render(<Chip chip={{ ...base, claimers: ['a', 'b'], state: 'claimed' }} me="a" people={people} />);
+  expect(screen.getByText('÷2')).toHaveStyle({ color: '#2B59E8' });
+  expect((container.firstChild as HTMLElement).style.getPropertyValue('--chip-border')).toBe('conic-gradient(#2B59E8 0deg 180deg, #D9480F 180deg 360deg)');
+  rerender(<Chip chip={{ ...base, claimers: ['b'], state: 'claimed' }} me="a" people={people} />);
+  expect(screen.getByText('Marcus')).toBeTruthy();
+  expect((container.firstChild as HTMLElement).style.getPropertyValue('--chip-border')).toBe('#D9480F');
+  rerender(<Chip chip={base} me="a" people={people} />);
+  expect(screen.getByText('open')).toBeTruthy();
+  expect((container.firstChild as HTMLElement).style.getPropertyValue('--chip-border')).toBe('var(--line)');
+});
+
+test('my wish chip says Your wish and lands in my tray when the shopper adds it', () => {
+  render(<Chip chip={{ ...base, name: 'Everything bagels', state: 'wish', wishedBy: 'a', priceCents: null }} me="a" people={[shopper, ...people]} />);
+  expect(screen.getByText('Your wish')).toBeTruthy();
+  expect(screen.getByText('Lands in your tray when Jake adds it')).toBeTruthy();
+});
+
+test("someone else's wish names them", () => {
+  render(<Chip chip={{ ...base, name: 'Bagels', state: 'wish', wishedBy: 'b', priceCents: null }} me="a" people={[shopper, ...people]} />);
+  expect(screen.getByText("Marcus's wish")).toBeTruthy();
+  expect(screen.getByText("Lands in Marcus's tray when Jake adds it")).toBeTruthy();
 });

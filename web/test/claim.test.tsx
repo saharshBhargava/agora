@@ -93,7 +93,21 @@ test('the header keeps the held amount and approval code visible', () => {
   const r = run();
   mk({ ...r, people: r.people.map((p) => (p.id === 'a' ? { ...p, approvalCode: '888888' } : p)) });
   render(<ClaimScreen />);
-  expect(screen.getByText('$40.00 held · approval 888888')).toBeInTheDocument();
+  const held = screen.getByTestId('held');
+  expect(held).toHaveTextContent('$40.00 held');
+  expect(held).toHaveTextContent('auth 888888');
+});
+
+test('the share block shows my share, held and room left', () => {
+  render(<ClaimScreen />);
+  expect(screen.getByText('Your share')).toBeInTheDocument();
+  expect(screen.getByTestId('held')).toHaveTextContent('$31.28 room left');
+});
+
+test('the header names the run and counts the people in it', () => {
+  render(<ClaimScreen />);
+  expect(screen.getByRole('heading', { name: "Sam's Costco run" })).toBeInTheDocument();
+  expect(screen.getByText('Live · 2 in the run')).toBeInTheDocument();
 });
 
 test('the last-call banner shows the countdown', () => {
