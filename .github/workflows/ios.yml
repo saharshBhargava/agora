@@ -40,7 +40,9 @@ jobs:
             -only-testing:AgoraTests/TripPlannerTests \
             -only-testing:AgoraTests/TripStoreTests \
             -only-testing:AgoraTests/AgoraClientTests \
-            -only-testing:AgoraTests/DibsTabTests \
+            -only-testing:AgoraTests/DibsRootTests \
+            -only-testing:AgoraTests/DibsNextRunTests \
+            -only-testing:AgoraTests/DibsHouseholdRouteTests \
             -only-testing:AgoraTests/DibsAPITests \
             -only-testing:AgoraTests/DibsWishPicksAPITests \
             -only-testing:AgoraTests/DibsAppModelTests \
