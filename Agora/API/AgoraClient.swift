@@ -89,12 +89,12 @@ final class AgoraClient {
             )
         }
         guard calendar.connected, let accountID = calendar.accountID else {
-            throw BrowserError("sign_in_required", "Sign in with Google to continue.")
+            throw BrowserError("sign_in_required", "Sign in to continue.")
         }
-        let token = try await calendar.authorization.idToken(for: accountID)
+        let token = try await calendar.apiToken(for: accountID)
         try Task.checkCancellation()
         guard calendar.accountID == accountID, calendar.connected else {
-            throw BrowserError("account_changed", "Your Google connection changed. Please try again.")
+            throw BrowserError("account_changed", "Your account changed. Please try again.")
         }
 
         var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
@@ -121,7 +121,7 @@ final class AgoraClient {
         }
         try Task.checkCancellation()
         guard calendar.accountID == accountID, calendar.connected else {
-            throw BrowserError("account_changed", "Your Google connection changed. Please try again.")
+            throw BrowserError("account_changed", "Your account changed. Please try again.")
         }
         guard let httpResponse = response as? HTTPURLResponse else {
             throw BrowserError("invalid_server_response")

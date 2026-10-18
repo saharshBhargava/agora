@@ -1,3 +1,12 @@
+## Demo sign-in is implemented
+
+Pull main and rebuild. Welcome has a username/password form: username `demo`, password shared privately
+from Render `AGORA_DEMO_PASSWORD`. Google is optional. No external provider keys are needed for the
+sample account. Chat, captions and capture recognition use fixed sample results; Calendar uses private
+persisted Agora events. See [the contract](api/demo-integrations.md) and [frontend handoff](frontend-handoff.md).
+Do not replace this with a mandatory Google gate or send sample-account media to a real model provider.
+Ordinary-account Google/model configuration and existing feature requests below still apply.
+
 # Frontend requests
 
 Features the backend already supports and that are waiting for a UI. Each section links to its API contract.
@@ -164,7 +173,8 @@ Send `PATCH /v1/wishlist/{id}` with only the fields that changed.
 - The simulator then works with `AGORA_API_BASE_URL = http:/$()/localhost:8000`. A phone on the same hotspot
   works with the Mac's `.local` name.
 
-Google sign-in, Calendar and Gemini chat still need internet, so this only covers inventory, scans (with replay
+Ordinary-account Google sign-in, Calendar and real model chat still need internet. The password demo uses
+its configured Agora API for login, Calendar and data, and built-in model responses. This fallback covers inventory, scans (with replay
 fixtures), merchants and the wishlist.
 
 ---

@@ -1,0 +1,47 @@
+name: iOS
+
+on:
+  pull_request:
+    paths: ["Agora/**", "AgoraTests/**", "Agora.xcodeproj/**", "Config/**", ".github/workflows/ios.yml"]
+  push:
+    branches: [main]
+    paths: ["Agora/**", "AgoraTests/**", "Agora.xcodeproj/**", "Config/**", ".github/workflows/ios.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  simulator:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Choose available iPhone simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for devices in d["devices"].values() for x in devices if x["name"].startswith("iPhone")))')
+          echo "SIMULATOR_ID=$DEVICE" >> "$GITHUB_ENV"
+      - name: Build and test authentication and provider boundaries
+        run: |
+          set -o pipefail
+          xcodebuild test -project Agora.xcodeproj -scheme Agora \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath build -resultBundlePath build/TestResults.xcresult \
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO \
+            -only-testing:AgoraTests/DemoAccessTests \
+            -only-testing:AgoraTests/CalendarAuthTests \
+            -only-testing:AgoraTests/CalendarToolTests \
+            -only-testing:AgoraTests/CalendarAgentTests \
+            -only-testing:AgoraTests/AgoraClientTests > build-test.log 2>&1 || { tail -n 160 build-test.log; exit 1; }
+      - name: Capture onboarding screen
+        run: |
+          xcrun simctl launch "$SIMULATOR_ID" dev.agora.browserchat
+          sleep 5
+          xcrun simctl io "$SIMULATOR_ID" screenshot build/onboarding.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-verification
+          path: |
+            build/TestResults.xcresult
+            build/onboarding.png
+            build-test.log

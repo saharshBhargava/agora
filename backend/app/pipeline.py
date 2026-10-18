@@ -11,12 +11,14 @@ from app import media
 from app.config import Settings
 from app.core.detections import auto_accept, merge_frames
 from app.db import Database, audit, notify
+from app.demo_account import is_demo_user
 from app.errors import Problem
 from app.forecasting import Forecaster, request_refresh
 from app.inventory_ops import commit_scan, match, sync_purchase_origins
 from app.jobs import PermanentJobError, enqueue
 from app.storage import Storage
 from app.vision.base import VisionError
+from app.vision.providers import BuiltinProvider
 from app.vision.service import VisionService
 
 log = logging.getLogger("agora.pipeline")
@@ -80,7 +82,9 @@ class Pipeline:
                 "RETURNING *", scan_id)
             if scan is None:
                 return  # already processed, deleted, or not visible to this user
+            demo = await is_demo_user(conn, user_id)
             await notify(conn, scan["household_id"], "scan.updated", scan_id)
+        vision = VisionService(BuiltinProvider()) if demo else self.vision
         household_id = scan["household_id"]
 
         try:
@@ -91,9 +95,9 @@ class Pipeline:
         frames = [await self.storage.get(k) for k in keys]
 
         async with self.db.scoped(user_id) as conn:
-            cached = await self.vision.lookup(conn, household_id, digests)
+            cached = await vision.lookup(conn, household_id, digests)
         try:
-            run = await self.vision.detect(frames, cached)  # no transaction held during provider calls
+            run = await vision.detect(frames, cached)  # no transaction held during provider calls
         except VisionError as error:
             if error.retryable and attempt < 3:
                 raise
@@ -102,7 +106,7 @@ class Pipeline:
 
         merged = merge_frames(run.frames)
         async with self.db.scoped(user_id) as conn:
-            await self.vision.store(conn, household_id, digests, run)
+            await vision.store(conn, household_id, digests, run)
             accepted = 0
             for m in merged:
                 item_id, product_id, score = await match(conn, household_id, m.label, m.brand)

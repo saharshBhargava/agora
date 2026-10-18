@@ -6,7 +6,7 @@ Pending UI work: [frontend-requests.md](frontend-requests.md).
 ## Current deployment record
 
 As of October 17, 2026, Render is **Live** at `https://agora-api-yq3m.onrender.com`, backed by Tiger with
-TimescaleDB. The database is initialized through migrations `0011`/`0012`; the single designated demo
+TimescaleDB. The database is initialized through migration `0013`; the single designated demo
 account retains its inventory/history and has commerce data. The public health/readiness, docs and
 OpenAPI endpoints returned HTTP 200. Demo password sign-in and authenticated profile, inventory, lists,
 wishlist, forecasts, agent state, mandates, intents, budgets and spend all returned HTTP 200.
@@ -25,8 +25,10 @@ Normal hosted boot checks pending migrations and ensures demo data idempotently.
 | First verified live commit | `d6bac9d122ebe902735cfcfccd8f704ffbd115a6`; see Render Events for subsequent deploys |
 | Last successful smoke test | Public health, demo login and authenticated reads: October 17, 2026 |
 | Google test-user access | Owner must add each tester in the existing Google Cloud project |
-| Demo Google address | Not configured; owner must select the address and set `AGORA_DEMO_GOOGLE_EMAILS` in Render |
-| Recognition keys | Current iOS Capture uses its Settings Gemini key; optional server `/v1/scans` falls back to replay until a backend key is added |
+| Demo sign-in | Username `demo`; password is Render Environment → `AGORA_DEMO_PASSWORD`, shared privately by the owner |
+| Demo Google address | Optional alternate sign-in via `AGORA_DEMO_GOOGLE_EMAILS`; unnecessary for demo testing |
+| Demo provider keys | None. Built-in chat/captions/recognition and account-private Calendar; simulated checkout |
+| Ordinary account provider keys | Configure real model connections in Settings; Google Calendar uses Google consent |
 
 Keep this record public and free of passwords, API keys and bearer tokens. Update it when the deployment
 changes so teammates and resumed agents have one place to find the live configuration.
@@ -34,7 +36,7 @@ changes so teammates and resumed agents have one place to find the live configur
 ## Message to send to the frontend team
 
 This message is ready to copy. Share the demo password only through a private credential channel if the
-team needs it for API testing; retrieve it from Render Environment, `AGORA_DEMO_PASSWORD`.
+team needs it for app or API testing; retrieve it from Render Environment, `AGORA_DEMO_PASSWORD`.
 
 ```text
 Agora backend:
@@ -47,16 +49,18 @@ iOS setup:
 1. Pull main; the shared config already has the live API URL.
 2. Remove/update any old AGORA_API_BASE_URL override in Config/Local.xcconfig.
    The current value is https:/$()/agora-api-yq3m.onrender.com (no /v1 suffix).
-3. Have the project owner add your Google account as an OAuth test user.
-4. Rebuild in Xcode, sign in with Google, approve Calendar, then open Home.
+3. Rebuild in Xcode. On Welcome, enter username demo and the privately shared password.
+4. Tap Sign in to demo. No Google sign-in or provider API keys are required.
 
-API auth: Authorization: Bearer <fresh Google ID token from the SDK>.
-There is no shared Agora API key. Use an ID token, not a Google access token.
-Google access to the populated demo account awaits the owner's demo-email selection.
-API testers can use POST /v1/dev/login with handle demo and the Render demo password.
-Your ordinary Google account starts with an empty household.
+Demo API auth: POST /v1/dev/login {handle: demo, password: <private password>};
+use the returned access_token in Authorization: Bearer <token>.
+The app stores the session token in Keychain, never the password.
+Demo chat/captions/recognition use built-in sample responses, not real AI inference.
+Demo Calendar events are stored inside Agora; no real Google events are created.
 
-Chat/caption/Capture recognition Gemini key: configure in app Settings.
+Google remains an optional alternative. Your ordinary Google account starts empty.
+For ordinary accounts: add Google test-user access, approve Calendar and configure
+real model connections in Settings. Use a Google ID token for Agora API auth.
 Backend scan provider keys and database credentials stay on the server.
 Free hosting can take about a minute to wake after being idle.
 ```
@@ -78,7 +82,7 @@ Agora account. Call `GET /v1/me` to obtain household IDs rather than hardcoding 
 
 ## API integration checklist
 
-- Use the shared `AgoraClient` for native authenticated JSON requests; it obtains the current ID token.
+- Use the shared `AgoraClient` for native authenticated JSON requests; it obtains the current demo session token or Google ID token.
   Pass paths such as `v1/me` to this client; it appends them to the origin.
 - Start with `GET /v1/me`, `GET /v1/households` and `GET /v1/inventory`.
 - Use the deployed OpenAPI schema for exact request/response shapes. Feature behavior and UI decisions are
@@ -97,12 +101,12 @@ Agora account. Call `GET /v1/me` to obtain household IDs rather than hardcoding 
 
 1. Completed: `main` deployed using `render.yaml`, Tiger credentials remain in Render, public and
    authenticated read checks passed, and `AGORA_API_URL` is set with a successful keep-warm run.
-2. Remaining: add testers in the existing Google project, select the populated demo Google address if
-   needed, then test native Google sign-in/Calendar and real Capture recognition with an app Settings key.
+2. Demo: share the Render demo password privately. Rebuild from main and use the password form.
+   Google and model-provider setup are optional for testing ordinary accounts.
 3. Optional: add a backend Gemini/Perceptron key in Render for the separate server `/v1/scans` flow.
 4. Update this deployment record when the host or access setup changes. Keep-warm is not guaranteed
    uptime; see SETUP.md for demo preparation.
-5. Send the message above to the frontend team and provide test-user access. Keep secrets in the provider
+5. Send the message above to the frontend team and provide the demo password privately; provide Google test-user access only for ordinary-account testing. Keep secrets in the provider
    dashboards/password manager, not in this file or a frontend build.
 6. When upgrading backend features, read [pr-handoff.md](pr-handoff.md) and current `main` first; don't
    reuse an old migration number or reapply a merged PR.

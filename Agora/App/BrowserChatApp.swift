@@ -52,7 +52,9 @@ final class ChatWorkspace: ObservableObject {
         AppLog.event(.app, "workspace.created")
         let settings = SettingsStore(); self.settings = settings
         let browser = BrowserSession(policy: settings.policy); self.browser = browser
-        let calendar = CalendarConnection(); self.calendar = calendar
+        let origin = (Bundle.main.object(forInfoDictionaryKey: "AgoraAPIBaseURL") as? String).flatMap(URL.init(string:))
+        let calendar = CalendarConnection(demoBaseURL: origin); self.calendar = calendar
+        settings.demoCalendar = calendar
         api = AgoraClient(calendar: calendar)
         inventory = InventoryStore(api: api, calendar: calendar)
         agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar)

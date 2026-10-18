@@ -4,6 +4,7 @@ import CryptoKit
 
 @MainActor
 final class SettingsStore: ObservableObject {
+    weak var demoCalendar: CalendarConnection?
     @Published var model: String { didSet {
         defaults.set(model, forKey: "gemini.model")
         if let index = modelConfiguration.profiles.firstIndex(where: { $0.id == ModelConfiguration.geminiProfileID }),

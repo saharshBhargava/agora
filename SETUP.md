@@ -15,10 +15,10 @@ below explain recreating the deployment and obtaining the optional credentials.
 |---|---|---|---|
 | 1 | [Tiger Cloud](https://console.cloud.timescale.com) | Database (Postgres + TimescaleDB) | Yes |
 | 2 | [Render](https://render.com) | Hosting the API | Yes |
-| 3 | The team's existing Google Cloud project (Saharsh's) | Google sign-in + Calendar on the phone | Already set up; just add test users |
-| 4 | [Google AI Studio](https://aistudio.google.com/apikey) | Gemini key for real fridge/pantry recognition | Recommended |
+| 3 | The team's existing Google Cloud project (Saharsh's) | Real Google sign-in + Calendar | Optional for demo login |
+| 4 | [Google AI Studio](https://aistudio.google.com/apikey) | Gemini key for real inference on ordinary accounts | Optional for demo login |
 | 5 | Perceptron (ask at their sponsor table) | Perceptron vision instead of Gemini | Optional |
-| 6 | A new Gmail account for the demo (step 3b) | Signing in to the pre-filled demo account from the iOS app | Yes, for demos |
+| 6 | Demo username/password (step 3b) | Signing in to the pre-filled account in iOS or API | Already generated in Render |
 
 **What to send back to Kedar's coding session when you're done:** just the Render URL (it's public, not a secret).
 With it, the deploy can be smoke-tested end to end and the keep-warm job pointed at it. Never send the Tiger
@@ -123,21 +123,23 @@ The backend has one designated **demo account**, pre-filled with about a month o
 - preferred stores
 - wishlist items and agent suggestions (pending, accepted, snoozed, rejected), with thumbs feedback
 
-From the UI it looks exactly like a real, well-used account; nothing in the app says it's a demo. Anything
-simulated (payments, once they exist) is switched on only for this account, and real accounts never get fake
-data or fake behaviour. One account, two ways in:
+Use **username `demo`** and the password in Render → `agora-api` → **Environment** →
+`AGORA_DEMO_PASSWORD` → **Show secret**. Share this password privately with frontend testers.
+The generated password is not committed to Git. It is unrelated to a Google or Tiger password.
 
-1. **From the iOS app (for demos):**
-   - Create a fresh Gmail account that looks like a real person's, e.g. `alex.rivera.agora@gmail.com`. You need
-     to make it yourself.
-   - Ask Saharsh to add it under **Test users** (step 3).
-   - In Render, set `AGORA_DEMO_GOOGLE_EMAILS` to that address and save. Render redeploys.
+1. **iOS:** pull main, rebuild, enter those credentials on Welcome, then tap **Sign in to demo**.
+   No Google account, OAuth test-user enrollment, Gemini key, Perceptron key or local model server is needed.
+2. **API:** `POST /v1/dev/login` with `{"handle":"demo","password":"<AGORA_DEMO_PASSWORD>"}`.
+   Use the returned `access_token` as a Bearer token. `expires_at` is Unix seconds. Sign in again on expiry.
+3. **Google (optional):** set `AGORA_DEMO_GOOGLE_EMAILS` to a verified Google address, enroll it as an OAuth
+   test user and choose the Google button. The backend maps it to the same populated account.
 
-   Signing in with that Google account on the phone now opens the demo account. Its credentials are that
-   Gmail address and the password you chose for it.
-2. **From curl, the API docs page or a desktop build:** `POST /v1/dev/login` with
-   `{"handle": "demo", "password": "<AGORA_DEMO_PASSWORD>"}`. The password is in Render, under the service's
-   **Environment** tab, generated for you. Treat it like any password.
+The designated account uses built-in sample chat, captions and grocery recognition. These are repeatable
+fixtures, not real inference on the supplied media. Media stays on-device in the native sample flow.
+Calendar availability and approved events use a private Agora calendar (migration `0013`); events persist
+in Tiger and never create Google events or invitations. Checkout remains simulated. Even when real backend
+vision keys are present, demo uploads select the built-in provider. Only the server-owned `users.is_demo`
+flag enables these behaviors. Ordinary accounts retain real configured providers.
 
 Inside the app, the account is "Alex Rivera" (handle `alexrivera`). To start fresh after rehearsals (this wipes
 only the demo account and recreates it), run from `backend/`:
@@ -148,7 +150,7 @@ uv run python -m app.tools.demo reset --database-url "<tiger url>"
 
 Teammates' own Google accounts stay ordinary, empty accounts: use them to show "a new user" if you want.
 
-## 4. Gemini key (about 2 min)
+## 4. Gemini key (optional; ordinary accounts only)
 
 1. Open [Google AI Studio > API keys](https://aistudio.google.com/apikey), select or create a Google Cloud
    project, then **Create API key**. Copy the key privately. Check the project's available quota/billing.

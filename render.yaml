@@ -17,11 +17,11 @@ services:
         sync: false
       - key: AGORA_ENV
         value: demo
-      - key: AGORA_AUTH_MODE             # iOS signs in with Google; demo mode adds password-protected dev login
+      - key: AGORA_AUTH_MODE             # ordinary users use Google; demo app/API login uses the generated password
         value: google
       - key: AGORA_GOOGLE_IOS_CLIENT_ID  # public iOS client ID from Config/Agora.xcconfig; must match the app's
         value: 875535919816-pt11h5vsprq94mktf5of9ltfbu529evl.apps.googleusercontent.com
-      - key: AGORA_DEMO_GOOGLE_EMAILS    # the Google address(es) that sign in to the demo account, comma-separated
+      - key: AGORA_DEMO_GOOGLE_EMAILS    # optional alternate demo Google addresses; password sign-in needs none
         sync: false
       - key: AGORA_DEMO_PASSWORD         # password for /v1/dev/login {"handle": "demo"}; read it in Render's dashboard
         generateValue: true

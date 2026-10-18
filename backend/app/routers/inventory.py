@@ -102,6 +102,9 @@ async def save_recognition(body: RecognitionIn, request: Request, user: Principa
     digest = idempotency.request_hash("inventory.recognition", metadata)
     provider = f"{body.provider}-client"
     async with request.app.state.db.scoped(user.user_id) as conn:
+        if body.provider == "builtin":
+            from app.routers.demo import require_demo
+            await require_demo(conn, user.user_id)
         household_id = await require_household(conn, body.household_id, user.user_id)
         # Serialize concurrent retries before looking up their result, inside this transaction.
         await conn.execute("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", f"{user.user_id}:{key}")

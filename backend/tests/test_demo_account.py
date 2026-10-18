@@ -6,7 +6,7 @@ in app/demo_account.py (or, if it can never hold demo data, add it to NO_DEMO_DA
 
 import time
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import jwt
@@ -223,3 +223,83 @@ async def test_reset_restores_a_fresh_demo_account_and_nothing_else(demo_app, si
     async with app.state.db.system() as conn:
         assert await conn.fetchval("SELECT count(*) FROM users WHERE is_demo") == 1
         assert await conn.fetchval("SELECT auth_subject FROM users WHERE is_demo") == DEMO_SUBJECT
+
+
+async def test_password_only_calendar_is_persisted_idempotent_and_isolated(demo_app, signing_key, monkeypatch):
+    app, client = demo_app
+    headers = await demo_headers(client)
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("The designated account must never call Google")
+
+    monkeypatch.setattr(app.state.calendar, "calendar_request", forbidden)
+    profile = await client.get("/v1/demo/profile", headers=headers)
+    assert profile.status_code == 200
+    assert "is_demo" not in profile.json()
+    before = (await client.get("/v1/demo/calendar/events", headers=headers)).json()
+    assert len(before) >= 3
+    window = {"start": "2027-01-04T19:00:00Z", "end": "2027-01-04T20:00:00Z", "timezone": "Etc/UTC"}
+    event = window | {"title": "Grocery run", "confirmed": True}
+    keyed = headers | {"Idempotency-Key": uuid4().hex}
+    created = await client.post("/v1/demo/calendar/events", headers=keyed, json=event)
+    assert created.status_code == 201, created.text
+    retry = await client.post("/v1/demo/calendar/events", headers=keyed, json=event)
+    assert retry.json() == created.json()
+    assert (await client.post("/v1/demo/calendar/events", headers=keyed,
+                              json=event | {"title": "Different"})).status_code == 422
+    assert (await client.post("/v1/demo/calendar/events", headers=headers | {"Idempotency-Key": uuid4().hex},
+                              json=event | {"confirmed": False})).status_code == 409
+    busy = await client.post("/v1/demo/calendar/freebusy", headers=headers, json=window)
+    assert busy.status_code == 200 and len(busy.json()["busy"]) == 1
+    # Existing API paths must also stay away from Google, even when real credentials are configured.
+    legacy = await client.post("/v1/calendar/freebusy", headers=headers, json=window)
+    assert legacy.json() == busy.json()
+    after = (await client.get("/v1/demo/calendar/events", headers=headers)).json()
+    assert len(after) == len(before) + 1
+
+    other = {"Authorization": "Bearer " + google_token(signing_key, email="normal@example.com", email_verified=True)}
+    for path, method, body in (("profile", "GET", None), ("calendar/events", "GET", None),
+                               ("calendar/events", "POST", event), ("calendar/freebusy", "POST", window)):
+        result = await client.request(method, "/v1/demo/" + path,
+                                      headers=other | {"Idempotency-Key": uuid4().hex}, json=body)
+        assert result.status_code == 403
+    me = (await client.get("/v1/me", headers=other)).json()
+    async with app.state.db.scoped(UUID(me["id"])) as conn:
+        assert await conn.fetchval("SELECT count(*) FROM calendar_events") == 0
+
+
+async def test_demo_scans_never_use_configured_vision(demo_app, monkeypatch):
+    from tests.conftest import fridge_photo
+
+    app, client = demo_app
+    headers = await demo_headers(client)
+    household = (await client.get("/v1/me", headers=headers)).json()["households"][0]["id"]
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("The designated account must never call a real vision provider")
+
+    monkeypatch.setattr(app.state.pipeline.vision, "detect", forbidden)
+    response = await client.post("/v1/scans", headers=headers | {"Idempotency-Key": uuid4().hex},
+                                 data={"household_id": household},
+                                 files=[("files", ("fridge.jpg", fridge_photo(31), "image/jpeg"))])
+    assert response.status_code == 202, response.text
+    scan_id = response.json()["id"]
+    await app.state.worker.drain()
+    scan = (await client.get("/v1/scans/" + scan_id, headers=headers)).json()
+    assert scan["status"] in ("needs_review", "confirmed"), scan
+    assert scan["provider"] == "builtin"
+
+
+async def test_builtin_recognition_is_only_for_designated_account(demo_app, signing_key):
+    app, client = demo_app
+    headers = await demo_headers(client)
+    other = {"Authorization": "Bearer " + google_token(signing_key, email="capture@example.com", email_verified=True)}
+    from datetime import UTC, datetime
+    for auth, expected in ((headers, 201), (other, 403)):
+        household = (await client.get("/v1/me", headers=auth)).json()["households"][0]["id"]
+        response = await client.post("/v1/inventory/recognitions", headers=auth | {"Idempotency-Key": uuid4().hex},
+                                     json={"household_id": household, "captured_at": datetime.now(UTC).isoformat(),
+                                           "media_kind": "photos", "provider": "builtin", "model": "agora-sample-v1",
+                                           "items": [{"display_name": "2% milk", "category": "dairy", "unit": "unit",
+                                                      "quantity": 2, "confidence": 0.96}]})
+        assert response.status_code == expected, response.text
