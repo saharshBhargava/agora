@@ -25,47 +25,28 @@ struct CaptureView: View {
     }
     enum CameraMode: String, Identifiable { case photo, video; var id: String { rawValue } }
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Capture something new").font(.title2.bold())
-                    Text("Take a photo or record a video.").foregroundStyle(.secondary)
+        HousePage {
+            HouseHero(title: "Scan what you have",
+                      subtitle: "Take a photo or record a video of your shelves, and Dibs finds the items for your pantry.")
+            sources
+            Text("New camera captures go to your selected inventory model to identify items. Enter the purchase store while recognition runs.")
+                .houseNote()
+                .fixedSize(horizontal: false, vertical: true)
+            if library.busy {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Saving media…").font(.system(size: 14)).foregroundStyle(Color.muted)
                 }
-                HStack(spacing: 12) {
-                    captureButton("Photo", icon: "camera", mode: .photo)
-                    captureButton("Video", icon: "video", mode: .video)
-                }.disabled(library.busy || requestingPermission)
-                HStack {
-                    Button { pickingLibrary = true } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
-                        .buttonStyle(.borderedProminent)
-                    Button { pickingFiles = true } label: { Label("Files", systemImage: "folder") }
-                        .buttonStyle(.bordered)
-                }.disabled(library.busy || requestingPermission)
-                Text("New camera captures go to your selected inventory model to identify items. Enter the purchase store while recognition runs.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                if library.busy { ProgressView("Saving media…").frame(maxWidth: .infinity) }
-                HStack {
-                    Text("Your media").font(.title2.bold())
-                    Spacer()
-                    Text("\(library.items.count)").foregroundStyle(.secondary)
-                }
-                if library.items.isEmpty {
-                    ContentUnavailableView("No captures yet", systemImage: "photo.stack", description: Text("Use the camera or import existing photos and videos to get started."))
-                } else {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 14)], spacing: 14) {
-                        ForEach(library.items) { item in
-                            Button { preview = item } label: { MediaTile(item: item, url: library.url(for: item)) }
-                                .buttonStyle(.plain)
-                                .contextMenu {
-                                    ShareLink(item: library.url(for: item)) { Label("Share", systemImage: "square.and.arrow.up") }
-                                    Button("Delete", systemImage: "trash", role: .destructive) { deleting = item }
-                                }
-                        }
-                    }
-                }
-            }.padding()
+                .accessibilityElement(children: .combine)
+            }
+            media
+        } bottom: {
+            HStack(spacing: 10) {
+                captureButton("Video", icon: "video", mode: .video, kind: .secondary)
+                captureButton("Photo", icon: "camera", mode: .photo, kind: .ink)
+            }
+            .disabled(library.busy || requestingPermission)
         }
-        .navigationTitle("Capture")
         .task { await library.load() }
         .fullScreenCover(item: $camera, onDismiss: {
             cameraDismissed = true
@@ -134,12 +115,54 @@ struct CaptureView: View {
             }
         }
     }
-    private func captureButton(_ title: String, icon: String, mode: CameraMode) -> some View {
-        Button { Task { await openCamera(mode) } } label: {
-            VStack(spacing: 10) { Image(systemName: icon).font(.title); Text(title).font(.headline) }
-                .frame(maxWidth: .infinity).padding(.vertical, 22)
-                .background(Color.paper, in: RoundedRectangle(cornerRadius: 16))
-        }.accessibilityIdentifier("capture.\(mode.rawValue)")
+    private func captureButton(_ title: String, icon: String, mode: CameraMode, kind: DibsButtonStyle.Kind) -> some View {
+        Button { Task { await openCamera(mode) } } label: { Label(title, systemImage: icon) }
+            .buttonStyle(.dibs(kind))
+            .accessibilityIdentifier("capture.\(mode.rawValue)")
+    }
+
+    /// Photo Library and Files: bring in what is already on the phone.
+    private var sources: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HouseSectionTitle("Import from your phone")
+            VStack(spacing: 0) {
+                Button { pickingLibrary = true } label: {
+                    DibsLinkRow(title: "Photo Library", detail: "Pick photos or videos you already have", symbol: "photo.on.rectangle", tint: 0xD8E2FA)
+                }
+                .buttonStyle(.plain)
+                Hairline()
+                Button { pickingFiles = true } label: {
+                    DibsLinkRow(title: "Files", detail: "Import images, videos or PDFs", symbol: "folder", tint: 0xF2E3B5)
+                }
+                .buttonStyle(.plain)
+            }
+            .dibsCard()
+            .disabled(library.busy || requestingPermission)
+        }
+    }
+
+    private var media: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                HouseSectionTitle("Your media")
+                Text("\(library.items.count)").font(.display(17)).foregroundStyle(Color.ink).monospacedDigit()
+            }
+            if library.items.isEmpty {
+                HouseEmpty(symbol: "photo.stack", title: "No captures yet",
+                           message: "Use the camera or import existing photos and videos to get started.")
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible())], spacing: 12) {
+                    ForEach(library.items) { item in
+                        Button { preview = item } label: { MediaTile(item: item, url: library.url(for: item)) }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                ShareLink(item: library.url(for: item)) { Label("Share", systemImage: "square.and.arrow.up") }
+                                Button("Delete", systemImage: "trash", role: .destructive) { deleting = item }
+                            }
+                    }
+                }
+            }
+        }
     }
     private func openCamera(_ mode: CameraMode) async {
         requestingPermission = true; needsSettings = false
@@ -182,15 +205,33 @@ private struct MediaTile: View {
     @State private var thumbnail: UIImage?
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ZStack {
-                Color.secondary.opacity(0.08)
-                if let thumbnail { Image(uiImage: thumbnail).resizable().scaledToFill() }
-                else { Image(systemName: item.symbol).font(.largeTitle).foregroundStyle(Color.muted) }
-                if item.kind == .video { Image(systemName: "play.circle.fill").font(.largeTitle).foregroundStyle(.white).shadow(radius: 3) }
-            }.frame(height: 140).clipped().clipShape(RoundedRectangle(cornerRadius: 12))
-            Text(item.title).font(.headline)
-            Text(item.createdAt, format: .dateTime.month().day().hour().minute()).font(.caption).foregroundStyle(.secondary)
+            // The photo goes in an overlay so a wide image can't stretch the cell past its column.
+            Color(hex: Palette.tileHex[2])
+                .frame(height: 120)
+                .frame(maxWidth: .infinity)
+                .overlay {
+                    if let thumbnail { Image(uiImage: thumbnail).resizable().scaledToFill() }
+                    else { Image(systemName: item.symbol).font(.system(size: 30)).foregroundStyle(Color.muted) }
+                }
+                .overlay {
+                    if item.kind == .video {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Color.white)
+                            .frame(width: 40, height: 40)
+                            .background(Circle().fill(Color.ink.opacity(0.85)))
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: Metrics.radiusSmall, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title).font(.system(size: 14, weight: .bold)).foregroundStyle(Color.ink).lineLimit(1)
+                Text(item.createdAt, format: .dateTime.month().day().hour().minute()).houseNote()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 4)
+            .padding(.bottom, 2)
         }
+        .dibsCard(radius: 16, padding: 8)
         .task(id: item.id) {
             if item.kind == .image { thumbnail = await Task.detached { MediaLibrary.thumbnail(url) }.value }
             else if item.kind == .video {
@@ -216,27 +257,35 @@ private struct MediaPreview: View {
     @State private var reviewingInventory = false
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 0) {
-                    Group {
-                        if item.kind == .video { VideoPlayer(player: player) }
-                        else if item.kind == .document { PDFPreview(url: url) }
-                        else if let image { Image(uiImage: image).resizable().scaledToFit() }
-                        else if loaded { ContentUnavailableView("Cannot preview image", systemImage: "photo", description: Text("You can still share the original file.")) }
-                        else { ProgressView() }
-                    }.frame(maxWidth: .infinity).frame(height: item.kind == .document ? 550 : 300)
-                    if item.kind != .document {
-                        Button { reviewingInventory = true } label: {
-                            Label("Identify items and add store", systemImage: "viewfinder")
-                                .frame(maxWidth: .infinity)
-                        }.buttonStyle(.borderedProminent).padding()
-                            .disabled(caption.busy)
-                            .accessibilityIdentifier("capture.recognizeInventory")
-                        CaptionPanel(item: item, url: url, settings: settings, library: library, controller: caption)
-                    }
+            HousePage(bottomVisible: item.kind != .document) {
+                HouseHero(title: item.title, size: 28,
+                          subtitle: item.createdAt.formatted(date: .abbreviated, time: .shortened))
+                Group {
+                    if item.kind == .video { VideoPlayer(player: player) }
+                    else if item.kind == .document { PDFPreview(url: url) }
+                    else if let image { Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 420) }
+                    else if loaded { HouseEmpty(symbol: "photo", title: "Cannot preview image", message: "You can still share the original file.").padding(Metrics.space2) }
+                    else { ProgressView() }
                 }
+                .frame(maxWidth: .infinity)
+                .frame(height: item.kind == .document ? 550 : item.kind == .image && image != nil ? nil : 300)
+                .background(Color.card)
+                .clipShape(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous).strokeBorder(Color.line))
+                if item.kind != .document {
+                    CaptionPanel(item: item, url: url, settings: settings, library: library, controller: caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.card, in: RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous).strokeBorder(Color.line))
+                }
+            } bottom: {
+                Button { reviewingInventory = true } label: {
+                    Label("Identify items and add store", systemImage: "viewfinder")
+                }
+                .buttonStyle(.dibs)
+                .disabled(caption.busy)
+                .accessibilityIdentifier("capture.recognizeInventory")
             }
-            .navigationTitle(item.title).navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") {
