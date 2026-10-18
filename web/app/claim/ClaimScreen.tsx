@@ -35,6 +35,7 @@ export default function ClaimScreen() {
   const [raiseOff, setRaiseOff] = useState(false);
   const [busy, setBusy] = useState(false);
   const dismissOver = useCallback(() => setOverCap(null), []);
+  const loadPicks = useCallback(() => api.wishPicks(runId, personId), [runId, personId]);
 
   const me = run?.people.find((p) => p.id === personId);
   const unknown = !!run && !me;
@@ -153,7 +154,7 @@ export default function ClaimScreen() {
           <h2>In the cart</h2>
           <span className="section-hint">Hold a chip, drag it to your tray</span>
         </div>
-        {open && <WishSheet busy={busy} onWish={async (name) => { try { await api.wish(runId, name, personId); } catch (e) { setNotice(e instanceof Error ? e.message : 'Could not add the wish'); } }} />}
+        {open && <WishSheet busy={busy} loadPicks={loadPicks} onWish={async (name) => { try { await api.wish(runId, name, personId); } catch (e) { setNotice(e instanceof Error ? e.message : 'Could not add the wish'); } }} />}
       </div>
 
       <Board

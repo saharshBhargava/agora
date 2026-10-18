@@ -772,3 +772,8 @@ p { margin: 0; }
 .camera-blocked p { max-width: 320px; line-height: 1.45; font-size: 14px; }
 .camera-blocked-actions { display: flex; gap: var(--space-1); }
 .camera-blocked-actions .btn { width: auto; }
+
+.wish-sheet-wrap { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.wish-picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.wish-picks-title { width: 100%; margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--muted, #5e5b55); }
+.wish-pick { white-space: nowrap; }

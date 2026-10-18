@@ -34,6 +34,11 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+export type WishPicks = {
+  list: { name: string; store?: string | null; items: { name: string; detail?: string | null }[] } | null;
+  suggestions: { name: string; reason: string }[];
+};
+
 const run = (runId: string) => `/api/runs/${encodeURIComponent(runId)}`;
 
 /** A POST acting as `personId` in the run: carries that person's key, when this browser has it. */
@@ -75,6 +80,11 @@ export const api = {
   back: (runId: string, personId: string) => act<Run>(runId, personId, `${run(runId)}/back`, { personId }),
   raise: (runId: string, personId: string, capCents: number) =>
     act<{ authorizedCents: number }>(runId, personId, `${run(runId)}/raise`, { personId, capCents }),
+  /** What the Wish sheet offers: the household list (when the server reads one) and suggestions from past runs. */
+  wishPicks: (runId: string, personId: string) => {
+    const key = keyFor(runId, personId);
+    return call<WishPicks>(`${run(runId)}/wish-picks?personId=${encodeURIComponent(personId)}`, { headers: key ? { 'x-dibs-key': key } : {} });
+  },
   wish: (runId: string, name: string, byPersonId: string) =>
     act<Run>(runId, byPersonId, `${run(runId)}/chips/text`, { name, byPersonId }),
   receipt: (runId: string, shopperId: string, imageBase64: string) =>
