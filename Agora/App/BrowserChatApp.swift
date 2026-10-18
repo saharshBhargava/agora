@@ -37,12 +37,14 @@ final class ChatWorkspace: ObservableObject {
     let settings: SettingsStore
     let browser: BrowserSession
     let agent: AgentCoordinator
+    let api: AgoraClient
     let calendar: CalendarConnection
     init() {
         AppLog.event(.app, "workspace.created")
         let settings = SettingsStore(); self.settings = settings
         let browser = BrowserSession(policy: settings.policy); self.browser = browser
-        let calendar = CalendarConnection(); self.calendar = calendar
+        let api = AgoraClient(); self.api = api
+        let calendar = CalendarConnection(client: api); self.calendar = calendar
         agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar)
     }
 }
