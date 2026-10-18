@@ -26,10 +26,15 @@
     <string>$(AGORA_PUSH_ENVIRONMENT)</string>
     <key>GIDClientID</key>
     <string>$(AGORA_GOOGLE_IOS_CLIENT_ID)</string>
+    <key>DibsServerURL</key>
+    <string>$(DIBS_SERVER_URL)</string>
     <key>CFBundleURLTypes</key>
     <array><dict>
         <key>CFBundleURLName</key><string>dev.agora.browserchat.oauth</string>
         <key>CFBundleURLSchemes</key><array><string>$(AGORA_GOOGLE_REVERSED_CLIENT_ID)</string></array>
+    </dict><dict>
+        <key>CFBundleURLName</key><string>dev.agora.browserchat.dibs</string>
+        <key>CFBundleURLSchemes</key><array><string>dibs</string></array>
     </dict></array>
 </dict>
 </plist>

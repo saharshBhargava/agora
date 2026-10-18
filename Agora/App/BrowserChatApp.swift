@@ -6,7 +6,10 @@ struct BrowserChatApp: App {
     @UIApplicationDelegateAdaptor(AgoraNotificationDelegate.self) private var notificationsDelegate
     @ObservedObject private var push = PushNotifications.shared
     @StateObject private var workspace = ChatWorkspace()
-    @State private var selectedTab: AppTab = .home
+    // `-DibsAutoShop YES` (unattended Dibs device testing) opens on the Dibs tab.
+    @State private var selectedTab: AppTab = DebugLaunch.autoShop ? .dibs : .home
+    /// A Dibs link from `onOpenURL`, waiting for the Dibs tab to open it.
+    @State private var dibsLink: URL?
     @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
@@ -15,6 +18,9 @@ struct BrowserChatApp: App {
                     HomeView(selectedTab: $selectedTab, store: workspace.inventory, shopping: workspace.shopping, settings: workspace.settings, trips: workspace.trips)
                         .tabItem { Label("Home", systemImage: "house") }
                         .tag(AppTab.home)
+                    DibsTab(incomingURL: $dibsLink, isActive: selectedTab == .dibs)
+                        .tabItem { Label("Dibs", systemImage: "cart") }
+                        .tag(AppTab.dibs)
                     ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser)
                         .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
                         .tag(AppTab.chat)
@@ -42,13 +48,23 @@ struct BrowserChatApp: App {
             .background { PushSessionSync(calendar: workspace.calendar, api: workspace.api) }
             .background { WatchBrowserReviewNavigation(store: workspace.shopping.watches, selectedTab: $selectedTab) }
             .onOpenURL { url in
-                if workspace.calendar.configurationIssue == nil { _ = GIDSignIn.sharedInstance.handle(url) }
+                // dibs:// join links go to the Dibs tab; everything else is Google sign-in's callback.
+                if DibsTab.owns(url) { openDibs(url) }
+                else if workspace.calendar.configurationIssue == nil { _ = GIDSignIn.sharedInstance.handle(url) }
+            }
+            .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                if let url = activity.webpageURL, DibsTab.owns(url) { openDibs(url) }
             }
             .onChange(of: scenePhase) { _, phase in
                 AppLog.event(.app, phase == .active ? "scene.active" : phase == .background ? "scene.background" : "scene.inactive")
                 if phase != .active { workspace.agent.stop(reason: "Paused while the app is inactive. Press Resume to continue.", paused: true) }
             }
         }
+    }
+
+    private func openDibs(_ url: URL) {
+        dibsLink = url
+        selectedTab = .dibs
     }
 }
 

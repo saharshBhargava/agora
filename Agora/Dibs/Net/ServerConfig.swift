@@ -2,12 +2,13 @@ import Foundation
 
 /// Where the Dibs server lives, and which person this phone is in each run.
 ///
-/// The URL comes from `DIBS_SERVER_URL` in Info.plist (set in ios/Local.xcconfig), overridden by the
-/// in-app settings sheet, which saves to `UserDefaults` key `dibs.server`. HTTPS only, except plain
-/// http to localhost and 127.0.0.1 for the simulator.
+/// The URL comes from `DibsServerURL` in Agora/Info.plist (the `DIBS_SERVER_URL` xcconfig variable, set
+/// per machine in Config/Local.xcconfig), overridden by the in-app settings sheet, which saves to
+/// `UserDefaults` key `dibs.server`. HTTPS only, except plain http to localhost and 127.0.0.1 for the
+/// simulator.
 public enum ServerConfig {
     public static let serverKey = "dibs.server"
-    public static let infoPlistKey = "DIBS_SERVER_URL"
+    public static let infoPlistKey = "DibsServerURL"
     public static let fallback = URL(string: "http://localhost:3000")!
 
     /// A usable server base URL from user text, or nil. Trailing slashes are dropped; no query or fragment.

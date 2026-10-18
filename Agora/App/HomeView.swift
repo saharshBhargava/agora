@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum AppTab: Hashable {
-    case home, chat, capture, lists, settings
+    case home, dibs, chat, capture, lists, settings
 }
 
 struct HomeView: View {

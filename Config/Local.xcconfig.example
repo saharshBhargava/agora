@@ -7,3 +7,10 @@
 // The live API URL is inherited from Agora.xcconfig. Uncomment only to use another server.
 // Keep the $() so xcconfig doesn't interpret // as a comment.
 // AGORA_API_BASE_URL = https:/$()/your-api.example.com
+
+// Personal signing: a bundle id you own and your Apple developer team id.
+// AGORA_BUNDLE_ID = dev.yourname.agora
+// DEVELOPMENT_TEAM = ABCDE12345
+
+// The Dibs tab's server (scripts/demo-server.sh prints the tunnel URL). HTTPS, or http only for localhost.
+// DIBS_SERVER_URL = https:/$()/your-dibs-server.example.com

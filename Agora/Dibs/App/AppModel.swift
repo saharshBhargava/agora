@@ -19,7 +19,7 @@ final class AppModel {
     private(set) var pendingLink: JoinLink?
 
     let defaults: UserDefaults
-    /// The server baked into the build (`DIBS_SERVER_URL`).
+    /// The server baked into the build (`DibsServerURL` in Info.plist, from `DIBS_SERVER_URL`).
     let bundledServer: URL?
     @ObservationIgnored private var launched = false
     /// Bumped on every navigation the person asked for, so a slow launch resume never overrides it.

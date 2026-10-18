@@ -1,29 +1,45 @@
 import SwiftUI
 
-@main
-struct DibsApp: App {
+/// The Dibs tab inside the Agora app. It owns the Dibs `AppModel` and its `NavigationStack`, so Dibs
+/// keeps its own server, routes and run state next to Agora's workspace.
+///
+/// Links reach it through `incomingURL`: the app's `onOpenURL` sets it for `dibs://join?run=…` (and
+/// https join links) and selects this tab; the tab consumes the link and clears it. Because the change
+/// is observed with `initial: true`, a link that arrives before the tab exists (while Agora's sign-in
+/// gate is showing) still opens the join screen once the tab appears.
+struct DibsTab: View {
+    @Binding var incomingURL: URL?
+    /// True while this tab is the selected one. The Dibs design is light only (paper and ink; dark mode
+    /// left rows unreadable), but a color-scheme preference applies to the whole window, so the tab asks
+    /// for light only while it is showing and the rest of Agora keeps following the system.
+    var isActive: Bool
     @State private var model = AppModel()
+    @State private var autoShopStarted = false
 
-    var body: some Scene {
-        WindowGroup {
-            if DebugLaunch.autoShop {
-                // Unattended device testing: `-DibsAutoShop YES` starts a run and opens the shopper camera
-                // inside the normal routes (receipt and settle included).
-                DibsRootView()
-                    .environment(model)
-                    .preferredColorScheme(.light)
-                    .task { do { try await model.autoShop() } catch { DibsLog.event("autoshop failed: \(error)") } }
-            } else {
-                DibsRootView()
-                    .environment(model)
-                    // The design is light only (paper and ink); dark mode left rows unreadable.
-                    .preferredColorScheme(.light)
-                    .onOpenURL { model.open(url: $0) }
-                    .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
-                        if let url = activity.webpageURL { model.open(url: url) }
-                    }
+    var body: some View {
+        DibsRootView()
+            .environment(model)
+            .environment(\.colorScheme, .light)
+            .preferredColorScheme(isActive ? .light : nil)
+            .onChange(of: incomingURL, initial: true) { _, url in
+                guard let url else { return }
+                incomingURL = nil
+                model.open(url: url)
             }
-        }
+            .task {
+                // Unattended device testing: `-DibsAutoShop YES` starts a run and opens the shopper camera
+                // inside the normal routes (receipt and settle included). The app selects this tab at launch.
+                guard DebugLaunch.autoShop, !autoShopStarted else { return }
+                autoShopStarted = true
+                do { try await model.autoShop() } catch { DibsLog.event("autoshop failed: \(error)") }
+            }
+    }
+
+    /// Whether an opened URL belongs to Dibs: any `dibs://` URL (Dibs explains a malformed one on its
+    /// Home), or an http(s) Dibs join link. Everything else (Google sign-in callbacks) stays with Agora.
+    static func owns(_ url: URL) -> Bool {
+        if url.scheme?.lowercased() == "dibs" { return true }
+        return JoinLink.parse(url.absoluteString) != nil
     }
 }
 
