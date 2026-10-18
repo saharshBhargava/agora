@@ -495,3 +495,104 @@ passed the focused render check; standard and accessibility-size Home captures w
 using temporary local fixtures, which were then removed. Logs: `/tmp/agora-home-carousel-tests.log` and
 `/tmp/agora-home-carousel-render-final.log`; captures: `build/home-carousel/`. No production deployment
 or distributed iOS build is claimed.
+
+## Lists carousels and store grouping — local, October 18, 2026
+
+Lists now reuses Home's circular-image carousel components for inventory, shopping-list items, the watch
+list and suggestions. Shopping lists are grouped by merchant identity (including separate locations), with
+unassigned lists under Any store. Each list retains its own name, remaining count and checklist link;
+empty and fully checked lists remain accessible. New list creation is available directly in the Lists toolbar.
+
+Inventory previews and the inventory list put zero quantities first, then items below their restock levels,
+ordered by quantity relative to that level; unknown quantities come last. This uses recorded stock and
+restock levels, not the run-out forecast API. Existing household selection, refresh, item details, image
+editing in detail screens, wishlist/suggestion destinations and reviewed trip planning remain available.
+No API, persisted-data or seed changes are involved. A rebuilt app is required.
+
+Validation: the isolated simulator build and all **95 selected iOS tests** passed, including restock-order
+and store-grouping checks. The final copy correction passed the focused render test; standard and
+accessibility-size captures were inspected. Logs: `/tmp/agora-lists-isolated-tests.log` and
+`/tmp/agora-lists-render-final.log`; captures: `build/lists-carousel/`. Validation used
+`/tmp/agora-lists-verification` to exclude concurrent Capture changes that blocked the initial shared
+checkout build. No production deployment or distributed iOS build is claimed.
+
+## Existing inventory image recovery — local, October 18, 2026
+
+Existing active inventory now repairs missing image bindings at worker startup and household inventory
+loads. Empty results older than seven days retry automatically, and startup revisits old search-version
+misses without bypassing the current negative cache. Jobs reuse the suggestions/watch image discovery
+and automatic selection pipeline. Explicit selections, removals, photos and successful images remain
+preserved. Demo backfill repairs missing bindings with labeled sample imagery and makes no web searches.
+
+Visible native thumbnails continue checking after the initial 90-second search window and retry transient
+load failures while the app is active. The shared cache and account/household invalidation still apply.
+
+Validation: **679 backend tests**, Ruff, diff checks and **9 iOS image tests** passed. The simulator image
+render was inspected, and the demo CLI reset passed on a fresh disposable local database. A live online
+probe used an ordinary disposable local account with existing unresolved Barilla spaghetti and PS5 items:
+worker startup queued both, selected Walmart/PlayStation source images automatically, and served authenticated
+image bytes with HTTP 200 without manual searches/selections. Logs: `/tmp/agora-inventory-images-backend.log`,
+`/tmp/agora-inventory-images-ios.log`, `/tmp/agora-inventory-image-live.log`; simulator results:
+`/tmp/agora-inventory-images.xcresult`. No migration, production deployment or distributed app build is claimed.
+
+## Simplified scan and review flow — local, October 18, 2026
+
+The home carousel change was committed as `0b85b3b` and pushed to `origin/feat/home-carousels` before
+scan work began. That branch retains the reconciled native dependencies described above; it was not
+merged into main or deployed.
+
+Native Capture now emphasizes Scan items, Choose photos and Scan a shelf, with Files under Import and
+short capture guidance. Camera photos/videos and supported imports share automatic recognition followed
+by explicit review. Multiple imports are queued for individual review; PDFs remain view-only. Recent scans
+replaces the main media grid and derives review/save status from existing account-bound local metadata.
+Review uses compact selection/quantity rows, expandable details, uncertain-item labels and a persistent
+Add N items button. Success offers View inventory, Scan more or Review next scan. Store input stays usable
+while identification runs; existing observed-total behavior, model/demo disclosures and idempotent save
+recovery are preserved. No new stored-data format, backend endpoint, migration or seed is introduced.
+
+Validation: all **119 selected simulator tests passed**, covering capture, inventory, authentication,
+images, shopping, watches and trips. The final label/copy adjustment passed **9 focused tests**. Standard
+landing/review/success captures and accessibility-size landing/review captures were inspected, including
+scrolled item rows.
+Logs: `/tmp/agora-scan-validation-isolated.log`, `/tmp/agora-scan-final-render.log`; captures:
+`build/scan-flow/`. An earlier run was interrupted before test startup by concurrent use of the shared
+simulator; validation was completed on a separate simulator. Physical camera/microphone hardware and
+live credentialed model calls were not exercised. The scan changes are local source, not a distributed app.
+
+
+## Existing inventory image recovery deployed — October 18, 2026
+
+PR [#39](https://github.com/saharshBhargava/agora/pull/39) merged as
+`343f183e406dd28db6390e3e6893883254e2b41a`. PR PostgreSQL/TimescaleDB suites, Docker build and
+upgrade/rollback rehearsal passed, followed by green main CI and the
+[managed deployment](https://github.com/saharshBhargava/agora/actions/runs/39133567814). Read-only public
+readiness verified that exact running commit, TimescaleDB enabled, migration 0019 and no pending migrations.
+The isolated release checkout passed all 679 backend tests and Ruff.
+
+Missing-image repair, automatic retries for old inventory search misses, and demo-image backfill are live.
+No production reset or test writes were performed. The native continued-polling improvement remains local
+and needs an app rebuild; this release does not distribute an iOS build. Earlier local-only backend notes
+for this feature are superseded by this deployment verification.
+
+
+## Automatic inventory images at app startup — local, October 18, 2026
+
+The native app now preloads image descriptors and bytes for the full returned household inventory as
+soon as inventory loads, including offscreen and archived items. Four concurrent one-read tasks prevent
+pending searches from holding up other items. Foreground passes revisit pending work every 15 seconds;
+ready results share the existing cache with visible thumbnails. New and renamed items join automatically.
+Account/household changes invalidate old work and clear private images. The deployed backend continues
+to own online discovery and automatic selection; no additional backend release or migration is needed.
+
+Image editor sheets, thumbnail tap/long-press editing, Change image buttons, alternative selection,
+photo upload, removal and manual search controls have been removed from the native app. It settles on
+the automatic result. Existing stored overrides and the older-client selection API remain compatible.
+
+Validation on a checkout reconciled with main through PR #40: 42 inventory/shopping/image simulator
+tests passed, followed by all 11 image tests after extending startup coverage. The startup test mounted
+only the session synchronizer (no thumbnails), fetched all 12 images including an archived item, picked
+up an initially pending offscreen image automatically after 15 seconds, loaded a newly added item, and
+cleared images on sign-out. Pending-first batch and authenticated transport regressions also passed.
+Logs: `/tmp/agora-startup-images-tests.log`, `/tmp/agora-startup-images-final.log`; results:
+`/tmp/agora-startup-images-final.xcresult`. The tested source was applied back to the shared checkout
+and compared byte-for-byte. A rebuilt iOS app is required; no app distribution is claimed.

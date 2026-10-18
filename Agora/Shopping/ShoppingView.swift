@@ -149,7 +149,6 @@ struct ShoppingView: View {
             HStack {
                 if item.editable {
                     Button("Edit") { editing = item }
-                    ChangeItemImageButton(ref: .init(kind: "wishlist", id: item.id, name: item.title, category: item.category))
                 }
                 Spacer()
                 if item.source == "agent" {

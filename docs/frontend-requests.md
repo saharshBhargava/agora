@@ -483,8 +483,9 @@ server settings; foreground model credentials remain on the phone. Demo prices r
 Inventory, Home, wishlist/suggestions, shopping lists and watch/offer views use shared thumbnails. The app
 shows the server's selected image for exact and best-match results. When an older server only supplies
 usable alternatives, it displays a default immediately instead of leaving the main thumbnail empty.
-Explicit removal remains respected. **Change image** offers optional alternatives, a private household
-photo, removal and search refinements. Users are never required to choose a version before seeing an image.
+The app settles on the automatic image. Image chooser sheets, tap/long-press editing, photo upload,
+removal, alternative-selection and search-refinement controls have been removed. Previously saved
+choices remain respected by the compatible backend.
 
 The backend automatically selects from new searches and cached results and adopts existing candidate-only
 items at startup. It preserves source evidence and every manual override. Inventory-linked items inherit
@@ -492,6 +493,14 @@ the selected image. Source URLs and sanitized image bytes are saved; the app loa
 See [the contract](api/item-images.md) and [current deployment state](current-state.md). Native source passed
 eight focused simulator tests, including the alternatives-only main-thumbnail regression; rebuilding the
 app is required to distribute these client changes.
+
+Existing-inventory recovery now repairs missing bindings, retries expired empty results, and revisits old
+search-version misses at startup. Visible thumbnails continue checking beyond the first 90-second batch
+while the app is active, including automatic retries after connection failures. The local change passed
+nine image simulator tests; see the current-state record for backend and live-search verification.
+The subsequent native startup change preloads the entire household inventory before thumbnails appear,
+using four concurrent reads per pass and revisiting pending work while active. New and renamed items
+join automatically; account and household changes stop prior work and clear private imagery.
 
 ## Shared-browser price fallback — implemented locally
 

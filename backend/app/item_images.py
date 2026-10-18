@@ -168,6 +168,39 @@ def asset_info(asset):
     }
 
 
+def lookup_key(context):
+    return hashlib.sha256(
+        json.dumps(
+            [VERIFICATION_VERSION, SEARCH_VERSION, context["identity"].model_dump(), context["known_url"]],
+            ensure_ascii=True,
+        ).encode()
+    ).hexdigest()
+
+
+async def ensure_inventory_images(conn, household_id=None):
+    """Repair older inventory without changing item data or explicit image choices."""
+    created = await conn.fetch(
+        """INSERT INTO item_images(kind,item_id,household_id,inventory_id)
+        SELECT 'inventory',item.id,item.household_id,item.id FROM inventory_items item
+        WHERE item.status='active' AND ($1::uuid IS NULL OR item.household_id=$1)
+        AND NOT EXISTS(SELECT 1 FROM item_images i WHERE i.kind='inventory' AND i.item_id=item.id)
+        ON CONFLICT(kind,item_id) DO NOTHING RETURNING item_id,household_id,version""", household_id
+    )
+    expired = await conn.fetch(
+        """UPDATE item_images i SET status='queued',version=version+1,last_error=NULL,updated_at=now()
+        FROM inventory_items item WHERE i.kind='inventory' AND i.item_id=item.id AND item.status='active'
+        AND ($1::uuid IS NULL OR i.household_id=$1) AND NOT i.user_selected
+        AND i.status='fallback' AND i.asset_id IS NULL AND cardinality(i.candidates)=0
+        AND i.updated_at < now()-interval '7 days'
+        RETURNING i.item_id,i.household_id,i.version""", household_id
+    )
+    for row in [*created, *expired]:
+        await enqueue(conn, "image.resolve", {
+            "kind": "inventory", "item_id": str(row["item_id"]), "version": row["version"]
+        }, max_attempts=2)
+        await notify(conn, row["household_id"], "image.updated", row["item_id"])
+
+
 class ItemImageService:
     def __init__(self, db, provider, fetcher=None):
         self.db, self.provider = db, provider
@@ -179,6 +212,28 @@ class ItemImageService:
         # Repair queued bindings at boot without rerunning successful or user-selected images.
         async with self.db.system() as conn:
             await conn.execute("SELECT pg_advisory_xact_lock(hashtext('images.start'))")
+            await ensure_inventory_images(conn)
+            # Older search versions can have terminal empty results, with no candidates to adopt.
+            # Revisit them once using the current search, respecting its negative cache and demo isolation.
+            unresolved = await conn.fetch("""SELECT i.item_id,i.version FROM item_images i
+                JOIN inventory_items item ON item.id=i.item_id AND i.kind='inventory'
+                WHERE item.status='active' AND i.status='fallback' AND i.asset_id IS NULL
+                AND NOT i.user_selected AND cardinality(i.candidates)=0
+                AND NOT EXISTS(SELECT 1 FROM household_members m JOIN users u ON u.id=m.user_id
+                    WHERE m.household_id=i.household_id AND u.is_demo)""")
+            for row in unresolved:
+                context = await item_context(conn, "inventory", row["item_id"])
+                recent = await conn.fetchval(
+                    "SELECT 1 FROM item_image_lookups WHERE identity_key=$1 AND retry_after > now()",
+                    lookup_key(context),
+                )
+                if not recent:
+                    household = await conn.fetchval("""UPDATE item_images SET status='queued',version=version+1,
+                        last_error=NULL,updated_at=now() WHERE kind='inventory' AND item_id=$1
+                        AND version=$2 AND NOT user_selected AND status='fallback' RETURNING household_id""",
+                        row["item_id"], row["version"])
+                    if household:
+                        await notify(conn, household, "image.updated", row["item_id"])
             # Earlier releases saved useful candidates but waited for a manual choice.
             # Adopt them without repeating web research; preserve every explicit user override.
             pending = await conn.fetch("""SELECT kind,item_id,version,candidates FROM item_images
@@ -218,12 +273,7 @@ class ItemImageService:
                 ON u.id=m.user_id WHERE m.household_id=$1 AND u.is_demo)""",
                 context["household_id"],
             )
-            identity = hashlib.sha256(
-                json.dumps(
-                    [VERIFICATION_VERSION, SEARCH_VERSION, context["identity"].model_dump(), context["known_url"]],
-                    ensure_ascii=True,
-                ).encode()
-            ).hexdigest()
+            identity = lookup_key(context)
             cached = await conn.fetch(
                 """SELECT id FROM item_image_assets WHERE identity_key=$1
                 AND household_id IS NULL AND created_at > $2
@@ -353,6 +403,7 @@ async def seed_demo_images(db, user_id):
 
     async with db.system() as conn:
         household = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id=$1", user_id)
+        await ensure_inventory_images(conn, household)
         rows = await conn.fetch(
             """SELECT i.* FROM item_images i WHERE household_id=$1
             AND NOT user_selected AND asset_id IS NULL""",

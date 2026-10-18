@@ -210,11 +210,31 @@ private struct WatchBrowserReviewNavigation: View {
     }
 }
 
-private struct ItemImageSessionSync: View {
-    let store: ItemImageStore
+struct ItemImageSessionSync: View {
+    @ObservedObject var store: ItemImageStore
     @ObservedObject var inventory: InventoryStore
+    @Environment(\.scenePhase) private var phase
+
+    private struct LoadKey: Hashable {
+        let context: String
+        let references: [ItemImageReference]
+        let active: Bool
+    }
+
     var body: some View {
+        let references = inventory.items.map {
+            ItemImageReference(kind: "inventory", id: $0.id, name: $0.displayName, category: $0.category)
+        }
         Color.clear.frame(width: 0, height: 0)
-            .task(id: inventory.context) { store.reset(context: inventory.context.uuidString) }
+            .onChange(of: inventory.context, initial: true) { _, context in
+                store.reset(context: context.uuidString)
+            }
+            .task(id: LoadKey(context: store.context, references: references, active: phase == .active)) {
+                guard phase == .active, !references.isEmpty else { return }
+                while !Task.isCancelled {
+                    await store.prefetch(references)
+                    do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                }
+            }
     }
 }

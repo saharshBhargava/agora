@@ -203,3 +203,23 @@ items. Reads and saves use the shared authenticated stores, and confirmed result
 An ambiguous list/destination is clarified; existing items are reported without changing quantities.
 The tools, retry/error behavior and built-in demo examples are documented in
 [chat additions](api/chat-additions.md). No list creation or browser/photo extraction is included.
+
+## Capture and scan review — native source, October 18, 2026
+
+Capture now starts with **Scan items**, **Choose photos**, an Import menu and **Scan a shelf** for video.
+The native camera retains its Use Photo / Retake confirmation. Camera captures and imported photos/videos
+enter the same automatic identification and explicit inventory-review flow. Multiple imports are reviewed
+one at a time with Review next scan or Skip to next scan; closing the batch leaves the media in Recent scans.
+PDFs remain viewable documents and are not sent for inventory recognition.
+
+Review keeps the captured media, progress and model/media disclosures visible. Item rows expose selection
+and quantity, with name/category/unit/existing-item matching under Edit details. Low-confidence items show
+Check this item. Store entry remains optional and usable during identification; date and storage location
+are expandable. A persistent Add N items to inventory button retains the existing metadata-only, idempotent
+save. Unconfirmed saves show Check save status; successful saves offer View inventory and Scan more.
+Updating an existing inventory item records the observed total rather than incrementing its quantity.
+
+Recent scans shows Needs review, Check save status or Added to inventory from existing local recognition
+records. Saved reviews remain bound to their original account and household. Media/captions/sharing remain
+available from each scan's menu. Unsaved recognition edits are not persisted by closing review; reopening
+identifies the original media again. No API, schema or demo-data changes are needed for this UI flow.
