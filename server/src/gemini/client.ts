@@ -25,12 +25,19 @@ export const geminiModels = (): string[] =>
     .map((m) => m.trim())
     .filter(Boolean);
 
+/** Fast models first, for short text-only jobs like reading a search page. */
+export const geminiFastModels = (): string[] =>
+  (process.env.GEMINI_FAST_MODEL || 'gemini-3.5-flash-lite,gemini-3.6-flash,gemini-3.5-flash')
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean);
+
 /** Statuses that mean "this model can't answer now; the next one might". */
 const FALL_THROUGH = new Set([404, 429, 500, 503]);
 
 export async function generate(
   body: object,
-  opts: { timeoutMs?: number; fetchImpl?: typeof fetch; apiKey?: string } = {},
+  opts: { timeoutMs?: number; fetchImpl?: typeof fetch; apiKey?: string; models?: string[] } = {},
 ): Promise<GeminiResponse> {
   const key = opts.apiKey ?? process.env.GEMINI_API_KEY;
   if (!key) throw new GeminiError('http', 'GEMINI_API_KEY is not set');
@@ -40,7 +47,7 @@ export async function generate(
   const timer = setTimeout(() => ctl.abort(), opts.timeoutMs ?? 30_000);
   let last: GeminiError = new GeminiError('http', 'no Gemini model configured');
   try {
-    for (const model of geminiModels()) {
+    for (const model of opts.models ?? geminiModels()) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       const res = await f(url, {
         method: 'POST',

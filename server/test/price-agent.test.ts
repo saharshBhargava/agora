@@ -249,3 +249,15 @@ describe('agent-step', () => {
     expect((await step(a, 'missing', [])).statusCode).toBe(404);
   });
 });
+
+describe('AgentPrice cache', () => {
+  it('prices the same product again instantly after a worker answered', async () => {
+    const a = new AgentPrice({ timeoutMs: 1000 });
+    const first = a.lookup('Coca-Cola Zero Sugar', 'QFC');
+    const id = a.open()[0].id;
+    expect(a.resolve(id, { cents: 349, url: 'https://www.qfc.com/search?query=x' })).toBe(true);
+    expect((await first)?.cents).toBe(349);
+    expect(await a.lookup('coca-cola  zero sugar', 'qfc')).toEqual({ cents: 349, sourceUrl: 'https://www.qfc.com/search?query=x' });
+    expect(a.open()).toEqual([]);
+  });
+});

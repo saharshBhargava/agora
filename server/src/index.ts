@@ -13,7 +13,7 @@ import { identifyChip, identifyPipeline, type PipelineDeps } from './pipeline.js
 import type { AgentPrice } from './price/agent.js';
 import { getPriceSetup, type PriceProvider } from './price/provider.js';
 import { agentFunctionDeclarations, AGENT_SYSTEM } from './price/agent-tools.js';
-import { generate, type GeminiResponse } from './gemini/client.js';
+import { geminiFastModels, generate, type GeminiResponse } from './gemini/client.js';
 import { firstJSONObject, responseText } from './gemini/json.js';
 import { createFrameRelay, shouldSendFrame } from './relay.js';
 import { parseClientMsg } from './protocol.js';
@@ -260,7 +260,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
                 },
               },
             },
-            { timeoutMs: 30_000, fetchImpl: deps.fetchImpl },
+            { timeoutMs: 30_000, fetchImpl: deps.fetchImpl, models: geminiFastModels() },
           );
           const json = firstJSONObject(responseText(r));
           out = json ? (JSON.parse(json) as Record<string, unknown>) : {};

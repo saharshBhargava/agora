@@ -8,6 +8,7 @@ type Pending = { req: PriceRequest; done: (r: { cents: number; sourceUrl: string
 /** Queues price lookups for a browser worker (the shopper's phone) to answer. */
 export class AgentPrice implements PriceProvider {
   private readonly pending = new Map<string, Pending>();
+  private readonly cache = new Map<string, { cents: number; sourceUrl: string; at: number }>();
   private readonly timeoutMs: number;
 
   constructor(opts: { timeoutMs?: number } = {}) {
@@ -15,6 +16,9 @@ export class AgentPrice implements PriceProvider {
   }
 
   lookup(name: string, store: string): Promise<{ cents: number; sourceUrl: string } | null> {
+    // The same product seen again (another unit, a re-detection) prices instantly.
+    const hit = this.cache.get(cacheKey(name, store));
+    if (hit && Date.now() - hit.at < CACHE_MS) return Promise.resolve({ cents: hit.cents, sourceUrl: hit.sourceUrl });
     return new Promise((done) => {
       const req: PriceRequest = { id: randomUUID(), name, store, createdAt: Date.now() };
       const timer = setTimeout(() => {
@@ -39,7 +43,14 @@ export class AgentPrice implements PriceProvider {
     if (!p) return false;
     clearTimeout(p.timer);
     this.pending.delete(id);
+    this.cache.set(cacheKey(p.req.name, p.req.store), { cents: r.cents, sourceUrl: r.url, at: Date.now() });
     p.done({ cents: r.cents, sourceUrl: r.url });
     return true;
   }
 }
+
+/** How long a found price is reused for the same product at the same store. */
+const CACHE_MS = 30 * 60 * 1000;
+
+const cacheKey = (name: string, store: string): string =>
+  `${store.trim().toLowerCase()}|${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`;
