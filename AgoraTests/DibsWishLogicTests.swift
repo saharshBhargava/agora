@@ -141,6 +141,16 @@ final class DibsWishPicksAPITests: XCTestCase {
         XCTAssertNil(req.body)
     }
 
+    func testSendsTheHouseholdTokenOnlyWhenGiven() async throws {
+        StubProtocol.reply(200, #"{"list":null,"suggestions":[]}"#)
+        _ = try await api.wishPicks(runId: "r1", personId: "p1", householdToken: "tok-123")
+        XCTAssertEqual(StubProtocol.requests.last?.household, "tok-123")
+        _ = try await api.wishPicks(runId: "r1", personId: "p1")
+        XCTAssertNil(StubProtocol.requests.last?.household)
+        _ = try await api.wishPicks(runId: "r1", personId: "p1", householdToken: "")
+        XCTAssertNil(StubProtocol.requests.last?.household)
+    }
+
     func testNoListDecodesAsNil() async throws {
         StubProtocol.reply(200, #"{"list":null,"suggestions":[]}"#)
         let picks = try await api.wishPicks(runId: "r1", personId: "p1")

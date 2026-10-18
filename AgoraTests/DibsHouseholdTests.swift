@@ -206,3 +206,54 @@ final class DibsHouseholdRouteTests: XCTestCase {
         XCTAssertNil(AppModel.firstName(nil))
     }
 }
+
+/// The household token rides on "+ Wish" only to the build's own Dibs server.
+@MainActor
+final class DibsHouseholdTokenTests: XCTestCase {
+    private func model(saved: String?, bundled: String?) -> AppModel {
+        let defaults = UserDefaults(suiteName: "household-token-\(UUID().uuidString)")!
+        if let saved { defaults.set(saved, forKey: ServerConfig.serverKey) }
+        return AppModel(defaults: defaults, bundledServer: bundled.flatMap(URL.init(string:)))
+    }
+
+    func testTheBuiltInServerGetsTheToken() async {
+        let m = model(saved: nil, bundled: "https://dibs.example.com")
+        m.householdToken = { "tok" }
+        let token = await m.householdTokenForWishPicks()
+        XCTAssertEqual(token, "tok")
+    }
+
+    func testAnotherServerNeverGetsTheTokenOrAsksForIt() async {
+        let m = model(saved: "https://other.example.com", bundled: "https://dibs.example.com")
+        var asked = false
+        m.householdToken = { asked = true; return "tok" }
+        let token = await m.householdTokenForWishPicks()
+        XCTAssertNil(token)
+        XCTAssertFalse(asked)
+    }
+
+    func testNoBuiltInServerMeansNoToken() async {
+        let m = model(saved: nil, bundled: nil)
+        m.householdToken = { "tok" }
+        let token = await m.householdTokenForWishPicks()
+        XCTAssertNil(token)
+    }
+
+    func testSignedOutSendsNothing() async {
+        let m = model(saved: nil, bundled: "https://dibs.example.com")
+        let token = await m.householdTokenForWishPicks()
+        XCTAssertNil(token)
+        m.householdToken = { "" }
+        let empty = await m.householdTokenForWishPicks()
+        XCTAssertNil(empty)
+    }
+
+    func testSameServerIgnoresATrailingSlashButNothingElse() throws {
+        let built = try XCTUnwrap(URL(string: "https://dibs.example.com"))
+        XCTAssertTrue(ServerConfig.isSameServer(try XCTUnwrap(URL(string: "https://dibs.example.com/")), built))
+        XCTAssertFalse(ServerConfig.isSameServer(try XCTUnwrap(URL(string: "https://dibs.example.com.evil.io")), built))
+        XCTAssertFalse(ServerConfig.isSameServer(try XCTUnwrap(URL(string: "http://dibs.example.com")), built))
+        XCTAssertFalse(ServerConfig.isSameServer(try XCTUnwrap(URL(string: "https://dibs.example.com:8443")), built))
+        XCTAssertFalse(ServerConfig.isSameServer(built, nil))
+    }
+}

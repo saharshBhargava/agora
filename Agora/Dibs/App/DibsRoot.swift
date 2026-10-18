@@ -20,8 +20,15 @@ struct DibsRootView: View {
     /// `model` is for tests; the app makes its own.
     @MainActor init(workspace: ChatWorkspace, model: AppModel? = nil) {
         self.workspace = workspace
-        _model = State(initialValue: model ?? AppModel())
-        _calendar = ObservedObject(wrappedValue: workspace.calendar)
+        let appModel = model ?? AppModel()
+        let calendar = workspace.calendar
+        // "+ Wish" reads the signed-in person's own household with their token (AppModel decides which server may see it).
+        appModel.householdToken = { [weak calendar] in
+            guard let calendar, calendar.connected, let id = calendar.accountID else { return nil }
+            return try? await calendar.apiToken(for: id)
+        }
+        _model = State(initialValue: appModel)
+        _calendar = ObservedObject(wrappedValue: calendar)
     }
 
     var body: some View {

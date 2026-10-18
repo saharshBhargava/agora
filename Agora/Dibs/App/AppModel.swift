@@ -21,6 +21,8 @@ final class AppModel {
     let defaults: UserDefaults
     /// The server baked into the build (`DibsServerURL` in Info.plist, from `DIBS_SERVER_URL`).
     let bundledServer: URL?
+    /// The signed-in household account's team-API token, set by the app root; nil when signed out.
+    @ObservationIgnored var householdToken: @MainActor () async -> String? = { nil }
     @ObservationIgnored private var launched = false
     /// Bumped on every navigation the person asked for, so a slow launch resume never overrides it.
     @ObservationIgnored private var intent = 0
@@ -218,5 +220,15 @@ final class AppModel {
         api = DibsAPI(base: url, keys: RunKeys(defaults: defaults))
         store = RunStore(api: api)
         path = []
+    }
+}
+
+extension AppModel {
+    /// The household token for the "+ Wish" page, only while this phone talks to the build's own Dibs server: a
+    /// server adopted from a join link or typed in Settings never receives it (nor is the account asked for one).
+    func householdTokenForWishPicks() async -> String? {
+        guard ServerConfig.isSameServer(server, bundledServer) else { return nil }
+        guard let token = await householdToken(), !token.isEmpty else { return nil }
+        return token
     }
 }

@@ -88,7 +88,10 @@ struct ClaimView: View {
                     return ClaimLogic.notice((error as? LocalizedError)?.errorDescription ?? "Could not add the wish")
                 }
             },
-            wishPicks: { try? await api.wishPicks(runId: ref.runId, personId: ref.personId) }
+            wishPicks: { [model] in
+                let token = await model.householdTokenForWishPicks()
+                return try? await api.wishPicks(runId: ref.runId, personId: ref.personId, householdToken: token)
+            }
         )
     }
 

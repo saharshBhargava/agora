@@ -37,8 +37,11 @@ extension DibsAPI {
     private struct NoBody: Encodable {}
     private struct ErrorBody: Decodable { let error: String? }
 
-    public func wishPicks(runId: String, personId: String) async throws -> WishPicks {
-        let req = try request("GET", "\(Self.runPath(runId))/wish-picks?personId=\(Self.encode(personId))", body: Optional<NoBody>.none)
+    /// `householdToken` is the signed-in household account's team-API token, so the server reads that household's
+    /// lists and suggestions. Callers pass it only for the build's own server (`AppModel.householdTokenForWishPicks`).
+    public func wishPicks(runId: String, personId: String, householdToken: String? = nil) async throws -> WishPicks {
+        var req = try request("GET", "\(Self.runPath(runId))/wish-picks?personId=\(Self.encode(personId))", body: Optional<NoBody>.none)
+        if let householdToken, !householdToken.isEmpty { req.setValue(householdToken, forHTTPHeaderField: "X-Household-Token") }
         let data: Data
         let response: URLResponse
         do {

@@ -11,6 +11,8 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
         let timeout: TimeInterval
         /// The `x-dibs-key` header: this phone's secret for the run.
         var key: String? = nil
+        /// The `X-Household-Token` header: the signed-in household account's team-API token.
+        var household: String? = nil
     }
 
     struct Reply: Sendable {
@@ -37,7 +39,8 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
             Self._requests.append(Recorded(method: request.httpMethod ?? "GET", url: request.url!, body: body,
                                            contentType: request.value(forHTTPHeaderField: "content-type"),
                                            timeout: request.timeoutInterval,
-                                           key: request.value(forHTTPHeaderField: "x-dibs-key")))
+                                           key: request.value(forHTTPHeaderField: "x-dibs-key"),
+                                           household: request.value(forHTTPHeaderField: "X-Household-Token")))
             return Self._reply
         }
         if let error = reply.error {

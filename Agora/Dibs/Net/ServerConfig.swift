@@ -31,6 +31,18 @@ public enum ServerConfig {
         (bundle.object(forInfoDictionaryKey: infoPlistKey) as? String).flatMap(validate)
     }
 
+    /// Whether `server` is the build's own Dibs server: same scheme, host, port and path (a trailing "/" aside).
+    /// Only that server may receive the household account's token.
+    public static func isSameServer(_ server: URL, _ bundled: URL?) -> Bool {
+        guard let bundled else { return false }
+        func normalized(_ url: URL) -> String {
+            var text = url.absoluteString.lowercased()
+            while text.hasSuffix("/") { text.removeLast() }
+            return text
+        }
+        return normalized(server) == normalized(bundled)
+    }
+
     /// The saved override, else the bundled URL, else localhost.
     public static func current(defaults: UserDefaults = .standard, bundle: Bundle = .main) -> URL {
         if let saved = defaults.string(forKey: serverKey), let url = validate(saved) { return url }
