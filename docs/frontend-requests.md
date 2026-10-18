@@ -2,6 +2,7 @@
 
 Features the backend already supports and that are waiting for a UI. Each section links to its API contract.
 Add new sections at the end.
+Resuming older work: read the [PR integration handoff](pr-handoff.md) and sync `origin/main` first.
 
 ---
 
@@ -165,6 +166,129 @@ Send `PATCH /v1/wishlist/{id}` with only the fields that changed.
 
 Google sign-in, Calendar and Gemini chat still need internet, so this only covers inventory, scans (with replay
 fixtures), merchants and the wishlist.
+
+---
+
+## Requested frontend features: agent approvals, mandates and kill switch
+
+**Backend status:** done. **API contract:** [docs/api/agent-commerce.md](api/agent-commerce.md). **For:** iOS
+(desktop can follow the same layout).
+
+The agent now asks the backend before it spends money or acts for the user. The backend answers allow, needs
+approval or deny, and always says why in plain language. The user needs four things: a sheet to approve or
+reject requests, a way to grant and revoke spending authority (mandates), a view of spend against budgets,
+and a pause button that stops everything at once.
+
+### 1. Approval sheet
+
+Shown when an intent comes back `decision: "needs_approval"` (the agent is waiting), and from an inbox
+loaded with `GET /v1/agent/intents?status=proposed`.
+
+- **Header:** `title`, the amount (`amount_cents` as currency) and `merchant_name`. Add a small "Agora
+  checkout" label when `execution == "agora"`, since the server charges on approval.
+- **Why the agent wants this:** `rationale` as body text.
+- **What it looked at:** `evidence` as a short list, with an icon per `kind` (`inventory_low`,
+  `runout_forecast`, `purchase_history`, `wishlist`, `price`, `product_page`, `calendar`, `other`) and the
+  `detail` text.
+- **Why it's asking you:** `decision_reasons`, **verbatim and in order**. The first reason is always the
+  main one, so give it the most weight. Don't rewrite these strings: they're written for users, and the audit
+  trail refers to them. Use `reason_codes` only for styling, e.g. a warning tint for `over_budget`,
+  `over_txn_cap`, `over_period_cap`, `duplicate_recent` and `duplicate_unknown`.
+- If `payload.url` is set, add a "View product page" link that opens in the in-app browser.
+- **Buttons:**
+  - **Approve** calls `POST /v1/agent/intents/{id}/approve`. For an Agora checkout the response is already
+    `succeeded` (or `failed` with an `error_code`), so show that result instead of "Approved".
+  - **Reject** calls `POST /v1/agent/intents/{id}/reject` with an optional `reason_code` from a short picker:
+    Too expensive (`too_expensive`), Don't need it (`not_needed`), Wrong item (`wrong_item`), Wrong store
+    (`wrong_merchant`), Other (`other`).
+- Show `approval_expires_at` as "Expires in 23 h". After it passes, hide Approve: the server returns
+  `409 approval_expired`.
+- When `mine` is false (another household member's agent), show the sheet read-only, e.g. "Waiting for
+  Sam". Actions would return `403 not_your_intent`.
+- For `decision: "deny"`, don't show a sheet. Show a one-line notice with the first reason, e.g. "Blocked:
+  Your agent already asked to buy 3 things in the last hour…".
+
+### 2. Agent activity
+
+A list from `GET /v1/agent/intents`, newest first, for a "what has my agent done" screen.
+
+- Each row: `title`, amount, and a status chip: `proposed` "Waiting for you", `approved` "Approved",
+  `executing` "In progress", `succeeded` "Done", `failed` "Failed", `outcome_unknown` "Check this",
+  `rejected` "Rejected" (or "Blocked" when `decided_by == "policy"`), `cancelled` "Cancelled".
+- Show who decided: `decided_by` `policy` is "Allowed by your mandate" or "Blocked by your settings",
+  `user` is "You approved" or "You rejected", `kill_switch` is "Cancelled by pause".
+- Highlight `outcome_unknown` rows: "This order may or may not have gone through. Check the store before
+  buying again."
+- Tapping a row opens the approval sheet layout, read-only.
+
+### 3. Mandate editor
+
+Settings → Agent → Spending mandates. Load `GET /v1/agent/mandates`, with a "Show revoked and expired"
+toggle for `include_inactive=true`.
+
+- Each card shows `label`, the scope ("Ballard Market · dairy, produce", or "Any store · any category"), the
+  limits ("Up to $50 per purchase · $150 per week"), "Asks above $30" when `require_confirm_above_cents` is
+  set, and the expiry ("Expires Nov 17"). Add a progress bar of `spent_this_period_cents` against
+  `max_per_period_cents` for the current `period`.
+- Swipe or tap to revoke: `DELETE /v1/agent/mandates/{id}`.
+- **New mandate** form (`POST /v1/agent/mandates`):
+
+| Field | Control | Notes |
+|---|---|---|
+| Name | Text field | Required, 60 characters max |
+| Stores | Multi-select from `GET /v1/merchants?q=` | Optional. None means any store |
+| Categories | Chips | Optional. None means any category |
+| Per purchase | Currency field | Required. Send integer cents |
+| Per period | Currency field + day/week/month picker | Optional. At least the per-purchase limit |
+| Ask me above | Currency field | Optional |
+| Expires | Picker: 7 days, 30 days, 90 days, 1 year | Send `expires_in_days` |
+
+- Mandates only apply at the "Buy within mandate" autonomy level. If the user's level is lower, show a note
+  under the list ("Your agent asks before every purchase. Switch to Buy within mandate to use these.") with a
+  shortcut to the autonomy setting (`PATCH /v1/me/settings`, `autonomy_level`).
+
+### 4. Spend and budget view
+
+- Load `GET /v1/spend?period=month&group=category`, with segmented controls for week/month and
+  category/store (`group=merchant`). Show `total_cents` and a bar per entry in `groups`.
+- Budgets come back in the same response (`budgets`) and from `GET /v1/budgets`. Give each a progress bar:
+  `spent_cents`, plus `pending_cents` drawn lighter ("$8.98 pending"), against `limit_cents`. When
+  `remaining_cents` is negative, show it as over budget in a warning color.
+- Add or edit budgets with `POST /v1/budgets` (`period`, optional `category`, `limit_cents`) and
+  `PATCH /v1/budgets/{id}` (`limit_cents`, or `status: "archived"` to remove one). On `409 budget_exists`,
+  open the existing budget instead.
+- Caption under the budgets: "Your agent asks before going over a budget."
+
+### 5. Pause button
+
+- A prominent **Pause agent** control on the agent screen, ideally also in the agent chat header. It calls
+  `POST /v1/agent/pause` with no confirmation dialog, because stopping should be instant. Show the result:
+  "Agent paused. 2 mandates revoked, 1 request cancelled." If `in_flight > 0`, add "1 action was already in
+  progress in the browser and may still finish."
+- While `GET /v1/agent/state` returns `paused: true`, show a banner on the agent screens ("Your agent is
+  paused") with a **Resume** button (`POST /v1/agent/resume`). After resuming, remind the user that mandates
+  stay revoked and offer to open the mandate editor.
+- Tapping Pause should also stop the agent's current task on the device (the existing `AgentCoordinator`
+  stop path), since the server can't recall a step that is already running.
+
+### 6. Live refresh
+
+- On `GET /v1/events`, refetch on `agent.updated` (intents and mandates), `budget.updated` and
+  `spend.updated`. A household member's agent can create requests about shared money, so this keeps both
+  phones current.
+- Drive the inbox badge from `pending_approvals` in `GET /v1/agent/state`.
+
+### 7. Errors
+
+- Errors are RFC 7807. Switch on `title` and show `detail`, which is written to be safe to display.
+- A `409 invalid_transition` usually means another device already acted, or the user paused. Refetch the
+  intent and update the sheet.
+
+### Out of scope for this request
+
+- How the agent proposes intents and reports outcomes. That's `AgentCoordinator`'s job; see "Fitting the iOS
+  agent" in the API contract.
+- Adding real payment methods. Agora checkout uses simulated test tokens for now.
 
 ---
 

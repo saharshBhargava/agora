@@ -62,8 +62,8 @@ demo wifi-proof: run the demo scans once with a real provider, then
 
 ## API (P0)
 
-All routes are under `/v1` and need `Authorization: Bearer <token>`. Scan uploads and agent wishlist
-suggestions need an `Idempotency-Key` header. Errors are RFC 7807 `application/problem+json`.
+All routes are under `/v1` and need `Authorization: Bearer <token>`. Scan uploads, agent wishlist
+suggestions and agent intents need an `Idempotency-Key` header. Errors are RFC 7807 `application/problem+json`.
 
 | Route | What it does |
 |---|---|
@@ -81,15 +81,21 @@ suggestions need an `Idempotency-Key` header. Errors are RFC 7807 `application/p
 | `POST /wishlist/suggestions` | Agent suggestion (rationale + confidence, `Idempotency-Key`); refuses recent rejections |
 | `POST /wishlist/{id}/accept\|reject\|snooze\|purchased`, `PATCH`, `DELETE` | Suggestion decisions and item lifecycle |
 | `POST /wishlist/{id}/feedback`, `GET /wishlist/agent-context` | Thumbs up/down; feedback summary for the on-device agent |
+| `POST /agent/intents` | Agent proposes an action; the policy engine returns allow / needs_approval / deny with reasons (`Idempotency-Key`) |
+| `GET /agent/intents`, `POST /agent/intents/{id}/approve\|reject\|outcome` | Approval inbox, user decisions, device-reported outcomes |
+| `GET/POST/DELETE /agent/mandates`, `GET /agent/state` | Spending authority (scope, caps, expiry); autonomy and pause state |
+| `POST /agent/pause`, `POST /agent/resume` | Kill switch: revoke all mandates and cancel pending intents in one transaction |
+| `GET/POST/PATCH /budgets`, `GET /spend?period=month&group=category` | Budgets with headroom; spend by category or store |
 | `GET /forecasts/runouts?within=7d` | What runs out soon, with interval, explanation and suggested store |
 | `GET /lists`, `POST /lists`, `GET\|PATCH /lists/{id}` | Shopping lists (archived, never deleted) |
 | `POST /lists/{id}/items`, `PATCH\|DELETE /lists/{id}/items/{id}` | List lines; agent lines must carry an explanation |
 | `POST /lists/generate` | Per-store lists from upcoming run-outs (`Idempotency-Key`) |
-| `GET /events` | Server-Sent Events: `scan.updated`, `inventory.updated`, `wishlist.updated`, `forecast.updated`, `list.updated` (IDs only; refetch) |
+| `GET /events` | Server-Sent Events: `scan.updated`, `inventory.updated`, `wishlist.updated`, `forecast.updated`, `list.updated`, `agent.updated`, `budget.updated`, `spend.updated` (IDs only; refetch) |
 | `GET /audit`, `GET /audit/verify` | Your audit trail; hash-chain integrity check |
 | `GET /merchants?q=`, `POST /merchants`, `GET /merchants/{id}` | Store search and find-or-create (see [docs/api/purchased-from.md](../docs/api/purchased-from.md)) |
 | `PATCH /scans/{id}`, `PATCH /scans/{id}/detections/{id}` | Change or clear an upload's or one product's store |
 
+Agent intents, mandates, payments and budgets: [docs/api/agent-commerce.md](../docs/api/agent-commerce.md).
 Wishlist contract, lifecycle and scoring: [docs/api/wishlist.md](../docs/api/wishlist.md). Forecasting method and
 lists: [docs/api/forecasts-and-lists.md](../docs/api/forecasts-and-lists.md). UI work waiting on the
 frontend team: [docs/frontend-requests.md](../docs/frontend-requests.md).
@@ -101,7 +107,9 @@ app/main.py           app factory, middleware (request IDs, security headers, bo
 app/auth.py           dev HMAC tokens / OIDC JWKS verification, first-login bootstrap
 app/db.py             pool; scoped() = per-request role + row-level security; audit + notify helpers
 app/pipeline.py       scan job: frames → vision → merge → match → review/auto-commit → media purge
-app/core/             pure logic (merging, quantities, auto-accept rules, wishlist scoring, forecasting), unit-tested
+app/commerce.py       policy inputs, budget usage, order + spend recording for agent purchases
+app/payments.py       PaymentProvider interface; simulated provider (tokens + brand/last4 only)
+app/core/             pure logic (merging, quantities, auto-accept rules, wishlist scoring, forecasting, agent policy), unit-tested
 app/forecasting.py    forecast jobs: refresh after each confirmed scan, nightly fan-out, stored history
 app/vision/           provider contract, output validation, Perceptron / Gemini / replay, cache
 app/timeseries.py     Timescale and plain-Postgres implementations of the same queries

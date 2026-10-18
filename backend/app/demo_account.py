@@ -23,6 +23,7 @@ from uuid import UUID
 import asyncpg
 
 from app.auth import ensure_user
+from app.commerce import record_order
 from app.config import Settings
 from app.core.wishlist import title_key
 from app.db import Database, audit
@@ -50,6 +51,7 @@ async def ensure_demo_account(db: Database, settings: Settings) -> UUID:
         existing = await conn.fetchval("SELECT id FROM users WHERE auth_subject = $1", DEMO_SUBJECT)
     if existing:
         await _forecasts_and_lists(db, existing)
+        await _commerce(db, existing)
         return existing
     user_id = await ensure_user(db, DEMO_SUBJECT, VISIBLE_HANDLE, settings.demo_display_name)
     async with db.system() as conn:
@@ -108,6 +110,50 @@ async def _seed(db: Database, user_id: UUID) -> None:
         await audit(conn, "demo.ready", actor_type="system", household_id=household_id, target_type="user",
                     target_id=user_id)
     await _forecasts_and_lists(db, user_id)
+    await _commerce(db, user_id)
+
+
+async def _commerce(db: Database, user_id: UUID) -> None:
+    """Realistic spending history and approval inbox, exclusively for the designated demo account."""
+    now = datetime.now(UTC)
+    async with db.scoped(user_id) as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo.features'), hashtext($1))", str(user_id))
+        household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
+        if await conn.fetchval("SELECT 1 FROM agent_intents WHERE user_id = $1 LIMIT 1", user_id):
+            return
+        await conn.execute(
+            """INSERT INTO budgets (household_id, period, limit_cents, created_by)
+               VALUES ($1, 'month', 60000, $2) ON CONFLICT DO NOTHING""", household_id, user_id)
+        await conn.execute(
+            """INSERT INTO agent_mandates (user_id, household_id, label, categories, max_per_txn_cents,
+                 max_per_period_cents, require_confirm_above_cents, expires_at)
+               VALUES ($1, $2, 'Weekly groceries', ARRAY['dairy', 'produce', 'pantry'], 2500, 20000, 1500, $3)""",
+            user_id, household_id, now + timedelta(days=21))
+        for days, title, category, amount in ((8, 'Coffee beans', 'pantry', 1499),
+                                               (4, 'Milk and eggs', 'dairy', 1298),
+                                               (2, 'Apples and spinach', 'produce', 1125)):
+            when = now - timedelta(days=days)
+            intent = await conn.fetchrow(
+                """INSERT INTO agent_intents (user_id, household_id, kind, title, item_key, amount_cents,
+                     merchant_name, category, rationale, decision, decision_reasons, reason_codes, status,
+                     decided_by, decided_at, completed_at, created_at, updated_at, idempotency_key)
+                   VALUES ($1, $2, 'purchase', $3, $4, $5, 'PCC Community Markets', $6,
+                     'Restocked after running low.', 'needs_approval', ARRAY['Waiting for your approval.'],
+                     ARRAY['approval_required'], 'succeeded', 'user', $7, $7, $7, $7, $8) RETURNING *""",
+                user_id, household_id, title, title_key(title), amount, category, when, f"history-{days}-{user_id}")
+            order_id, _ = await record_order(conn, intent, amount, provider="simulated", brand="visa", last4="4242",
+                                             placed_at=when)
+            await audit(conn, "order.placed", actor_type="agent", actor_id=user_id, household_id=household_id,
+                        target_type="order", target_id=order_id, meta={"provider": "simulated"})
+        await conn.execute(
+            """INSERT INTO agent_intents (user_id, household_id, kind, title, item_key, amount_cents,
+                 merchant_name, category, rationale, decision, decision_reasons, reason_codes, status,
+                 idempotency_key)
+               VALUES ($1, $2, 'purchase', 'Extra virgin olive oil', 'extra virgin olive oil', 1899,
+                 'PCC Community Markets', 'pantry', 'Your current bottle should run out this week.',
+                 'needs_approval', ARRAY['Please approve this purchase.'], ARRAY['approval_required'],
+                 'proposed', $3)""",
+            user_id, household_id, f"olive-oil-{user_id}")
 
 
 async def _forecasts_and_lists(db: Database, user_id: UUID) -> None:

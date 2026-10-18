@@ -105,6 +105,30 @@ async def test_demo_account_looks_real_and_is_full(demo_app):
     lists = (await client.get("/v1/lists", headers=headers)).json()
     assert lists and lists[0]["items"]
     assert detail["forecast"] and detail["forecast"]["explanation"]
+    assert (await client.get("/v1/agent/mandates", headers=headers)).json()
+    assert (await client.get("/v1/agent/intents?status=proposed", headers=headers)).json()
+    spend = (await client.get("/v1/spend", headers=headers)).json()
+    assert spend["total_cents"] > 0 and spend["budgets"]
+
+
+async def test_hosted_seed_keeps_non_demo_accounts_untouched(demo_app, monkeypatch):
+    from app import seed
+
+    app, _ = demo_app
+    async with app.state.db.system() as conn:
+        before = await conn.fetchval(
+            """SELECT count(*) FROM inventory_observations o JOIN users u ON u.id = o.recorded_by
+               WHERE NOT u.is_demo""")
+        accounts_before = await conn.fetchval("SELECT count(*) FROM users WHERE NOT is_demo")
+    monkeypatch.setattr(seed, "get_settings", lambda: app.state.settings)
+    await seed.main()
+    await seed.main()
+    async with app.state.db.system() as conn:
+        after = await conn.fetchval(
+            """SELECT count(*) FROM inventory_observations o JOIN users u ON u.id = o.recorded_by
+               WHERE NOT u.is_demo""")
+        assert after == before
+        assert await conn.fetchval("SELECT count(*) FROM users WHERE NOT is_demo") == accounts_before
 
 
 async def test_new_features_backfill_existing_demo_without_duplicates(demo_app):

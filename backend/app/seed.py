@@ -90,7 +90,7 @@ async def seed_catalog(db: Database) -> None:
                 "INSERT INTO products (name, brand, category, unit, size_value, size_unit) "
                 "VALUES ($1, $2, $3, $4, $5, $6)",
                 PRODUCTS)
-        if await conn.fetchval("SELECT count(*) FROM merchants") == 0:
+        if await conn.fetchval("SELECT count(*) FROM merchants WHERE household_id IS NULL") == 0:
             await conn.executemany(
                 "INSERT INTO merchants (name, kind, is_small_business, website, lat, lng) "
                 "VALUES ($1, $2, $3, $4, $5, $6)",
@@ -161,9 +161,10 @@ async def main() -> None:
     await db.connect()
     try:
         await seed_catalog(db)
-        for handle, name in DEMO_USERS:
-            created = await seed_history(db, handle, name)
-            print(f"{handle}: {'seeded' if created else 'already had data'}")
+        if settings.env in ("dev", "test"):
+            for handle, name in DEMO_USERS:
+                created = await seed_history(db, handle, name)
+                print(f"{handle}: {'seeded' if created else 'already had data'}")
         from app.demo_account import ensure_demo_account  # imports this module
 
         await ensure_demo_account(db, settings)
