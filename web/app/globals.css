@@ -132,3 +132,9 @@ p { margin: 0; }
 .badge-released { background: var(--released-soft); color: var(--released); }
 
 .error { color: var(--danger); font-size: var(--fs-sm); }
+
+.btn:focus-visible,
+.input:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -1,13 +1,13 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from './api';
 import type { Box, Run } from './types';
 
 export type ClientMsg = Record<string, unknown>;
 
 export type UseRun = {
   run: Run | null;
-  send: (msg: ClientMsg) => void;
+  /** Returns false (and sets error to "Reconnecting…") when the socket is not open. */
+  send: (msg: ClientMsg) => boolean;
   /** Latest relayed camera frame as a data URL (claimers only). */
   lastFrame: string | null;
   lastCallEndsAt: number | null;
@@ -33,6 +33,11 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
+    setRun(null);
+    setLastFrame(null);
+    setLastCallEndsAt(null);
+    setIdentifyingRegion(null);
+    setError(null);
     if (!runId || !personId) return;
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -46,8 +51,7 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
         attempt = 0;
         setConnected(true);
         setError(null);
-        // Re-sync after (re)connect; the server also pushes a run message on connect.
-        api.getRun(runId).then((r) => !closed && setRun(r)).catch(() => {});
+        // The server pushes a {t:'run'} snapshot on every connect, which re-syncs state.
       };
       ws.onmessage = (ev) => {
         let m: { t: string; [k: string]: unknown };
@@ -92,14 +96,24 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
     return () => {
       closed = true;
       if (retry) clearTimeout(retry);
-      wsRef.current?.close();
+      const ws = wsRef.current;
+      if (ws) {
+        ws.onmessage = null;
+        ws.onclose = null;
+        ws.close();
+      }
       wsRef.current = null;
     };
   }, [runId, personId]);
 
   const send = useCallback((msg: ClientMsg) => {
     const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg));
+      return true;
+    }
+    setError('Reconnecting…');
+    return false;
   }, []);
 
   return { run, send, lastFrame, lastCallEndsAt, identifyingRegion, error, connected };
