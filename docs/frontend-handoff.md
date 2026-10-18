@@ -1,21 +1,25 @@
 # Frontend hosting handoff
 
-Deployment walkthrough: [SETUP.md](../SETUP.md). API contracts: [api/](api/).
+Verified state: [current-state.md](current-state.md). Operations/recovery: [deployment.md](deployment.md).
+Deployment recreation: [SETUP.md](../SETUP.md). API contracts: [api/](api/).
 Pending UI work: [frontend-requests.md](frontend-requests.md).
 
 ## Current deployment record
 
 As of October 17, 2026, Render is **Live** at `https://agora-api-yq3m.onrender.com`, backed by Tiger with
 TimescaleDB. The database is initialized through migration `0013`; the single designated demo
-account retains its inventory/history and has commerce data and three private Calendar events. The public health/readiness, docs and
-OpenAPI endpoints returned HTTP 200. Demo password sign-in and authenticated profile, inventory, lists,
+account retains its inventory/history and has commerce data and three private Calendar events (dated
+observations, not fixed counts). Public health/readiness, docs and OpenAPI endpoints returned HTTP 200. Demo password sign-in and authenticated profile, inventory, lists,
 wishlist, forecasts, agent state, mandates, intents, budgets and spend all returned HTTP 200.
 Password-only integration verification also passed for `/v1/demo/profile`, Calendar event listing and
 availability. Anonymous demo-profile access returned 401. No payments were made.
 
 The existing keep-warm workflow is configured with repository variable `AGORA_API_URL`; a manual run
 passed. Native Google sign-in/Calendar consent and a real Gemini recognition still need device testing.
-Normal hosted boot checks pending migrations and ensures demo data idempotently.
+Normal hosted boot checks pending migrations and ensures demo data idempotently. The live auto-deploy
+setting is **After CI Checks Pass**; the recorded release was manually triggered. Automatic end-to-end
+deployment and DB recovery have not been separately rehearsed. Both post-merge backend and selected iOS
+CI checks passed for the live commit; see the current-state record for links and boundaries.
 
 | Field | Actual value |
 |---|---|
@@ -23,6 +27,7 @@ Normal hosted boot checks pending migrations and ensures demo data idempotently.
 | API root | `https://agora-api-yq3m.onrender.com/v1` |
 | Health / database readiness | `/healthz` / `/readyz` at that origin; verified HTTP 200 |
 | Interactive docs / OpenAPI | [Docs](https://agora-api-yq3m.onrender.com/docs) / [OpenAPI](https://agora-api-yq3m.onrender.com/openapi.json) |
+| Repository baseline at audit | `860dc1cda617da0263015dd314d90f6fe8745d66` (#19, docs only); this docs update also advances main without changing app code |
 | Latest verified live commit | `f65cf0eccd2da9661f2d1220e861cbd9ff765997` ([PR #17](https://github.com/saharshBhargava/agora/pull/17)); live password/Calendar check at 8:38 PM PDT, October 17 |
 | First verified live commit | `d6bac9d122ebe902735cfcfccd8f704ffbd115a6`; see Render Events for subsequent deploys |
 | Last successful smoke test | Public health, demo login and authenticated reads: October 17, 2026 |
@@ -78,8 +83,9 @@ iOS bundle ID=dev.agora.browserchat
 ```
 
 These are public identifiers. The backend's `AGORA_GOOGLE_IOS_CLIENT_ID` must equal the app's client ID.
-The native Calendar flow needs no Google client secret or backend redirect URL. Calendar access tokens
-remain on the phone; inventory calls use Google ID tokens. The backend validates them and creates/maps the
+For ordinary accounts, the native Calendar flow needs no Google client secret or backend redirect URL.
+Calendar access tokens remain on the phone; Agora calls use Google ID tokens. The password demo uses its
+Agora session token and private Calendar instead; never send its requests/media to Google as a fallback. The backend validates them and creates/maps the
 Agora account. Call `GET /v1/me` to obtain household IDs rather than hardcoding seeded UUIDs.
 
 ## API integration checklist
@@ -105,7 +111,8 @@ Agora account. Call `GET /v1/me` to obtain household IDs rather than hardcoding 
    authenticated read checks passed, and `AGORA_API_URL` is set with a successful keep-warm run.
 2. Demo: share the Render demo password privately. Rebuild from main and use the password form.
    Google and model-provider setup are optional for testing ordinary accounts.
-3. Optional: add a backend Gemini/Perceptron key in Render for the separate server `/v1/scans` flow.
+3. Optional for ordinary accounts: add a backend Gemini/Perceptron key in Render for the separate
+   server `/v1/scans` flow. Designated demo scans continue using built-in results regardless of these keys.
 4. Update this deployment record when the host or access setup changes. Keep-warm is not guaranteed
    uptime; see SETUP.md for demo preparation.
 5. Send the message above to the frontend team and provide the demo password privately; provide Google test-user access only for ordinary-account testing. Keep secrets in the provider
@@ -116,3 +123,12 @@ Agora account. Call `GET /v1/me` to obtain household IDs rather than hardcoding 
 Provider references: [Render Blueprints](https://render.com/docs/infrastructure-as-code),
 [Render free service limits](https://render.com/docs/free),
 [Google ID token verification](https://developers.google.com/identity/sign-in/ios/backend-auth).
+
+## What frontend access does not grant
+
+The live origin, public client IDs and private demo password are enough for the password demo path after
+rebuilding main. They do not grant Render/Tiger administrative access. The Render workspace is Hobby;
+no additional teammate cloud invitations were configured in this setup. See [deployment access](deployment.md#access-and-remaining-operational-work).
+Do not distribute database credentials, JWT signing secrets or backend provider keys to make the app connect.
+The full wishlist/forecast/list/commerce screens and six-hour refresh remain separate work where marked in
+[frontend requests](frontend-requests.md); the existence of populated API data is not proof of a finished UI.

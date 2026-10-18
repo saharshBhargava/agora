@@ -1,3 +1,8 @@
+# Frontend implementation and remaining requests
+
+Read [current state](current-state.md) before using this backlog. It separates live APIs, implemented UI,
+simulations and unimplemented requirements. Do not treat a requested screen as already shipped.
+
 ## Demo sign-in is implemented
 
 Pull main and rebuild. Welcome has a username/password form: username `demo`, password shared privately
@@ -7,9 +12,9 @@ persisted Agora events. See [the contract](api/demo-integrations.md) and [fronte
 Do not replace this with a mandatory Google gate or send sample-account media to a real model provider.
 Ordinary-account Google/model configuration and existing feature requests below still apply.
 
-# Frontend requests
+## Remaining frontend requests
 
-Feature contracts and frontend integration status. Each section links to its API contract.
+Features the backend already supports and that are waiting for a UI. Each section links to its API contract.
 Add new sections at the end.
 Resuming older work: read the [PR integration handoff](pr-handoff.md) and sync `origin/main` first.
 
@@ -164,7 +169,7 @@ Send `PATCH /v1/wishlist/{id}` with only the fields that changed.
 ## Requested frontend feature: offline demo fallback (iOS, small)
 
 **Why:** if venue internet and hosting both fail, the backend can still run on the demo Mac
-(`uv run python -m app.tools.local_demo`, see SETUP.md, Plan B). Today `AgoraAPIClient` only accepts
+(`uv run python -m app.tools.local_demo`, see SETUP.md, Plan B). The current shared `AgoraClient` only accepts
 `https://` origins, so the app can reach a laptop backend only through a tunnel, which needs internet.
 
 **Request (DEBUG builds only):**
@@ -395,7 +400,8 @@ explains why it thinks so, and turns that into a shopping list per store in one 
 
 ### Out of scope for this request
 
-- Scheduling the trip in Google Calendar (P3; will use the list's `needed_by` as the deadline).
+- Automatic list-to-trip scheduling remains a follow-up (use the list's `needed_by` as the deadline).
+  Standalone Calendar chat tools already exist: private Agora events for demo, native Google for ordinary users.
 - Checkout from a list, and turning ticked lines into purchases/restocks (receipts, P1 follow-up).
 - Price-drop lines (`reason: "price_drop"` is reserved).
 
