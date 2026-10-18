@@ -8,7 +8,8 @@ export type MatchLine = RawReceiptLine & { isTax: boolean };
 export type MatchChip = { id: string; name: string; priceCents: number | null };
 
 /** `cartNames`: names already in the run, so the same product keeps one name across detections. */
-export type IdentifyContext = { runId: string; cartNames?: string[] };
+/** `wishNames`: open wishes; an item that is one of them is named exactly like the wish so it fills it. */
+export type IdentifyContext = { runId: string; cartNames?: string[]; wishNames?: string[] };
 
 export interface VisionProvider {
   /** `context` lets a provider keep per-run state (the stub's drop order). */

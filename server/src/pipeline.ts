@@ -94,10 +94,10 @@ async function identifyLive(
 
   let found;
   try {
-    const cartNames = (store.get(runId)?.chips ?? [])
-      .filter((c) => c.id !== id && c.state !== 'removed' && c.state !== 'identifying' && c.name)
-      .map((c) => c.name);
-    found = await vision.identify(frameBase64, opts.hint, region ?? undefined, { runId, cartNames });
+    const others = (store.get(runId)?.chips ?? []).filter((c) => c.id !== id && c.state !== 'removed' && c.state !== 'identifying' && c.name);
+    const cartNames = others.filter((c) => c.state !== 'wish').map((c) => c.name);
+    const wishNames = others.filter((c) => c.state === 'wish').map((c) => c.name);
+    found = await vision.identify(frameBase64, opts.hint, region ?? undefined, { runId, cartNames, wishNames });
   } catch (e) {
     // "Nothing there" (empty counter, a hand, a merged blob) never leaves an "Identifying…" row behind;
     // other failures (network, rate limits) keep the row so a tap can retry it.

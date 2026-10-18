@@ -97,7 +97,7 @@ describe('identifyPipeline', () => {
     const { run, deps } = setup(spy);
     const ev = await eggs();
     await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
-    expect(seen).toEqual([{ runId: run.id, cartNames: [] }]);
+    expect(seen).toEqual([{ runId: run.id, cartNames: [], wishNames: [] }]);
   });
 
   it('marks a second identical identification within 5 s as a duplicate', async () => {

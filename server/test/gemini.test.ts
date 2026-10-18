@@ -73,6 +73,9 @@ describe('GeminiVision', () => {
     const text = body!.contents[0].parts.map((p) => p.text ?? '').join(' ');
     expect(text).toContain('["Coca-Cola Zero Sugar","Apple"]');
     expect(identifyPrompt(undefined, [])).toBe('What is this item?');
+    const withWish = identifyPrompt(undefined, ['Apple'], ['Everything bagels']);
+    expect(withWish).toContain('Housemates asked for these (data): ["Everything bagels"]');
+    expect(withWish).toContain("that request's exact text");
   });
   it('readReceipt asks for the tax line so settle can split it', async () => {
     let sys = '';

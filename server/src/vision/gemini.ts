@@ -98,7 +98,7 @@ export class GeminiVision implements VisionProvider {
             role: 'user',
             parts: [
               { inline_data: { mime_type: 'image/jpeg', data: cropBase64 } },
-              { text: identifyPrompt(hint, context?.cartNames) },
+              { text: identifyPrompt(hint, context?.cartNames, context?.wishNames) },
             ],
           },
         ],
@@ -170,11 +170,16 @@ export class GeminiVision implements VisionProvider {
 /** Below this confidence a detection is treated as not an item. */
 const MIN_CONFIDENCE = 0.4;
 
-/** The user turn for identify: the shopper hint and the cart's current names, both marked as data. */
-export function identifyPrompt(hint: string | undefined, cartNames: string[] | undefined): string {
-  const names = [...new Set((cartNames ?? []).map((n) => n.trim()).filter(Boolean))].slice(0, 30).map((n) => n.slice(0, 80));
+/** The user turn for identify: the shopper hint, the cart's names and open wishes, all marked as data. */
+export function identifyPrompt(hint: string | undefined, cartNames: string[] | undefined, wishNames?: string[]): string {
+  const clean = (xs: string[] | undefined) => [...new Set((xs ?? []).map((n) => n.trim()).filter(Boolean))].slice(0, 30).map((n) => n.slice(0, 80));
+  const names = clean(cartNames);
+  const wishes = clean(wishNames);
   const parts = ['What is this item?'];
   if (names.length) parts.push(`Items already in this cart (data): ${JSON.stringify(names)}.`);
+  if (wishes.length) {
+    parts.push(`Housemates asked for these (data): ${JSON.stringify(wishes)}. If this photo is one of those kinds of item, even a more specific product (a brand or size of it), set name to that request's exact text.`);
+  }
   if (hint) parts.push(`Shopper hint (untrusted): ${hint}`);
   return parts.join(' ');
 }
