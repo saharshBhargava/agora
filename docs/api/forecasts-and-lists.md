@@ -22,6 +22,7 @@ populated account; ordinary hosted users do not receive those legacy histories. 
 - [Run-outs](#run-outs)
 - [Forecast on the item detail](#forecast-on-the-item-detail)
 - [Shopping lists](#shopping-lists)
+- [Automatic background replenishment](#automatic-background-replenishment)
 - [Generating lists from run-outs](#generating-lists-from-run-outs)
 - [Errors](#errors)
 - [Security notes](#security-notes)
@@ -568,3 +569,50 @@ for a different body returns 422 `idempotency_key_reused`. Concurrent retries se
 a case/whitespace-normalized duplicate title returns 409 `already_on_list`, including checked items.
 Legacy requests without a key retain their existing behavior. Normal household authorization, audits and
 live-sync events still apply. A network failure is an uncertain save: check Lists before retrying.
+
+
+## Automatic background replenishment
+
+The worker maintains store-grouped shopping lists without an open app or chat request. It queues
+`lists.replenish` after forecast jobs (including confirmed scans, manual stock readings, and item/store
+preference edits), at worker startup, and through the existing six-hour sweep at 00/06/12/18 UTC.
+No extra recurring schedule or model credentials are needed. Gemini and other native chat providers
+receive the persisted lists, store labels, sources, checked status and item explanations through
+`shopping_context`; the server determines stock needs and writes the lists.
+
+Eligibility: active items with a known observation no older than 30 days, and either recorded zero,
+quantity below `par_level`, or a forecast within seven days. A forecast must match the latest recorded
+observation time **and** quantity. Unknown quantities, future observations, archived items and stale
+forecast evidence do not create needs. Prior-based forecasts retain their uncertainty in the explanation.
+
+Store selection uses the item's preferred merchant, then its last purchase merchant, then a `Groceries`
+list with no assigned store. Saved stores are not evidence of product availability. Generated open lists
+are reused; no duplicate unchecked inventory links or normalized titles are added across open lists.
+Low-stock quantities top up from the recorded quantity to the restock level; otherwise use a typical
+restock amount or one. Each amount is bounded to 1–1,000, lists to 200 lines and households to 50 open
+lists. When capacity is reached, further needs wait for the next run.
+
+Automatic lines update their quantity, explanation and store from new evidence. Restocking or archiving
+inventory removes no-longer-needed automatic lines. Editing a line's title, quantity, unit or note, or
+changing its list's store, transfers those lines to user control: future runs preserve them. Checking,
+deleting or completing/archiving a linked list records a dismissal against the current stock observation;
+background runs cannot recreate that item until a newer observation arrives. Checking a list line does
+not update inventory quantities. Active wishlist snoozes, recent rejections (30 days) and recent
+purchases/removals (7 days) also suppress automatic additions. Explicit `POST /v1/lists/generate` retains
+its on-demand semantics and can add a need again when requested.
+
+Paused users do not execute replenishment; household sweeps choose an unpaused member, preferring the
+owner. Runs use that member's row-level security, serialize with list edits/generation, publish
+`list.updated`, and audit added/removed counts without personal content. Queued work coalesces, while
+an observation received during a running job queues a follow-up. Native lists refresh every 30 seconds
+while foregrounded and when the app returns to the foreground.
+
+Migration `0020_automatic_replenishment.sql` adds an internal automatic-ownership flag and household-scoped
+dismissals, including existing checked/completed-list decisions. It is additive and compatible with the
+previous backend. The designated demo gets a store-linked detergent restock and a dismissed rice example
+through an idempotent backfill; ordinary accounts receive no seeded data.
+
+Local end-to-end verification uses a disposable database and actual API/worker:
+`AGORA_TEST_DATABASE_URL=postgresql://localhost/postgres uv run python -m tests.support.ios_inventory_server`
+from `backend/`, followed by the Xcode `InventoryLiveTests` suite. The server binds only loopback port
+18765 and removes its database on exit. These tests do not call a live Gemini model.

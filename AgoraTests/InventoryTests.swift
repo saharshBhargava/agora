@@ -574,7 +574,7 @@ final class InventoryLiveTests: XCTestCase {
         let attachment = XCTAttachment(image: image)
         attachment.name = name; attachment.lifetime = .keepAlways
         add(attachment)
-        if name.hasPrefix("Consumption prediction") {
+        if name.hasPrefix("Consumption prediction") || name.hasPrefix("Automatic replenishment") {
             try image.pngData()?.write(to: URL(fileURLWithPath: "/tmp/\(name.replacingOccurrences(of: " ", with: "-" )).png"))
         }
     }
@@ -891,5 +891,85 @@ extension InventoryTests {
         field.resignFirstResponder()
         try await Task.sleep(for: .milliseconds(200))
         attach("Identified item with purchase store")
+    }
+}
+
+extension InventoryLiveTests {
+    func testAutomaticStoreListsFromStockAndConsumptionReachGeminiContext() async throws {
+        var login = URLRequest(url: URL(string: "http://127.0.0.1:18765/v1/dev/login")!)
+        login.timeoutInterval = 2; login.httpMethod = "POST"
+        login.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        login.httpBody = try JSONSerialization.data(withJSONObject: ["handle": "autolist_" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "").prefix(16)])
+        let data: Data
+        do { (data, _) = try await URLSession.shared.data(for: login) }
+        catch { throw XCTSkip("Isolated inventory test API is not running on localhost:18765") }
+        let token = try XCTUnwrap((try JSONSerialization.jsonObject(with: data) as? [String: Any])?["access_token"] as? String)
+        let auth = InventoryGoogle(); auth.token = token
+        let calendar = CalendarConnection(authorization: auth); await calendar.refresh()
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [InventoryLiveHTTP.self]
+        let http = URLSession(configuration: config); defer { http.invalidateAndCancel() }
+        let api = AgoraClient(calendar: calendar, baseURL: URL(string: "https://inventory-live.example.com"), http: http)
+        let inventory = InventoryStore(api: api, calendar: calendar); await inventory.refresh()
+        let trips = TripStore(api: api, inventory: inventory, calendar: calendar)
+        let shopping = ShoppingStore(api: api, inventory: inventory)
+        let market = try await inventory.addMerchant(name: "Neighborhood Market", locality: "Downtown")
+        var empty = InventoryDraft(); empty.name = "Dish soap"; empty.quantity = "0"
+        empty.unit = "bottles"; empty.restockLevel = "2"; empty.merchantID = market.id
+        let soap = try await inventory.save(empty, original: nil)
+        var consumed = InventoryDraft(); consumed.name = "Breakfast yogurt"; consumed.unit = "cups"
+        consumed.category = "dairy"; consumed.merchantID = market.id
+        let yogurt = try await inventory.save(consumed, original: nil)
+        let now = Date(), formatter = ISO8601DateFormatter()
+        for day in 0...10 {
+            let _: InventoryObservation = try await api.fetch("v1/inventory/\(yogurt.id)/observations",
+                as: InventoryObservation.self, method: "POST", body: [
+                    "time": formatter.string(from: now.addingTimeInterval(Double(day - 10) * 86_400 - 1)),
+                    "quantity": 13 - day
+                ])
+        }
+        // No chat, list creation, or trip-planning call: the backend worker creates the list itself.
+        for _ in 0..<60 {
+            await trips.refresh()
+            if trips.lists.flatMap(\.items).count == 2 { break }
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        XCTAssertNil(trips.error)
+        XCTAssertEqual(trips.lists.count, 1)
+        let list = try XCTUnwrap(trips.lists.first)
+        XCTAssertEqual(list.source, "generated"); XCTAssertEqual(list.merchant?.id, market.id)
+        XCTAssertEqual(Set(list.items.map(\.title)), ["Dish soap", "Breakfast yogurt"])
+        XCTAssertTrue(list.items.allSatisfy { !($0.explanation ?? "").isEmpty })
+        let yogurtLine = try XCTUnwrap(list.items.first { $0.title == "Breakfast yogurt" })
+        XCTAssertEqual(try XCTUnwrap(yogurtLine.neededBy).timeIntervalSince(now) / 86_400, 3, accuracy: 0.1)
+        let context = try await shopping.execute(try ShoppingCall(["name": "shopping_context", "args": [:]]),
+                                                 taskID: UUID(), trips: trips)
+        let modelLists = try XCTUnwrap(context["shopping_lists"] as? [[String: Any]])
+        XCTAssertEqual(modelLists.count, 1)
+        XCTAssertEqual(modelLists[0]["source"] as? String, "generated")
+        XCTAssertEqual(modelLists[0]["store"] as? String, market.label)
+        let modelItems = try XCTUnwrap(modelLists[0]["items"] as? [[String: Any]])
+        XCTAssertTrue(modelItems.allSatisfy { ($0["explanation"] as? String)?.isEmpty == false })
+        XCTAssertEqual((context["runout_forecasts"] as? [[String: Any]])?.count, 2)
+        await inventory.refreshWithForecasts()
+        let settings = SettingsStore(keychainService: "automatic-lists-render-" + UUID().uuidString)
+        try await screenshot(ListsView(inventory: inventory, shopping: shopping, settings: settings, trips: trips),
+                             name: "Automatic replenishment Lists")
+        try await screenshot(TripListView(store: trips, listID: list.id), name: "Automatic replenishment detail")
+        let soapLine = try XCTUnwrap(list.items.first { $0.title == "Dish soap" })
+        await trips.setChecked(listID: list.id, itemID: soapLine.id, checked: true)
+        XCTAssertNil(trips.error)
+        try await inventory.updateQuantity(yogurt, quantity: 20)
+        for _ in 0..<60 {
+            await trips.refresh()
+            if !trips.lists.flatMap(\.items).contains(where: { $0.title == "Breakfast yogurt" }) { break }
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        let remaining = trips.lists.flatMap(\.items)
+        XCTAssertEqual(remaining.count, 1)
+        XCTAssertEqual(remaining.first?.id, soapLine.id); XCTAssertTrue(remaining.first?.checked == true)
+        let recordedSoap = try await inventory.detail(soap.id, days: 7)
+        XCTAssertEqual(recordedSoap.item.quantity, 0) // Checking a shopping line never invents a stock observation.
+        await calendar.signOut()
+        XCTAssertTrue(trips.lists.isEmpty)
     }
 }

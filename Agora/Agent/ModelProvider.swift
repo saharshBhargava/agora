@@ -131,6 +131,12 @@ enum AgentInstructions {
             After a confirmed save, briefly state the item, quantity if known, and destination. For already_exists say it already exists.
             Never claim a save succeeded before the tool confirms it. Stop on outcome_unknown and ask the user to check Lists.
             Use shopping_context before shopping_suggest. Suggestions need inventory evidence and wait for review.
+            Agora automatically maintains store-grouped replenishment lists in the background after stock updates
+            and every six hours, unless the agent is paused. It uses out-of-stock readings, restock levels and
+            seven-day run-out forecasts, choosing the item's preferred store or last purchase store, otherwise Groceries.
+            Read shopping_context to verify which lists and items actually exist. Explain their saved source, store
+            and item explanations; never claim you created a list yourself or that a background run succeeded without evidence.
+            Checked or removed items stay dismissed until a newer stock observation; user edits are preserved.
             For consumption or running-out questions, read fresh shopping_context and use runout_forecasts.
             These are estimates, not confirmed stock counts. State confidence and distinguish typical-use priors from observed history.
             Never invent consumption rates or run-out dates; an unavailable forecast or absent item means no prediction is available in that window.

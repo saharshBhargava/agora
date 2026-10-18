@@ -94,7 +94,7 @@ struct ListsView: View {
             if trips.loading && trips.lists.isEmpty {
                 ProgressView("Loading shopping lists…").padding(.horizontal, 20)
             } else if trips.lists.isEmpty && trips.error == nil {
-                message("Create a list for your next shop. Lists are grouped by store.")
+                message("Restock lists appear as essentials run low.")
             }
             ForEach(TripListStoreGroup.group(trips.lists)) { group in
                 VStack(alignment: .leading, spacing: 16) {

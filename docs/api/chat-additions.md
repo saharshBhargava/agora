@@ -61,3 +61,14 @@ ordinary accounts use their configured model. Media is not used by the demo gram
 adds Brown rice, an Electric kettle wishlist item and a Weekend groceries list once, preserving later edits.
 
 See [wishlist](wishlist.md) and [shopping lists](forecasts-and-lists.md) for route-specific behavior.
+
+
+### Automatic replenishment context
+
+The server now maintains shopping lists after stock updates and every six hours, independently of chat.
+`shopping_context.shopping_lists` includes each list's `source`, `store` label (or null), and each line's
+`unit`, `checked` flag and saved `explanation`, in addition to IDs, titles and quantities. Gemini and the
+other chat providers can explain which stock reading or consumption forecast prompted the list and why
+its store was selected. They must read fresh context and may not claim to have created a list themselves.
+The chat tool still adds explicitly requested items to existing lists; background creation does not
+require a new model tool or a provider key. See [background rules](forecasts-and-lists.md#automatic-background-replenishment).

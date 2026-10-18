@@ -59,6 +59,7 @@ async def ensure_demo_account(db: Database, settings: Settings) -> UUID:
         await _trips(db, existing)
         await _shopping_refresh(db, existing)
         await _price_watches(db, existing)
+        await _automatic_lists(db, existing)
         await seed_demo_images(db, existing)
         return existing
     user_id = await ensure_user(db, DEMO_SUBJECT, VISIBLE_HANDLE, settings.demo_display_name)
@@ -139,6 +140,7 @@ async def _seed(db: Database, user_id: UUID) -> None:
     await _trips(db, user_id)
     await _shopping_refresh(db, user_id)
     await _price_watches(db, user_id)
+    await _automatic_lists(db, user_id)
     await seed_demo_images(db, user_id)
 
 
@@ -474,3 +476,28 @@ async def _price_watch_history(db: Database, user_id: UUID) -> None:
         await conn.execute(
             """INSERT INTO push_devices(user_id,token,environment) VALUES($1,$2,'sandbox')
                ON CONFLICT(token,environment) DO NOTHING""", user_id, 'a'*64)
+
+
+async def _automatic_lists(db: Database, user_id: UUID) -> None:
+    """Backfill an automatic restock and a dismissed purchase once, preserving rehearsed user choices."""
+    from app.replenishment import dismiss, synchronize
+
+    async with db.scoped(user_id) as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo.features'), hashtext($1))", str(user_id))
+        household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
+        if await conn.fetchval("SELECT 1 FROM audit_log WHERE household_id = $1 AND action = 'demo.automatic_lists'",
+                               household_id):
+            return
+        rice = await conn.fetchval(
+            "SELECT id FROM inventory_items WHERE household_id = $1 AND display_name = 'Brown rice'", household_id)
+        if rice:
+            await dismiss(conn, household_id, [rice])
+        item_id = await create_item(conn, household_id, user_id, "Laundry detergent refill", category="household",
+                                    unit="bottle", tracking="manual")
+        merchant = await conn.fetchval(
+            "SELECT id FROM merchants WHERE name = 'Target' AND household_id IS NULL LIMIT 1")
+        await conn.execute("UPDATE inventory_items SET preferred_merchant_id = $2, par_level = 1 WHERE id = $1",
+                           item_id, merchant)
+        await record_observation(conn, household_id, item_id, datetime.now(UTC), 0, "manual", user_id=user_id)
+        await synchronize(conn, household_id, user_id)
+        await audit(conn, 'demo.automatic_lists', actor_type='system', household_id=household_id)

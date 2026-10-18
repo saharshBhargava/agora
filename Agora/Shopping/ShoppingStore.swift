@@ -199,7 +199,12 @@ final class ShoppingStore: ObservableObject {
             return ["feedback": feedback.foundation, "runout_forecasts": forecasts, "runout_window_days": 7,
                     "runout_forecast_status": forecastsAvailable ? "available" : "unavailable",
                     "shopping_lists": lists.map { list -> [String: Any] in
-                ["id": list.id.uuidString, "name": list.name, "items": list.items.map { ["title": $0.title, "quantity": $0.quantity] as [String: Any] }]
+                ["id": list.id.uuidString, "name": list.name, "source": list.source,
+                 "store": list.merchant?.label as Any? ?? NSNull(),
+                 "items": list.items.map { item -> [String: Any] in
+                     ["title": item.title, "quantity": item.quantity, "checked": item.checked,
+                      "unit": item.unit as Any? ?? NSNull(), "explanation": item.explanation as Any? ?? NSNull()]
+                 }]
             }, "inventory": stock.prefix(100).map { item -> [String: Any] in
                 ["id": item.id.uuidString, "name": item.displayName, "quantity": item.quantity as Any? ?? NSNull(),
                  "unit": item.unit, "restock_level": item.parLevel as Any? ?? NSNull()]

@@ -310,6 +310,16 @@ Backend URL and accounts for testing: see [SETUP.md](../SETUP.md). The "Purchase
 
 ---
 
+## Automatic replenishment lists — implemented October 18, 2026
+
+The backend creates and maintains store-grouped lists after stock updates and every six hours, including
+recorded zeroes, restock-threshold items and fresh seven-day consumption forecasts. Native Home/Lists and
+shopping trips read these through the existing foreground refresh. No trip-planning or chat action is
+needed to create them. Chat receives list stores, sources, checked flags and explanations. User edits,
+checks/removals, restocks and the agent pause are handled as documented in the
+[API contract](api/forecasts-and-lists.md#automatic-background-replenishment).
+This supersedes older descriptions of list creation as exclusively a one-tap operation.
+
 ## Requested frontend features: run-outs and shopping lists
 
 **Native implementation update (October 18, 2026):** Home's Running low carousel now combines seven-day
