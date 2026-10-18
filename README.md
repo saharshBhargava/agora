@@ -21,6 +21,14 @@ pnpm -r test
 
 Web screens work without the server at `?mock=1` (props in `web/public/props/`).
 
+Live demo server (Gemini vision, QFC prices from the iOS price worker, 5 s last call, 60 s "Added twice?" window, simulated payments, port 3000):
+
+```sh
+scripts/demo-server.sh https://<tunnel>   # or PUBLIC_URL=https://<tunnel> scripts/demo-server.sh
+```
+
+It rebuilds web and server when they are stale, reads `GEMINI_API_KEY` from `server/.env` (never printed), refuses to start if port 3000 is taken, and prints the URL. Add `SIM_FAIL_CAPTURE=Marcus` in front to show a partly settled run.
+
 ### Camera demo: drop order matters
 
 With `VISION=stub`, the camera path uses a deterministic stub. When a dropped item does not clearly match a prop photo, the stub names the next prop in drop order for that run: eggs, then towels, then milk, then eggs again. Drop the eggs, the towels and the milk in that order. A whole-frame lighting or exposure change re-baselines the detector and adds no chip. If the camera misbehaves, switch the shopper to `?mock=1` (the "Use sample items" link) and tap the items instead.
@@ -42,6 +50,7 @@ The prop images are generated placeholders. To use real photos: put `eggs.jpg`, 
 | `PUBLIC_URL` | none | Public origin used in the join QR code (`/api/runs/:id/qr`). When unset, the QR uses the request's `x-forwarded-proto` and `host`. |
 | `DATA_DIR` | `server/.data` | Where runs (`runs.json`) and the payments simulator's authorizations (`sim-payments.json`) are kept, so a restart can still settle. |
 | `RAISE_CAP` | on | Set `off` to disable raising a cap. |
+| `SIM_FAIL_CAPTURE` | none | With `PAYMENTS=sim`, a comma list of claimer names (case-insensitive, e.g. `Marcus,Priya`) whose capture and incremental fail at settle, so the run ends partly settled with "Retry Marcus". Checked on each Confirm, so clear it and restart to let Retry succeed. |
 
 ## Deploy to Railway
 
@@ -98,7 +107,7 @@ See `.env.example`. If the incremental is rejected, keep `RAISE_CAP=off` in real
 
 ## What is simulated
 
-- Payments: `PAYMENTS=sim` is an in-process simulator (approval code 888888); no Cybersource call is made.
+- Payments: `PAYMENTS=sim` is an in-process simulator (approval code 888888); no Cybersource call is made. Test cards: expiry year 1998 (or `42423482938483873`) declines at join; `4000000000000002` is a payments outage at join; `4000000000000341` holds fine at join but every capture and incremental fails at settle (partly settled; Retry keeps failing). On the web, `/join?run=<id>&failcapture=1` joins with that card.
 - Detection: frame differencing on three fixed props, not a trained detector.
 - Identification, receipt reading and prices: stubs keyed to the three props and `server/assets/receipt.json`.
 - Payout to the shopper: simulated Visa Direct; production would push through a licensed partner.
