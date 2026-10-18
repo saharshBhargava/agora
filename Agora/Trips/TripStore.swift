@@ -179,11 +179,23 @@ final class TripStore: ObservableObject {
             let event = try await calendar.lookupExistingEvent(try trip.calendarCall(), taskID: trip.id, expectedAccountID: accountID)
             try check(version)
             guard let event else {
-                notice = "No matching event could be verified. Check Calendar; this list remains blocked to prevent a duplicate trip."
+                notice = "No matching event was found. If you confirmed it is not in Calendar, release this reservation to plan again."
                 return
             }
             try await outcome(trip, status: "scheduled", event: event, version: version)
             notice = "Existing Calendar event verified. No new event was created."
+        } catch { report(error, version: version) }
+    }
+    /// Owner-confirmed release after Calendar absence (or a reserved slot that can no longer finish).
+    /// Never call this automatically on timeouts—only after the user chooses to unlock the list.
+    func release(_ trip: TripRecord) async {
+        guard !busy, trip.mine, trip.isUncertain, trip.householdId == householdID,
+              trips.contains(where: { $0.id == trip.id && $0.isUncertain }) else { return }
+        let version = context; busy = true; error = nil; notice = nil
+        defer { if context == version { busy = false } }
+        do {
+            try await outcome(trip, status: "failed", event: nil, version: version)
+            notice = "Reservation released. You can plan another trip for this list."
         } catch { report(error, version: version) }
     }
     /// The user approves the original saved details again. A reserved trip always reuses its original event identity.

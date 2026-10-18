@@ -256,7 +256,7 @@ async def test_household_sharing_owner_only_mutation_and_foreign_rls(app, client
                                   UUID(trip["id"])) == "UPDATE 0"
 
 
-async def test_outcome_unknown_is_durable_and_cannot_release_reservation(client):
+async def test_outcome_unknown_can_schedule_or_release(client):
     headers, _ = await fresh(client)
     body = payload(await shopping_list(client, headers))
     trip = await reserve(client, headers, body)
@@ -264,15 +264,42 @@ async def test_outcome_unknown_is_durable_and_cannot_release_reservation(client)
     unknown = await client.patch(path, headers=headers, json={"status": "outcome_unknown"})
     assert unknown.status_code == 200 and unknown.json()["status"] == "outcome_unknown"
     assert (await client.patch(path, headers=headers, json={"status": "outcome_unknown"})).json() == unknown.json()
-    assert (await client.patch(path, headers=headers, json={"status": "failed"})).status_code == 409
     assert (await client.post("/v1/trips", headers=keyed(headers), json=body)).status_code == 409
+
+    # Explicit release after the user confirms Calendar has no matching event.
+    released = await client.patch(path, headers=headers, json={"status": "failed"})
+    assert released.status_code == 200 and released.json()["status"] == "failed"
+    replacement = await reserve(client, headers, body)
+    assert replacement["id"] != trip["id"]
+
+    unknown_again = await client.patch(f"/v1/trips/{replacement['id']}/outcome", headers=headers,
+                                       json={"status": "outcome_unknown"})
+    assert unknown_again.status_code == 200
     scheduled_body = {"status": "scheduled", "event_id": "verified-existing-event",
                       "event_url": "https://calendar.google.com/"}
-    scheduled = await client.patch(path, headers=headers, json=scheduled_body)
+    scheduled = await client.patch(f"/v1/trips/{replacement['id']}/outcome", headers=headers, json=scheduled_body)
     assert scheduled.status_code == 200 and scheduled.json()["event_id"] == scheduled_body["event_id"]
-    assert (await client.patch(path, headers=headers, json=scheduled_body)).json() == scheduled.json()
+    assert (await client.patch(f"/v1/trips/{replacement['id']}/outcome", headers=headers,
+                               json=scheduled_body)).json() == scheduled.json()
     for change in ({"status": "failed"}, {"status": "outcome_unknown"}, scheduled_body | {"event_id": "different"}):
-        assert (await client.patch(path, headers=headers, json=change)).status_code == 409
+        assert (await client.patch(f"/v1/trips/{replacement['id']}/outcome", headers=headers,
+                                   json=change)).status_code == 409
+
+
+async def test_past_unknown_trip_can_be_released(app, client):
+    headers, _ = await fresh(client)
+    body = payload(await shopping_list(client, headers))
+    trip = await reserve(client, headers, body)
+    await client.patch(f"/v1/trips/{trip['id']}/outcome", headers=headers, json={"status": "outcome_unknown"})
+    async with app.state.db.system() as conn:
+        await conn.execute("UPDATE replenishment_trips SET starts_at = now() - interval '2 hours', "
+                           "ends_at = now() - interval '1 hour' WHERE id = $1", UUID(trip["id"]))
+    assert (await client.post("/v1/trips", headers=keyed(headers), json=body)).status_code == 409
+    released = await client.patch(f"/v1/trips/{trip['id']}/outcome", headers=headers, json={"status": "failed"})
+    assert released.status_code == 200 and released.json()["status"] == "failed"
+    again = await reserve(client, headers, payload(
+        (await client.get(f"/v1/lists/{body['list_id']}", headers=headers)).json(), days=4))
+    assert again["id"] != trip["id"]
 
 
 async def test_failed_release_and_terminal_state(client):
