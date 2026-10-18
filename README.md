@@ -23,7 +23,7 @@ Web screens work without the server at `?mock=1` (props in `web/public/props/`).
 
 ### Camera demo: drop order matters
 
-With `VISION=stub`, the camera path uses a deterministic stub. When a dropped item does not clearly match a prop photo, the stub names the next prop in drop order for that run: eggs, then towels, then milk, then eggs again. Drop the eggs, the towels and the milk in that order. A whole-frame lighting or exposure change re-baselines the detector and adds no chip. If the camera misbehaves, switch the shopper to `?mock=1` (the "Use demo props" link) and tap the props instead.
+With `VISION=stub`, the camera path uses a deterministic stub. When a dropped item does not clearly match a prop photo, the stub names the next prop in drop order for that run: eggs, then towels, then milk, then eggs again. Drop the eggs, the towels and the milk in that order. A whole-frame lighting or exposure change re-baselines the detector and adds no chip. If the camera misbehaves, switch the shopper to `?mock=1` (the "Use sample items" link) and tap the items instead.
 
 ### Replacing the placeholder props
 
@@ -37,7 +37,7 @@ The prop images are generated placeholders. To use real photos: put `eggs.jpg`, 
 | `VISION` | `stub` | Identification and receipt reading. `stub` returns the three known props. |
 | `PRICE` | `stub` | Price source. `stub` is a fixed price table. |
 | `PAYMENTS` | `sim` | Payments provider. `sim` is the simulator (approval code 888888). |
-| `LAST_CALL_MS` | `5000` | Length of last call after Checkout (default 10000). |
+| `LAST_CALL_MS` | `5000` | Length of last call after Check out (default 10000). |
 | `PORT` | `3000` | Listen port. Railway sets it. |
 | `PUBLIC_URL` | none | Public origin used in the join QR code (`/api/runs/:id/qr`). When unset, the QR uses the request's `x-forwarded-proto` and `host`. |
 | `DATA_DIR` | `server/.data` | Where runs (`runs.json`) and the payments simulator's authorizations (`sim-payments.json`) are kept, so a restart can still settle. |
@@ -80,8 +80,8 @@ Props: a basket with the shopper phone clipped above it; two team-owned iPhones 
 - 0:20 Judge A lifts the eggs into their tray. Ring: full with a notch. "Your share $8.72 · $31.28 room."
 - 0:30 Judge B lifts the same eggs. Ring splits into two initials. Both phones: "$4.36". "That's the split. It happened before Jake paid, and it's backed by two authorizations."
 - 0:40 Judge B lifts the paper towels into their tray. "$23.99." Judge A lifts the eggs out, then back in. "$8.72, then $4.36 again. Leaving is just lifting out."
-- 0:55 Teammate drops the milk in, nobody claims it. Teammate taps Checkout. "Last call" banner, five seconds, lock. The milk silently stays with Jake.
-- 1:05 Teammate photographs the printed receipt. Settle: three lines matched with confidence. Confirm & charge. Judge A: "Captured $4.36 · $35.64 released". Judge B: "Captured $28.35 · $11.65 released". Shopper: "Reimbursed $32.71 (simulated Visa Direct)", which is exactly $4.36 + $28.35.
+- 0:55 Teammate drops the milk in, nobody claims it. Teammate taps Check out. The "Last call" countdown, five seconds, lock. The milk silently stays with Jake.
+- 1:05 Teammate photographs the printed receipt. Settle: three lines matched with confidence. Confirm & charge. Judge A: $4.36 captured, "$35.64 released · settles tonight". Judge B: $28.35 captured, "$11.65 released · settles tonight". Shopper: "Jake gets back $32.71" (simulated Visa Direct), which is exactly $4.36 + $28.35.
 - 1:20 "Your cap isn't a setting, it's an authorization. Four Visa Acceptance calls: authorize, incremental when you raise your cap, capture for your share, reverse the rest. Payout is simulated; in production it's a Visa Direct push through a licensed partner."
 
 Arithmetic check: A's room after claiming eggs alone is $40.00 - $8.72 = $31.28; B's room after eggs and towels is $40.00 - $32.71 = $7.29. At settle A's share is $4.36 (released $35.64), B's is $4.36 + $23.99 = $28.35 (released $11.65). Payout $32.71. Milk $4.29 stays with Jake. Receipt total $37.00.
