@@ -148,8 +148,14 @@ async def test_cap_stale_unknown_stock_and_shopping_list_suppression(client, app
     await client.post('/v1/inventory', headers=h, json={'household_id': household, 'display_name': 'Unknown stock',
                                                      'par_level': 2})
     async with app.state.db.system() as conn:
-        await conn.execute("UPDATE inventory_observations SET time = now() - interval '31 days' "
-                           'WHERE inventory_item_id = $1', UUID(stale))
+        # TimescaleDB cannot move an existing row across time chunks with UPDATE.
+        await conn.execute("""WITH observation AS (
+            DELETE FROM inventory_observations WHERE inventory_item_id = $1 RETURNING *
+        )
+        INSERT INTO inventory_observations
+            (time, household_id, inventory_item_id, quantity, source, scan_id, confidence, recorded_by)
+        SELECT now() - interval '31 days', household_id, inventory_item_id, quantity,
+               source, scan_id, confidence, recorded_by FROM observation""", UUID(stale))
     shopping_list = await client.post('/v1/lists', headers=h, json={'household_id': household, 'name': 'Weekly shop'})
     assert shopping_list.status_code == 201, shopping_list.text
     response = await client.post(f"/v1/lists/{shopping_list.json()['id']}/items", headers=h,
