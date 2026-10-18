@@ -163,17 +163,13 @@ Send `PATCH /v1/wishlist/{id}` with only the fields that changed.
 
 ## Requested frontend feature: offline demo fallback (iOS, small)
 
-**Why:** if venue internet and hosting both fail, the backend can still run on the demo Mac
-(`uv run python -m app.tools.local_demo`, see SETUP.md, Plan B). Today `AgoraAPIClient` only accepts
-`https://` origins, so the app can reach a laptop backend only through a tunnel, which needs internet.
+**Status:** done on iOS. `AgoraClient.validOrigin` accepts `http://localhost`, `http://127.0.0.1`,
+`http://*.local`, and private LAN IPs in **DEBUG** builds only; Release stays HTTPS-only.
+`Info.plist` already sets `NSAllowsLocalNetworking` (and local HTTP exceptions). Simulator:
+`AGORA_API_BASE_URL = http:/$()/localhost:8000`. Phone on the same hotspot: Mac LAN IP or `.local` name.
 
-**Request (DEBUG builds only):**
-- In `AgoraAPIClient.validOrigin`, also accept `http://localhost`, `http://127.0.0.1`, and
-  `http://<mac-name>.local` / private LAN IPs when compiled with `#if DEBUG`. Release builds stay HTTPS-only.
-- Add `NSAppTransportSecurity > NSAllowsLocalNetworking = YES` to the Debug Info.plist, so ATS permits those
-  local addresses.
-- The simulator then works with `AGORA_API_BASE_URL = http:/$()/localhost:8000`. A phone on the same hotspot
-  works with the Mac's `.local` name.
+**Why:** if venue internet and hosting both fail, the backend can still run on the demo Mac
+(`uv run python -m app.tools.local_demo`, see SETUP.md, Plan B) without requiring a tunnel.
 
 Ordinary-account Google sign-in, Calendar and real model chat still need internet. The password demo uses
 its configured Agora API for login, Calendar and data, and built-in model responses. This fallback covers inventory, scans (with replay
