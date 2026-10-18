@@ -181,3 +181,12 @@ expands for multiline text, with 16 points of bottom padding to separate it from
 
 Validation: four focused provider/schema simulator tests passed in the isolated chat checkout; the
 shared working checkout built successfully. Live authenticated inference remains unverified.
+
+
+## Chat additions MVP
+
+Chat now supports explicit additions to existing shopping lists, the active wishlist and new inventory
+items. Reads and saves use the shared authenticated stores, and confirmed results appear in Lists.
+An ambiguous list/destination is clarified; existing items are reported without changing quantities.
+The tools, retry/error behavior and built-in demo examples are documented in
+[chat additions](api/chat-additions.md). No list creation or browser/photo extraction is included.

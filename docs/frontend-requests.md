@@ -479,3 +479,12 @@ photos; see [the contract](api/item-images.md). Native source in the shared work
 across item views. `needs_confirmation` means show a **Choose** action and candidate titles; do not display
 a candidate as the item image before selection. All item names are searchable, with optional details.
 A new native build is required for the updated editor and service-unavailable/retry messages.
+
+
+## Chat additions MVP — implemented locally, October 18, 2026
+
+Chat can add items to existing shopping lists, the active wishlist and new inventory entries. Explicit
+requests save immediately; ambiguous destinations are clarified and duplicates leave quantities unchanged.
+Shared screens update after confirmed saves. Existing suggestions remain a separate acceptance flow.
+See [chat additions](api/chat-additions.md) for argument limits, demo examples and retry behavior.
+List creation from chat, existing-stock changes, browser/photo extraction and undo remain outside this MVP.

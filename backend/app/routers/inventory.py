@@ -72,6 +72,21 @@ async def list_items(request: Request, household_id: UUID | None = None, locatio
 async def add_item(body: ItemIn, request: Request, user: Principal = CurrentUser) -> ItemOut:
     async with request.app.state.db.scoped(user.user_id) as conn:
         household_id = await require_household(conn, body.household_id, user.user_id)
+        key, digest, previous = await idempotency.begin_optional_add(
+            conn, request, user.user_id, "inventory.add", body.model_dump(mode="json"))
+        if previous is not None:
+            return ItemOut.model_validate(previous)
+        if key is not None:
+            if not body.display_name.strip() or not body.unit.strip():
+                raise Problem(422, "invalid_item", "Item name and unit cannot be blank.")
+            await conn.execute("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", f"inventory-add:{household_id}")
+            names = await conn.fetch(
+                "SELECT display_name FROM inventory_items WHERE household_id = $1 AND status = 'active'",
+                                     household_id)
+            if any(idempotency.item_name_key(r["display_name"]) == idempotency.item_name_key(body.display_name)
+                   for r in names):
+                raise Problem(409, "already_in_inventory",
+                              "This item is already in inventory. Its quantity was not changed.")
         await _location_ok(conn, household_id, body.location_id)
         if body.preferred_merchant_id:
             await require_merchant(conn, body.preferred_merchant_id, household_id)
@@ -89,7 +104,9 @@ async def add_item(body: ItemIn, request: Request, user: Principal = CurrentUser
                     target_type="inventory_item", target_id=item_id, meta={"source": "manual"})
         await notify(conn, household_id, "inventory.updated", item_id)
         row = await conn.fetchrow(ITEM_SELECT + "WHERE i.id = $1", item_id)
-    return ItemOut(**item_fields(row))
+        result = ItemOut(**item_fields(row))
+        await idempotency.finish_optional_add(conn, user.user_id, key, digest, result.model_dump(mode="json"))
+        return result
 
 
 @router.post("/recognitions", response_model=RecognitionOut, status_code=201)

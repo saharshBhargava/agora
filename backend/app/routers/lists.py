@@ -193,8 +193,14 @@ async def add_item(list_id: UUID, body: ListItemIn, request: Request, user: Prin
     """Add a line. Link an inventory item or product to fill in the title and unit. Agent lines
     (``added_by: "agent"``) must say why, and are audited as the agent."""
     async with request.app.state.db.scoped(user.user_id) as conn:
-        lst = await _locked_list(conn, list_id)
+        lst = await _locked_list(conn, list_id, must_be_open=False)
         household_id = lst["household_id"]
+        key, digest, previous = await idempotency.begin_optional_add(
+            conn, request, user.user_id, "lists.add", {"list_id": str(list_id), **body.model_dump(mode="json")})
+        if previous is not None:
+            return ShoppingListItem.model_validate(previous)
+        if lst["status"] != "open":
+            raise Problem(409, "list_closed", "Reopen this list to change it.")
         title, unit, product_id = body.title.strip() if body.title else None, body.unit, body.product_id
         if body.inventory_item_id is not None:
             inv = await conn.fetchrow("""SELECT display_name, unit, product_id FROM inventory_items
@@ -209,6 +215,11 @@ async def add_item(list_id: UUID, body: ListItemIn, request: Request, user: Prin
             if name is None:
                 raise not_found("product")
             title = title or name
+        if key is not None:
+            names = await conn.fetch("SELECT title FROM shopping_list_items WHERE list_id = $1", list_id)
+            if any(idempotency.item_name_key(r["title"]) == idempotency.item_name_key(title or "") for r in names):
+                raise Problem(409, "already_on_list",
+                              "This item is already on the shopping list. Its quantity was not changed.")
         if await conn.fetchval("SELECT count(*) FROM shopping_list_items WHERE list_id = $1",
                                list_id) >= MAX_ITEMS_PER_LIST:
             raise Problem(409, "list_full", f"A list can hold {MAX_ITEMS_PER_LIST} lines.")
@@ -229,7 +240,9 @@ async def add_item(list_id: UUID, body: ListItemIn, request: Request, user: Prin
                     meta={"reason": "agent" if agent else "manual", "linked": body.inventory_item_id is not None})
         await _touch(conn, household_id, list_id)
         row = await conn.fetchrow(_ITEM_SELECT + "WHERE li.id = $1", item_id)
-    return ShoppingListItem(**{k: row[k] for k in _ITEM_FIELDS}, merchant=ref(row, "m_"))
+        result = ShoppingListItem(**{k: row[k] for k in _ITEM_FIELDS}, merchant=ref(row, "m_"))
+        await idempotency.finish_optional_add(conn, user.user_id, key, digest, result.model_dump(mode="json"))
+        return result
 
 
 async def _locked_item(conn: asyncpg.Connection, list_id: UUID, item_id: UUID) -> asyncpg.Record:

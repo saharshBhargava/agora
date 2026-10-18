@@ -89,7 +89,7 @@ final class ChatWorkspace: ObservableObject {
         inventory = InventoryStore(api: api, calendar: calendar)
         shopping = ShoppingStore(api: api, inventory: inventory)
         trips = TripStore(api: api, inventory: inventory, calendar: calendar)
-        agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar, shopping: shopping)
+        agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar, shopping: shopping, trips: trips)
         shopping.watches.browserReviewHandler = { [weak self] url in
             guard let self, self.calendar.connected, self.inventory.accountID == self.calendar.accountID else {
                 throw BrowserError("account_changed", "Sign in again before opening this browser review.")
