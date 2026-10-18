@@ -1,0 +1,7 @@
+// Copy to ios/Local.xcconfig (gitignored), then run `xcodegen generate`.
+// `//` starts a comment in an xcconfig, so write the URL as https:/$()/host.
+// The app accepts HTTPS, or plain http only for localhost and 127.0.0.1 (simulator).
+DIBS_SERVER_URL = https:/$()/your-dibs-server.example.com
+DIBS_BUNDLE_ID = dev.dibs.app
+// Your Apple developer team id, for signing onto a real iPhone.
+DEVELOPMENT_TEAM =
