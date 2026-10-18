@@ -43,12 +43,17 @@ test('shows the server error when join is refused', async () => {
   await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('run is locked'));
 });
 
-test('after a successful join, routes to /claim with the person id', async () => {
+test('after a successful join, Start claiming routes to /claim with the person id', async () => {
   impl = async () => ({
     personId: 'p1',
     auth: { status: 'AUTHORIZED', authId: 'a1', approvalCode: '888888', authorizedCents: 4000 },
   });
   render(<JoinScreen />);
   fireEvent.click(screen.getByRole('button', { name: /join/i }));
-  await waitFor(() => expect(push).toHaveBeenCalledWith('/claim?run=r1&person=p1'));
+  // The held badge stays on screen until the claimer moves on.
+  expect(await screen.findByText('$40.00 held · approval 888888')).toBeInTheDocument();
+  await new Promise((r) => setTimeout(r, 20));
+  expect(push).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Start claiming' }));
+  expect(push).toHaveBeenCalledWith('/claim?run=r1&person=p1');
 });

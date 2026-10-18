@@ -6,11 +6,14 @@ import { formatCents } from '@/lib/money';
 export function UnclaimedList({
   run,
   personId,
+  mock = false,
   onPutBack,
   onBack,
 }: {
   run: Run;
   personId: string;
+  /** Keeps `mock=1` on the settle link so the demo stays in mock mode. */
+  mock?: boolean;
   onPutBack: (chipId: string) => void;
   onBack: () => void;
 }) {
@@ -45,7 +48,7 @@ export function UnclaimedList({
       </ul>
       <div className="unclaimed-footer">
         <button type="button" className="btn btn-secondary" onClick={onBack}>Back to cart</button>
-        <a className="btn" href={`/settle?run=${encodeURIComponent(run.id)}&person=${encodeURIComponent(personId)}`}>Go to settle</a>
+        <a className="btn" href={`/settle?run=${encodeURIComponent(run.id)}&person=${encodeURIComponent(personId)}${mock ? '&mock=1' : ''}`}>Go to settle</a>
       </div>
     </section>
   );

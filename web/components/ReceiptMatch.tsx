@@ -19,7 +19,10 @@ export function ReceiptMatch({
 }) {
   const [pairing, setPairing] = useState<number | null>(null);
   const matchedIds = new Set(receipt.matches.map((m) => m.chipId));
-  const free = chips.filter((c) => !matchedIds.has(c.id) && c.state !== 'removed' && !c.dropped);
+  // Live chips only: wishes, put-back, removed, dropped and still-identifying chips are never on a receipt.
+  const live = (c: Chip): boolean =>
+    c.state !== 'wish' && c.state !== 'removed' && c.state !== 'identifying' && !c.putBack && !c.dropped;
+  const free = chips.filter((c) => !matchedIds.has(c.id) && live(c));
   const notOnReceipt = free;
 
   return (

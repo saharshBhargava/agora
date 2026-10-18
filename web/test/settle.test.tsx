@@ -124,3 +124,10 @@ test('mock=1 at locked offers Use printed receipt, posting an empty image', asyn
   fireEvent.click(screen.getByRole('button', { name: 'Use printed receipt' }));
   await waitFor(() => expect(api.receipt).toHaveBeenCalledWith('r1', ''));
 });
+
+test('a $0 share shows nothing captured and the full release', () => {
+  mk(base({ state: 'partlySettled', settle: { a: ps({ step: 'reversed', shareCents: 0, releasedCents: 4000, captureId: null }) } }));
+  render(<SettleScreen />);
+  expect(screen.getByText('Nothing captured · $40.00 released')).toBeInTheDocument();
+  expect(screen.queryByText('Settling…')).toBeNull();
+});

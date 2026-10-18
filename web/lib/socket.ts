@@ -16,6 +16,8 @@ export type UseRun = {
   /** Every server {t:'error'} bumps seq, so identical repeats are distinguishable. */
   errorEvent: { reason: string; seq: number } | null;
   connected: boolean;
+  /** The server refused the socket (close code 1008: unknown run or person). No more reconnects. */
+  ended: boolean;
 };
 
 export function wsUrl(runId: string, personId: string): string {
@@ -33,6 +35,7 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
   const [error, setError] = useState<string | null>(null);
   const [errorEvent, setErrorEvent] = useState<{ reason: string; seq: number } | null>(null);
   const [connected, setConnected] = useState(false);
+  const [ended, setEnded] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -42,6 +45,7 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
     setIdentifyingRegion(null);
     setError(null);
     setErrorEvent(null);
+    setEnded(false);
     if (!runId || !personId) return;
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -69,6 +73,8 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
             const r = m.run as Run;
             setRun(r);
             if (r.lastCallEndsAt == null) setLastCallEndsAt(null);
+            // No chip is identifying any more: clear the outline.
+            if (!(r.chips ?? []).some((c) => c.state === 'identifying' && !c.dropped)) setIdentifyingRegion(null);
             break;
           }
           case 'frame':
@@ -87,10 +93,15 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
             break;
         }
       };
-      ws.onclose = () => {
+      ws.onclose = (ev?: { code?: number }) => {
         setConnected(false);
         if (wsRef.current === ws) wsRef.current = null;
         if (closed) return;
+        if (ev?.code === 1008) {
+          closed = true;
+          setEnded(true);
+          return;
+        }
         attempt += 1;
         retry = setTimeout(connect, Math.min(5000, 250 * 2 ** attempt));
       };
@@ -121,5 +132,5 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
     return false;
   }, []);
 
-  return { run, send, lastFrame, lastCallEndsAt, identifyingRegion, error, errorEvent, connected };
+  return { run, send, lastFrame, lastCallEndsAt, identifyingRegion, error, errorEvent, connected, ended };
 }

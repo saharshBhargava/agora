@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useRun } from '@/lib/socket';
+import { useCountdown } from '@/lib/countdown';
 import { Board } from '@/components/Board';
 import { Camera, MockProps } from '@/components/Camera';
 import { FixChipSheet } from '@/components/FixChipSheet';
@@ -13,23 +14,12 @@ import type { Chip } from '@/lib/types';
 const UNDO_MS = 5000;
 const NOTICE_MS = 4000;
 
-function useCountdown(endsAt: number | null): number | null {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (endsAt === null) return;
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(id);
-  }, [endsAt]);
-  return endsAt === null ? null : Math.max(0, Math.ceil((endsAt - now) / 1000));
-}
-
 export default function ShopperScreen() {
   const params = useSearchParams();
   const runId = params.get('run') ?? '';
   const personId = params.get('person') ?? '';
   const mock = params.get('mock') === '1';
-  const { run, send, connected, lastCallEndsAt, identifyingRegion, errorEvent } = useRun(runId || null, personId || null);
+  const { run, send, connected, lastCallEndsAt, identifyingRegion, errorEvent, ended } = useRun(runId || null, personId || null);
 
   const [fixing, setFixing] = useState<Chip | null>(null);
   const [removed, setRemoved] = useState<{ key: number; chip: Chip } | null>(null);
@@ -55,6 +45,7 @@ export default function ShopperScreen() {
   const chips = useMemo(() => (run?.chips ?? []).filter((c) => c.state !== 'removed' && !c.dropped), [run]);
 
   if (!runId || !personId) return <p className="error" role="alert">This link is missing its run.</p>;
+  if (ended) return <p className="muted" role="status">This run has ended</p>;
   if (!run) return <p className="muted" role="status">{connected ? 'Loading the run' : 'Connecting'}</p>;
   if (personId !== run.shopperId) {
     return (
@@ -76,6 +67,18 @@ export default function ShopperScreen() {
       setBusy(false);
     }
   };
+
+  // After the receipt the cart is closed: the shopper only moves on to settle.
+  if (run.state === 'receipt' || run.state === 'settled' || run.state === 'partlySettled') {
+    return (
+      <div className="card" role="group" aria-label="Cart closed">
+        <p>The cart is closed. Settle is next.</p>
+        <a className="btn" href={`/settle?run=${encodeURIComponent(runId)}&person=${encodeURIComponent(personId)}${mock ? '&mock=1' : ''}`}>
+          Go to settle
+        </a>
+      </div>
+    );
+  }
 
   const streaming = connected && (run.state === 'open' || run.state === 'lastCall');
   const locked = run.state === 'locked';
@@ -129,6 +132,7 @@ export default function ShopperScreen() {
         <UnclaimedList
           run={run}
           personId={personId}
+          mock={mock}
           onPutBack={(chipId) => void act(() => api.putBack(runId, chipId, personId))}
           onBack={() => void act(() => api.back(runId, personId))}
         />

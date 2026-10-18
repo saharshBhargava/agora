@@ -9,11 +9,21 @@ export type JoinResult = {
   auth: { status: string; authId: string; approvalCode: string; authorizedCents: number };
 };
 
+const TIMEOUT_MS = 10000;
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    });
+  } catch (e) {
+    const name = e instanceof Error || e instanceof DOMException ? e.name : '';
+    if (name === 'TimeoutError' || name === 'AbortError') throw new ApiError('The server is taking too long. Try again.', 0);
+    throw new ApiError("Can't reach the server. Check your connection and try again.", 0);
+  }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError((body as { error?: string }).error ?? `request failed (${res.status})`, res.status);
   return body as T;

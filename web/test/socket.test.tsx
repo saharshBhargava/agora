@@ -9,7 +9,6 @@ class FakeWS {
   sent: string[] = [];
   onopen: (() => void) | null = null;
   onmessage: ((e: { data: string }) => void) | null = null;
-  onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
   constructor(public url: string) {
     FakeWS.instances.push(this);
@@ -17,9 +16,10 @@ class FakeWS {
   send(d: string) {
     this.sent.push(d);
   }
-  close() {
+  onclose: ((e?: { code?: number }) => void) | null = null;
+  close(code?: number) {
     this.readyState = 3;
-    this.onclose?.();
+    this.onclose?.({ code });
   }
   open() {
     this.readyState = 1;
@@ -128,4 +128,24 @@ test('resets state when ids change', () => {
   rerender({ r: 'r2' });
   expect(result.current.run).toBeNull();
   expect(last().url).toMatch(/run=r2/);
+});
+
+test('a run with no identifying chip clears the identifying region', () => {
+  const { result } = renderHook(() => useRun('r1', 'p1'));
+  act(() => last().open());
+  const region = { x: 1, y: 2, w: 3, h: 4 };
+  act(() => last().push({ t: 'identifying', region }));
+  act(() => last().push({ t: 'run', run: { id: 'r1', lastCallEndsAt: null, chips: [{ id: 'c', state: 'identifying', dropped: false }] } }));
+  expect(result.current.identifyingRegion).toEqual(region);
+  act(() => last().push({ t: 'run', run: { id: 'r1', lastCallEndsAt: null, chips: [{ id: 'c', state: 'open', dropped: false }] } }));
+  expect(result.current.identifyingRegion).toBeNull();
+});
+
+test('close code 1008 stops reconnecting and marks the run ended', () => {
+  const { result } = renderHook(() => useRun('r1', 'p1'));
+  expect(result.current.ended).toBe(false);
+  act(() => last().close(1008));
+  act(() => void vi.advanceTimersByTime(10000));
+  expect(FakeWS.instances).toHaveLength(1);
+  expect(result.current.ended).toBe(true);
 });

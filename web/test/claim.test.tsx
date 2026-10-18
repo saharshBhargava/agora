@@ -88,3 +88,30 @@ test('errorEvent shows a transient toast', () => {
   render(<ClaimScreen />);
   expect(screen.getByText('cart closed')).toBeInTheDocument();
 });
+
+test('the header keeps the held amount and approval code visible', () => {
+  const r = run();
+  mk({ ...r, people: r.people.map((p) => (p.id === 'a' ? { ...p, approvalCode: '888888' } : p)) });
+  render(<ClaimScreen />);
+  expect(screen.getByText('$40.00 held · approval 888888')).toBeInTheDocument();
+});
+
+test('the last-call banner shows the countdown', () => {
+  vi.useFakeTimers();
+  try {
+    const endsAt = Date.now() + 5000;
+    mk(run({ state: 'lastCall', lastCallEndsAt: endsAt }), { lastCallEndsAt: endsAt });
+    render(<ClaimScreen />);
+    expect(screen.getByText('Sam is checking out · last call · 5s')).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(2000); });
+    expect(screen.getByText('Sam is checking out · last call · 3s')).toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('an ended run says so instead of reconnecting', () => {
+  mk(null as unknown as Run, { connected: false, ended: true });
+  render(<ClaimScreen />);
+  expect(screen.getByText('This run has ended')).toBeInTheDocument();
+});

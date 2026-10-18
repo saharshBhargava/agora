@@ -15,6 +15,8 @@ export function SettleLines({ run, canRetry, onRetry, busy }: { run: Run; canRet
           line = s.owedCents > 0
             ? `Captured ${formatCents(s.capturedCents)} · ${formatCents(s.owedCents)} owed`
             : `Captured ${formatCents(s.capturedCents)} (settles tonight) · ${formatCents(s.releasedCents)} released${s.approvalCode ? ` · approval ${s.approvalCode}` : ''}`;
+        } else if (s.step === 'reversed' && s.shareCents === 0) {
+          line = `Nothing captured · ${formatCents(s.releasedCents)} released`;
         } else if (s.step === 'failed') {
           line = canRetry ? (
             <button type="button" className="btn" disabled={busy} onClick={onRetry}>Retry</button>

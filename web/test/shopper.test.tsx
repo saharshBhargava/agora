@@ -200,3 +200,69 @@ test('UnclaimedList shows Mine and Put back for the milk when locked', async () 
   expect(onBack).toHaveBeenCalled();
   expect(screen.getByRole('link', { name: 'Go to settle' })).toHaveAttribute('href', '/settle?run=r1&person=shop');
 });
+
+test('after the receipt the shopper sees Go to settle instead of the board, keeping mock=1', () => {
+  for (const state of ['receipt', 'settled', 'partlySettled'] as const) {
+    setSock(baseRun({ state, chips: [mk({ id: 'e', name: 'Eggs', state: 'matched' })] }));
+    const { unmount } = render(<ShopperScreen />);
+    expect(screen.getByRole('link', { name: 'Go to settle' })).toHaveAttribute('href', '/settle?run=r1&person=shop&mock=1');
+    expect(screen.queryByLabelText(/^Eggs/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Checkout' })).toBeNull();
+    unmount();
+  }
+});
+
+test('UnclaimedList Go to settle keeps mock=1', () => {
+  render(<UnclaimedList run={baseRun({ state: 'locked' })} personId="shop" mock onPutBack={vi.fn()} onBack={vi.fn()} />);
+  expect(screen.getByRole('link', { name: 'Go to settle' })).toHaveAttribute('href', '/settle?run=r1&person=shop&mock=1');
+});
+
+test('Camera holds a wake lock and re-acquires the camera when visible again or when the track ends', async () => {
+  vi.useFakeTimers();
+  const tracks: { stop: ReturnType<typeof vi.fn>; readyState: string; muted: boolean; onended: (() => void) | null }[] = [];
+  const getUserMedia = vi.fn(async () => {
+    const t = { stop: vi.fn(), readyState: 'live', muted: false, onended: null as (() => void) | null };
+    tracks.push(t);
+    return { getTracks: () => [t], getVideoTracks: () => [t] };
+  });
+  Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
+  const sentinels: { release: ReturnType<typeof vi.fn> }[] = [];
+  const request = vi.fn(async () => {
+    const s = { release: vi.fn(async () => undefined) };
+    sentinels.push(s);
+    return s;
+  });
+  Object.defineProperty(navigator, 'wakeLock', { value: { request }, configurable: true });
+  let visibility = 'visible';
+  Object.defineProperty(document, 'visibilityState', { get: () => visibility, configurable: true });
+
+  const { unmount } = render(<Camera send={vi.fn(() => true)} enabled region={null} mockHref="?mock=1" />);
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(getUserMedia).toHaveBeenCalledTimes(1);
+  expect(request).toHaveBeenCalledWith('screen');
+
+  // Backgrounded: the OS ends the track. Visible again: a new stream and a new wake lock.
+  visibility = 'hidden';
+  tracks[0].readyState = 'ended';
+  act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+  visibility = 'visible';
+  await act(async () => {
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(getUserMedia).toHaveBeenCalledTimes(2);
+  expect(tracks[0].stop).toHaveBeenCalled();
+  expect(request).toHaveBeenCalledTimes(2);
+
+  // The track ends while visible: re-acquire.
+  await act(async () => {
+    tracks[1].onended?.();
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(getUserMedia).toHaveBeenCalledTimes(3);
+
+  unmount();
+  expect(tracks[2].stop).toHaveBeenCalled();
+  expect(sentinels.at(-1)!.release).toHaveBeenCalled();
+  delete (navigator as unknown as { wakeLock?: unknown }).wakeLock;
+});

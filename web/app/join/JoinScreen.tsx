@@ -24,7 +24,6 @@ export default function JoinScreen() {
     try {
       const res = await api.join(runId, name, capCents, { decline });
       setJoined(res);
-      router.push(`/claim?run=${encodeURIComponent(runId)}&person=${encodeURIComponent(res.personId)}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not join');
     } finally {
@@ -46,6 +45,13 @@ export default function JoinScreen() {
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
             <HeldBadge cents={joined.auth.authorizedCents} approvalCode={joined.auth.approvalCode} />
             <p className="muted">You are in the room. Watch the grid for chips to claim.</p>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => router.push(`/claim?run=${encodeURIComponent(runId)}&person=${encodeURIComponent(joined.personId)}`)}
+            >
+              Start claiming
+            </button>
           </div>
         )}
         {error && <p className="error" role="alert">{error}</p>}

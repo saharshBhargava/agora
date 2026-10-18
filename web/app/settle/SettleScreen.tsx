@@ -12,12 +12,13 @@ export default function SettleScreen() {
   const runId = params.get('run') ?? '';
   const personId = params.get('person') ?? '';
   const mock = params.get('mock') === '1';
-  const { run, connected } = useRun(runId || null, personId || null);
+  const { run, connected, ended } = useRun(runId || null, personId || null);
   const frameRef = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!runId || !personId) return <p className="error" role="alert">This link is missing its run.</p>;
+  if (ended) return <p className="muted" role="status">This run has ended</p>;
   if (!run) return <p className="muted" role="status">{connected ? 'Loading the run' : 'Connecting'}</p>;
 
   const isShopper = personId === run.shopperId;

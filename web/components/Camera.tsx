@@ -29,19 +29,52 @@ export function Camera({ send, enabled, region, mockHref }: CameraProps) {
   sendRef.current = send;
   enabledRef.current = enabled;
 
+  // Camera plus a screen wake lock. A phone that backgrounds or locks ends the track, so the stream is
+  // re-acquired when the page is visible again or a track ends; the wake lock is re-requested on visible.
   useEffect(() => {
     let stopped = false;
     let stream: MediaStream | null = null;
-    (async () => {
+    let acquiring = false;
+    let wake: { release: () => Promise<void> } | null = null;
+
+    const requestWake = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        const lock = (navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }).wakeLock;
+        const s = await lock?.request('screen');
+        if (!s) return;
         if (stopped) {
-          stream.getTracks().forEach((t) => t.stop());
+          void s.release().catch(() => undefined);
           return;
         }
+        if (wake && wake !== s) void wake.release().catch(() => undefined);
+        wake = s;
+      } catch {
+        /* not supported or refused: the README asks for Auto-Lock off */
+      }
+    };
+
+    const healthy = (s: MediaStream | null): boolean =>
+      !!s && s.getTracks().length > 0 && s.getTracks().every((t) => t.readyState === 'live' && !t.muted);
+
+    const acquire = async () => {
+      if (stopped || acquiring) return;
+      acquiring = true;
+      try {
+        const next = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        if (stopped) {
+          next.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        stream?.getTracks().forEach((t) => t.stop());
+        stream = next;
+        next.getTracks().forEach((t) => {
+          t.onended = () => {
+            if (stream === next) void acquire();
+          };
+        });
         const v = videoRef.current;
         if (v) {
-          v.srcObject = stream;
+          v.srcObject = next;
           try {
             await v.play?.();
           } catch {
@@ -49,13 +82,27 @@ export function Camera({ send, enabled, region, mockHref }: CameraProps) {
           }
         }
         setReady(true);
+        void requestWake();
       } catch {
-        if (!stopped) setDenied(true);
+        if (!stopped && !stream) setDenied(true);
+      } finally {
+        acquiring = false;
       }
-    })();
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (!healthy(stream)) void acquire();
+      else void requestWake();
+    };
+
+    void acquire();
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       stopped = true;
+      document.removeEventListener('visibilitychange', onVisibility);
       stream?.getTracks().forEach((t) => t.stop());
+      void wake?.release().catch(() => undefined);
     };
   }, []);
 

@@ -391,3 +391,4 @@ p { margin: 0; }
 .settle-line { display: flex; flex-direction: column; gap: 2px; }
 .settle-name { font-weight: 700; }
 .settle-photo { position: relative; height: 32dvh; min-height: 200px; display: flex; border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }
+.claim-held { display: flex; justify-content: flex-end; }

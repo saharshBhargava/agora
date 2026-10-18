@@ -4,9 +4,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { ApiError } from '@/lib/api-error';
 import { useRun } from '@/lib/socket';
+import { useCountdown } from '@/lib/countdown';
 import { formatCents } from '@/lib/money';
 import { myShare } from '@/lib/share';
 import { Board } from '@/components/Board';
+import { HeldBadge } from '@/components/HeldBadge';
 import { LiveView } from '@/components/LiveView';
 import { WishSheet } from '@/components/WishSheet';
 import type { Chip } from '@/lib/types';
@@ -19,7 +21,8 @@ export default function ClaimScreen() {
   const router = useRouter();
   const runId = params.get('run') ?? '';
   const personId = params.get('person') ?? '';
-  const { run, send, connected, lastFrame, errorEvent } = useRun(runId || null, personId || null);
+  const { run, send, connected, lastFrame, lastCallEndsAt, errorEvent, ended } = useRun(runId || null, personId || null);
+  const secs = useCountdown(run?.state === 'lastCall' ? (lastCallEndsAt ?? run.lastCallEndsAt ?? null) : null);
 
   const [large, setLarge] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -56,6 +59,7 @@ export default function ClaimScreen() {
 
   if (!runId) return <p className="error" role="alert">This link is missing its run.</p>;
   if (!personId) return <p className="muted" role="status">Joining</p>;
+  if (ended) return <p className="muted" role="status">This run has ended</p>;
   if (!run || !me) return <p className="muted" role="status">{connected ? 'Loading the run' : 'Connecting'}</p>;
   if (me.isShopper) {
     return (
@@ -91,9 +95,18 @@ export default function ClaimScreen() {
       <button type="button" className="liveview-toggle" aria-label="Toggle live view size" onClick={() => setLarge((l) => !l)}>
         <LiveView frame={lastFrame} shopperName={shopper?.name ?? 'Shopper'} small={!large} />
       </button>
+      {me.authorizedCents !== null && (
+        <div className="claim-held">
+          <HeldBadge cents={me.authorizedCents} approvalCode={me.approvalCode} />
+        </div>
+      )}
       {!connected && <p className="muted" role="status">Reconnecting…</p>}
 
-      {run.state === 'lastCall' && <div className="banner" role="status"><span>{shopper?.name ?? 'The shopper'} is checking out · last call</span></div>}
+      {run.state === 'lastCall' && (
+        <div className="banner" role="status">
+          <span>{`${shopper?.name ?? 'The shopper'} is checking out · last call · ${secs ?? 0}s`}</span>
+        </div>
+      )}
       {!open && (
         <div className="banner" role="status">
           <span>Your tray is {formatCents(trayTotal)} across {mine.length} {mine.length === 1 ? 'item' : 'items'}</span>
