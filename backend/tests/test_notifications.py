@@ -578,7 +578,53 @@ async def test_overnight_notification_suppresses_when_recheck_finds_unavailable_
 
     assert requests == []
     async with app.state.db.system() as conn:
-        assert await conn.fetchval("SELECT status FROM notification_outbox WHERE id = $1", outbox_id) == "suppressed"
+        row = await conn.fetchrow("SELECT status, last_error FROM notification_outbox WHERE id = $1", outbox_id)
+        assert row["status"] == "suppressed"
+        assert row["last_error"] == "offer_no_longer_eligible"
+
+
+async def test_overnight_newer_eligible_observation_revalidates_instead_of_suppressing(client, app):
+    """A fresher eligible listing observation must not look like the watch disappeared."""
+    rows = await _delivery_rows(client, app, "notify_overnight_newer")
+    notification_id, outbox_id = rows["notification_ids"][0]
+    old = datetime.now(UTC) - timedelta(hours=20)
+    async with app.state.db.system() as conn:
+        await conn.execute("UPDATE notifications SET created_at = $2 WHERE id = $1", notification_id, old)
+        await conn.execute("UPDATE watch_observations SET observed_at = $2 WHERE watch_id = $1",
+                           rows["watch_id"], old)
+        await conn.execute("UPDATE watch_matches SET observed_at = $2 WHERE watch_id = $1",
+                           rows["watch_id"], old)
+
+    requests = []
+    async with _mock_apns([], requests) as transport:
+        service = NotificationService(app.state.db, _settings(), transport)
+        await service.send_pending(notification_id=str(notification_id))
+        async with app.state.db.system() as conn:
+            queued = await conn.fetchrow(
+                "SELECT id FROM watch_runs WHERE watch_id = $1 ORDER BY created_at DESC LIMIT 1",
+                rows["watch_id"])
+            await conn.execute(
+                """INSERT INTO watch_observations (household_id, watch_id, listing_id, run_id, criteria_version,
+                                                   offer, observed_at, eligible, reason)
+                   SELECT household_id, watch_id, listing_id, $2, criteria_version, offer, now(), true, 'matched'
+                   FROM watch_observations WHERE watch_id = $1
+                   ORDER BY observed_at ASC, id ASC LIMIT 1""",
+                rows["watch_id"], queued["id"])
+            await conn.execute("UPDATE watch_runs SET status = 'succeeded', finished_at = now() WHERE id = $1",
+                               queued["id"])
+            await conn.execute("UPDATE notification_outbox SET run_at = now() WHERE id = $1", outbox_id)
+        await service.handlers["notification.deliver"]({"notification_id": str(notification_id)}, 1)
+
+    assert requests == []
+    async with app.state.db.system() as conn:
+        deferred = await conn.fetchrow(
+            "SELECT status, last_error, run_at FROM notification_outbox WHERE id = $1", outbox_id)
+        assert deferred["status"] == "pending"
+        assert deferred["last_error"] is None
+        assert deferred["run_at"] > datetime.now(UTC)
+        assert await conn.fetchval(
+            "SELECT count(*) FROM watch_runs WHERE watch_id = $1 AND status = 'queued'",
+            rows["watch_id"]) == 1
 
 
 async def test_overnight_higher_qualifying_price_coalesces_stale_pending_notification(client, app, monkeypatch):
