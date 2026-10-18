@@ -31,11 +31,21 @@ final class AgoraClient {
         as type: Value.Type,
         method: String = "GET",
         body: [String: Any]? = nil,
-        key: String? = nil
+        key: String? = nil,
+        query: [URLQueryItem] = []
     ) async throws -> Value {
-        let data = try await perform(path, method: method, body: body, key: key)
+        let data = try await perform(path, method: method, body: body, key: key, query: query)
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let value = try decoder.singleValueContainer().decode(String.self)
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: value) { return date }
+            formatter.formatOptions = [.withInternetDateTime]
+            if let date = formatter.date(from: value) { return date }
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid timestamp"))
+        }
         return try decoder.decode(type, from: data)
     }
 
@@ -69,12 +79,13 @@ final class AgoraClient {
         _ path: String,
         method: String,
         body: [String: Any]?,
-        key: String?
+        key: String?,
+        query: [URLQueryItem] = []
     ) async throws -> Data {
         guard isConfigured, let baseURL else {
             throw BrowserError(
                 "agora_not_configured",
-                "Agora isn’t available in this build yet. Calendar and chat are ready to use."
+                "Inventory isn’t connected to a backend. This app needs a valid HTTPS Agora API address configured before inventory can load or save."
             )
         }
         guard calendar.connected, let accountID = calendar.accountID else {
@@ -86,7 +97,12 @@ final class AgoraClient {
             throw BrowserError("account_changed", "Your Google connection changed. Please try again.")
         }
 
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+        if !query.isEmpty { components.queryItems = query }
+        // Form-style query parsers otherwise interpret literal '+' characters as spaces.
+        components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+        guard let url = components.url else { throw BrowserError("invalid_request") }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let key { request.setValue(key, forHTTPHeaderField: "Idempotency-Key") }

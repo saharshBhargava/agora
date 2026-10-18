@@ -4,14 +4,25 @@ from uuid import UUID
 import asyncpg
 from fastapi import APIRouter, Query, Request
 
-from app import forecasting
+from app import forecasting, idempotency
 from app.auth import CurrentUser, Principal
 from app.db import audit, notify
 from app.errors import Problem, not_found
-from app.inventory_ops import create_item, record_observation
+from app.inventory_ops import create_item, record_observation, sync_purchase_origins
 from app.merchants import MERCHANT_REF, ref, require_merchant
 from app.routers.account import require_household
-from app.schemas import DailyPoint, ItemDetail, ItemIn, ItemOut, ItemPatch, Observation, ObservationIn, PurchaseOrigin
+from app.schemas import (
+    DailyPoint,
+    ItemDetail,
+    ItemIn,
+    ItemOut,
+    ItemPatch,
+    Observation,
+    ObservationIn,
+    PurchaseOrigin,
+    RecognitionIn,
+    RecognitionOut,
+)
 from app.timeseries import daily_quantity
 
 router = APIRouter(prefix="/v1/inventory", tags=["inventory"])
@@ -79,6 +90,68 @@ async def add_item(body: ItemIn, request: Request, user: Principal = CurrentUser
         await notify(conn, household_id, "inventory.updated", item_id)
         row = await conn.fetchrow(ITEM_SELECT + "WHERE i.id = $1", item_id)
     return ItemOut(**item_fields(row))
+
+
+@router.post("/recognitions", response_model=RecognitionOut, status_code=201)
+async def save_recognition(body: RecognitionIn, request: Request, user: Principal = CurrentUser) -> RecognitionOut:
+    """Atomically save user-confirmed Gemini results. Never stores or fetches media, or queues recognition."""
+    key = idempotency.key_from(request)
+    digest = idempotency.request_hash("inventory.recognition", body.model_dump(mode="json"))
+    async with request.app.state.db.scoped(user.user_id) as conn:
+        household_id = await require_household(conn, body.household_id, user.user_id)
+        # Serialize concurrent retries before looking up their result, inside this transaction.
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", f"{user.user_id}:{key}")
+        if (previous := await idempotency.lookup(conn, user.user_id, key, digest)) is not None:
+            return RecognitionOut(**previous)
+        await _location_ok(conn, household_id, body.location_id)
+        if body.purchased_from_merchant_id:
+            await require_merchant(conn, body.purchased_from_merchant_id, household_id)
+        scan_id = await conn.fetchval(
+            """INSERT INTO scans (household_id, user_id, location_id, captured_at, media_kind, status,
+                                  provider, model, media_deleted_at, processed_at, confirmed_at,
+                                  purchased_from_merchant_id, purchased_on)
+               VALUES ($1, $2, $3, $4, $5, 'confirmed', 'gemini-client', $6, now(), now(), now(), $7, $8)
+               RETURNING id""", household_id, user.user_id, body.location_id, body.captured_at, body.media_kind,
+            body.model, body.purchased_from_merchant_id, body.purchased_on)
+        item_ids = []
+        seen = set()
+        for entry in body.items:
+            identity = str(entry.inventory_item_id) if entry.inventory_item_id else (
+                entry.display_name.casefold(), entry.unit.casefold())
+            if identity in seen:
+                raise Problem(422, "duplicate_item", "Combine duplicate items into one reviewed quantity.")
+            seen.add(identity)
+            item_id = entry.inventory_item_id
+            if item_id:
+                existing = await conn.fetchrow(
+                    """SELECT unit FROM inventory_items WHERE id = $1 AND household_id = $2
+                       AND status = 'active' FOR UPDATE""",
+                    item_id, household_id)
+                if existing is None:
+                    raise not_found("inventory item")
+                if existing["unit"] != entry.unit:
+                    raise Problem(422, "unit_mismatch", "Use the existing inventory item's unit.")
+            else:
+                item_id = await create_item(conn, household_id, user.user_id, entry.display_name,
+                                            category=entry.category, location_id=body.location_id, unit=entry.unit)
+            await conn.execute(
+                """INSERT INTO scan_detections (scan_id, household_id, label, category, inventory_item_id,
+                                               confidence, count, quantity, review)
+                   VALUES ($1, $2, $3, $4, $5, $6, 1, $7, 'accepted')""",
+                scan_id, household_id, entry.display_name, entry.category, item_id, entry.confidence, entry.quantity)
+            await record_observation(conn, household_id, item_id, body.captured_at, entry.quantity, "scan",
+                                     scan_id=scan_id, confidence=entry.confidence, user_id=user.user_id)
+            item_ids.append(item_id)
+        await sync_purchase_origins(conn, scan_id, user.user_id)
+        await forecasting.request_refresh(conn, household_id, user.user_id, item_ids)
+        rows = await conn.fetch(ITEM_SELECT + "WHERE i.id = ANY($1::uuid[]) ORDER BY i.display_name", item_ids)
+        result = RecognitionOut(recognition_id=scan_id, items=[ItemOut(**item_fields(row)) for row in rows])
+        if not await idempotency.claim(conn, user.user_id, key, digest, 201, result.model_dump(mode="json")):
+            raise Problem(409, "request_in_progress", "Retry this request with the same Idempotency-Key.")
+        await audit(conn, "inventory.recognition_confirmed", actor_id=user.user_id, household_id=household_id,
+                    target_type="scan", target_id=scan_id, meta={"items": len(item_ids), "provider": "gemini-client"})
+        await notify(conn, household_id, "inventory.updated", scan_id)
+    return result
 
 
 @router.get("/{item_id}", response_model=ItemDetail)

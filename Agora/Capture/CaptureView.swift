@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 
 struct CaptureView: View {
     @ObservedObject var settings: SettingsStore
+    @ObservedObject var inventory: InventoryStore
     @StateObject private var library = MediaLibrary()
     @State private var camera: CameraMode?
     @State private var pickingLibrary = false
@@ -14,6 +15,14 @@ struct CaptureView: View {
     @State private var deleting: CaptureItem?
     @State private var requestingPermission = false
     @State private var needsSettings = false
+    @State private var cameraDismissed = true
+    @State private var pendingReview: CaptureReview?
+    @State private var captureReview: CaptureReview?
+    private struct CaptureReview: Identifiable {
+        let item: CaptureItem
+        let controller: RecognitionController
+        var id: UUID { item.id }
+    }
     enum CameraMode: String, Identifiable { case photo, video; var id: String { rawValue } }
     var body: some View {
         NavigationStack {
@@ -33,7 +42,7 @@ struct CaptureView: View {
                         Button { pickingFiles = true } label: { Label("Files", systemImage: "folder") }
                             .buttonStyle(.bordered)
                     }.disabled(library.busy || requestingPermission)
-                    Text("Photos and videos are saved in Agora on this device. Nothing is sent to Gemini automatically.")
+                    Text("New camera captures go directly to Gemini to identify items. Enter the purchase store while Gemini works.")
                         .font(.footnote).foregroundStyle(.secondary)
                     if library.busy { ProgressView("Saving media…").frame(maxWidth: .infinity) }
                     HStack {
@@ -59,7 +68,10 @@ struct CaptureView: View {
             }
             .navigationTitle("Capture")
             .task { await library.load() }
-            .fullScreenCover(item: $camera) { mode in
+            .fullScreenCover(item: $camera, onDismiss: {
+                cameraDismissed = true
+                presentCaptureReview()
+            }) { mode in
                 CameraPicker(video: mode == .video) { result in
                     camera = nil
                     switch result {
@@ -103,8 +115,12 @@ struct CaptureView: View {
                 case .failure(let error): library.error = error.localizedDescription
                 }
             }
+            .sheet(item: $captureReview) { review in
+                RecognitionView(item: review.item, url: library.url(for: review.item), settings: settings,
+                                store: inventory, library: library, controller: review.controller)
+            }
             .sheet(item: $preview) { item in
-                MediaPreview(item: item, url: library.url(for: item), settings: settings, library: library)
+                MediaPreview(item: item, url: library.url(for: item), settings: settings, inventory: inventory, library: library)
             }
             .alert("Capture", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
                 if needsSettings {
@@ -140,14 +156,25 @@ struct CaptureView: View {
         if mode == .video, !(await AVCaptureDevice.requestAccess(for: .audio)) {
             needsSettings = true; library.error = "Allow microphone access in Settings to record videos with sound."; return
         }
+        cameraDismissed = false
         camera = mode
     }
     private func saveTemporary(_ url: URL, kind: CaptureItem.Kind) {
         library.busy = true
         Task {
             defer { library.busy = false; try? FileManager.default.removeItem(at: url) }
-            await library.add(file: url, kind: kind)
+            guard let item = await library.add(file: url, kind: kind) else { return }
+            let controller = RecognitionController()
+            controller.generateIfNeeded(item: item, file: library.url(for: item), settings: settings, store: inventory)
+            pendingReview = CaptureReview(item: item, controller: controller)
+            presentCaptureReview()
         }
+    }
+    private func presentCaptureReview() {
+        // The file copy and camera dismissal can finish in either order.
+        guard cameraDismissed, let pendingReview else { return }
+        captureReview = pendingReview
+        self.pendingReview = nil
     }
 }
 
@@ -180,6 +207,7 @@ private struct MediaPreview: View {
     let item: CaptureItem
     let url: URL
     @ObservedObject var settings: SettingsStore
+    @ObservedObject var inventory: InventoryStore
     @ObservedObject var library: MediaLibrary
     @StateObject private var caption = CaptionController()
     @Environment(\.dismiss) private var dismiss
@@ -187,11 +215,7 @@ private struct MediaPreview: View {
     @State private var player: AVPlayer?
     @State private var loaded = false
     @State private var confirmDismiss = false
-    @State private var purchasedFrom = ""
-    @State private var savedStore = ""
-    @State private var savingStore = false
-    @State private var storeMessage: String?
-    private var storeHasEdits: Bool { purchasedFrom.trimmingCharacters(in: .whitespacesAndNewlines) != savedStore }
+    @State private var reviewingInventory = false
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -204,28 +228,12 @@ private struct MediaPreview: View {
                         else { ProgressView() }
                     }.frame(maxWidth: .infinity).frame(height: item.kind == .document ? 550 : 300)
                     if item.kind != .document {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Purchased from").font(.headline)
-                            TextField("Store or website, e.g. Costco or Amazon", text: $purchasedFrom)
-                                .textFieldStyle(.roundedBorder)
-                                .disabled(savingStore)
-                                .accessibilityIdentifier("capture.purchasedFrom")
-                            Text("Optional. Enter the store for the items in this photo or video.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                            Button(savingStore ? "Saving…" : "Save store") {
-                                savingStore = true
-                                Task {
-                                    defer { savingStore = false }
-                                    do {
-                                        try await library.savePurchasedFrom(purchasedFrom, for: item.id)
-                                        savedStore = purchasedFrom.trimmingCharacters(in: .whitespacesAndNewlines)
-                                        purchasedFrom = savedStore
-                                        storeMessage = savedStore.isEmpty ? "Store cleared." : "Store saved."
-                                    } catch { storeMessage = "Could not save store: \(error.localizedDescription)" }
-                                }
-                            }.disabled(savingStore || !storeHasEdits)
-                            if let storeMessage { Text(storeMessage).font(.footnote).foregroundStyle(.secondary) }
-                        }.padding()
+                        Button { reviewingInventory = true } label: {
+                            Label("Identify items and add store", systemImage: "viewfinder")
+                                .frame(maxWidth: .infinity)
+                        }.buttonStyle(.borderedProminent).padding()
+                            .disabled(caption.busy)
+                            .accessibilityIdentifier("capture.recognizeInventory")
                         CaptionPanel(item: item, url: url, settings: settings, library: library, controller: caption)
                     }
                 }
@@ -234,21 +242,23 @@ private struct MediaPreview: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") {
-                        if caption.hasEdits || caption.busy || storeHasEdits { confirmDismiss = true }
+                        if caption.hasEdits || caption.busy { confirmDismiss = true }
                         else { dismiss() }
-                    }.disabled(savingStore)
+                    }
                 }
                 ToolbarItem(placement: .primaryAction) { ShareLink(item: url) { Image(systemName: "square.and.arrow.up") } }
             }
-            .interactiveDismissDisabled(caption.hasEdits || caption.busy || storeHasEdits || savingStore)
+            .sheet(isPresented: $reviewingInventory) {
+                let current = library.items.first(where: { $0.id == item.id }) ?? item
+                RecognitionView(item: current, url: url, settings: settings, store: inventory, library: library)
+            }
+            .interactiveDismissDisabled(caption.hasEdits || caption.busy)
             .confirmationDialog("Close this preview? Unsaved edits will be discarded and captioning will be cancelled.", isPresented: $confirmDismiss, titleVisibility: .visible) {
                 Button("Close preview", role: .destructive) { caption.cancel(); dismiss() }
             }
             .task {
                 let current = library.items.first(where: { $0.id == item.id }) ?? item
                 caption.restore(current.caption)
-                purchasedFrom = current.purchasedFrom ?? ""
-                savedStore = purchasedFrom
                 if item.kind == .video { player = AVPlayer(url: url) }
                 else if item.kind == .image { image = await Task.detached { MediaLibrary.thumbnail(url, maxPixels: 2400) }.value; loaded = true }
             }

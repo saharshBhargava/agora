@@ -260,3 +260,69 @@ private final class CaptionStreamFixture: URLProtocol {
     }
     override func stopLoading() {}
 }
+
+
+extension CaptionTests {
+    private func recognitionResponse(_ items: [[String: Any]], finish: String = "STOP") throws -> Data {
+        let json = String(data: try JSONSerialization.data(withJSONObject: ["items": items]), encoding: .utf8)!
+        return try chunk(json, finish: finish)
+    }
+    func testInventoryRecognitionSendsImageOnlyToGoogleAndUsesJSONSchema() async throws {
+        let file = try photo(); defer { try? FileManager.default.removeItem(at: file) }
+        let http = MockHTTP()
+        http.dataHandler = { request in
+            XCTAssertEqual(request.url?.host, "generativelanguage.googleapis.com")
+            XCTAssertTrue(request.url!.path.hasSuffix(":generateContent"))
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-goog-api-key"), "test-gemini-key")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
+            let config = try XCTUnwrap(body["generationConfig"] as? [String: Any])
+            XCTAssertEqual(config["responseMimeType"] as? String, "application/json")
+            XCTAssertNotNil(config["responseJsonSchema"])
+            let contents = body["contents"] as! [[String: Any]]
+            let parts = contents[0]["parts"] as! [[String: Any]]
+            XCTAssertNotNil(parts[0]["inlineData"])
+            return (try self.recognitionResponse([["name": "Milk", "category": "dairy", "unit": "cartons", "quantity": 1.5, "confidence": 0.9]]),
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let service = GeminiInventoryService(key: "test-gemini-key", model: "gemini-flash-latest", http: http)
+        let result = try await service.recognize(file: file, kind: .image, progress: { _ in }, cleanupNotice: { _ in XCTFail() })
+        XCTAssertEqual(result.first?.quantity, 1.5); XCTAssertEqual(http.requests.count, 1)
+    }
+    func testInventoryRecognitionRejectsIncompleteBlockedMalformedAndOutOfRangeResults() throws {
+        let item: [String: Any] = ["name": "Milk", "category": "dairy", "unit": "unit", "quantity": 2, "confidence": 0.9]
+        XCTAssertThrowsError(try GeminiInventoryService.decode(recognitionResponse([item], finish: "MAX_TOKENS")))
+        XCTAssertThrowsError(try GeminiInventoryService.decode(Data(#"{"promptFeedback":{"blockReason":"SAFETY"}}"#.utf8)))
+        XCTAssertThrowsError(try GeminiInventoryService.decode(chunk("not json", finish: "STOP")))
+        for (key, value) in [("quantity", -1 as Any), ("confidence", 2), ("name", " "), ("unit", " ")] {
+            var invalid = item; invalid[key] = value
+            XCTAssertThrowsError(try GeminiInventoryService.decode(recognitionResponse([invalid])))
+        }
+        XCTAssertThrowsError(try GeminiInventoryService.decode(recognitionResponse(Array(repeating: item, count: 101))))
+        XCTAssertEqual(try GeminiInventoryService.decode(recognitionResponse([])), [])
+    }
+    func testInventoryVideoDeletesGoogleFileAfterSuccessAndGenerationFailure() async throws {
+        let file = try await movie(); defer { try? FileManager.default.removeItem(at: file) }
+        for fail in [false, true] {
+            let http = MockHTTP()
+            http.uploadHandler = { _, _ in Data(#"{"file":{"name":"files/inventory-test","uri":"https://generativelanguage.googleapis.com/v1beta/files/inventory-test","mimeType":"video/mp4","state":"ACTIVE"}}"#.utf8) }
+            http.dataHandler = { request in
+                XCTAssertEqual(request.url?.host, "generativelanguage.googleapis.com")
+                if request.httpMethod == "DELETE" { return (Data(), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!) }
+                if request.url!.path.contains("generateContent") {
+                    if fail { throw CaptionHTTPFailure(status: 503) }
+                    return (try self.recognitionResponse([]), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+                }
+                return (Data(), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                    headerFields: ["X-Goog-Upload-URL": "https://generativelanguage.googleapis.com/upload/session"])!)
+            }
+            let service = GeminiInventoryService(key: "test", model: "gemini-flash-latest", http: http)
+            do {
+                let result = try await service.recognize(file: file, kind: .video, progress: { _ in }, cleanupNotice: { _ in XCTFail() })
+                XCTAssertFalse(fail); XCTAssertTrue(result.isEmpty)
+            } catch { XCTAssertTrue(fail) }
+            XCTAssertEqual(http.requests.last?.httpMethod, "DELETE")
+            XCTAssertFalse(http.cleanupWasCancelled)
+        }
+    }
+}

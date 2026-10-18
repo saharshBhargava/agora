@@ -76,6 +76,7 @@ suggestions and agent intents need an `Idempotency-Key` header. Errors are RFC 7
 | `GET /scans`, `GET /scans/{id}` | Status plus detections with confidence, boxes (0-1000 grid) and matches |
 | `GET /scans/{id}/frames/{n}` | Sanitized frame for the review UI (410 once retention deletes it) |
 | `POST /scans/{id}/review` | Accept / correct / reject detections; only those reach inventory |
+| `POST /inventory/recognitions` | Atomic save of client-recognized, user-reviewed JSON metadata; requires `Idempotency-Key`; no media accepted |
 | `GET /inventory`, `POST /inventory` | Items with latest quantity; manual add |
 | `GET /inventory/{id}?days=30` | Daily gap-filled series, raw observations with provenance, run-out forecast |
 | `PATCH /inventory/{id}`, `POST /inventory/{id}/observations` | Edit item; record a manual count |
@@ -230,7 +231,7 @@ server scheduling are not implemented. Settings provides reconnect, local sign-o
 
 ### Optional inventory backend
 
-The Home screen's inventory feature uses shared `AgoraClient` (Google ID token auth), separate from
+The Home and Inventory screens use shared `AgoraClient` (Google ID token auth), separate from
 Calendar's Google access-token calls. Leaving the backend unconfigured displays an availability message
 and does not block Calendar.
 To enable inventory, deploy the existing FastAPI/Postgres service and configure:
@@ -251,6 +252,44 @@ The app sends a freshly obtained **Google ID token** to this backend only. The b
 signature, issuer, audience, authorized party and expiration against the configured iOS client ID. It maps
 Google's stable subject to the same Agora user as the earlier server OAuth flow. Inventory failures do not
 sign the user out of Calendar. Run migrations before starting the service, as described above.
+
+### Capture → Gemini → inventory
+
+After accepting a new camera photo or video, Capture immediately starts Gemini recognition and opens
+**Add to inventory**. The photo and **Purchased from** field are visible while Gemini identifies the items;
+typing or choosing a store remains enabled, and incoming results preserve the text and keyboard focus.
+For an existing/imported capture, open it and choose **Identify items and add store** to start the same flow.
+Recognition starts once per capture review and does not require the inventory backend to be available.
+The app sends media directly to Google Gemini using the Gemini key/model from Settings. Images use inline data; videos use Google's Files
+API; the app attempts deletion after recognition and on failure/cancellation when a file reference is available.
+Any unconfirmed cleanup is shown in the review screen.
+No photo, video, file URL, or Gemini file reference is sent to the Agora backend. PDFs remain local gallery documents.
+
+Gemini returns a schema-validated item list. Review names, units, quantities and categories, exclude unwanted
+items, choose new or existing inventory entries, and optionally select a location, store and purchase date.
+Only an unambiguous name-and-unit match is preselected as an existing item. Quantities record the total visible
+at the capture's timestamp; they do not increment the previous count. Older observations appear in history
+without replacing a newer count. For imports, the timestamp is when the file was added to Capture.
+
+**Add to inventory** resolves a typed store name using the existing merchant find-or-create endpoint, or uses
+the selected store, then calls `POST /v1/inventory/recognitions` through `AgoraClient`. Deploy this backend
+version before using capture saves; no new database migration is required. The endpoint accepts strict JSON
+(`household_id`, `captured_at`, `media_kind`, `model`, optional location/purchase details, and reviewed `items`).
+It reuses scan/detection records solely for observation and purchase provenance, with no media keys or recognition
+jobs. It queues a forecast refresh for affected items. The transaction validates ownership and units, writes the
+whole batch, and records its idempotent response.
+
+The app persists the exact metadata request and idempotency key before sending it. An uncertain save stays
+locked for safe retry, including after restarting the app; a completed capture cannot accidentally be saved twice.
+Confirmed validation failures permit corrections. Pending/completed saves are scoped to the original account
+and household. Unsaved recognition drafts are discarded when you close review.
+
+Validation: `test_client_recognition.py` covers metadata-only input, concurrent retry, rollback, unit validation,
+purchase history and household isolation. iOS tests cover direct Google transport, structured response validation,
+video cleanup, edits/rejections, local persistence and retries. To run the app-to-backend integration test, start
+`tests.support.ios_inventory_server` with `AGORA_TEST_DATABASE_URL` pointing at a local admin database, then run
+`AgoraTests/InventoryLiveTests`. It creates and drops an isolated database; Gemini is mocked, and all inventory
+calls use the real local API. A live Gemini request is not part of these automated tests.
 
 ### Earlier server-side Calendar implementation
 

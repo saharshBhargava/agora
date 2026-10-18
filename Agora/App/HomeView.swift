@@ -1,32 +1,17 @@
 import SwiftUI
 
 enum AppTab: Hashable {
-    case home, chat, capture, settings
-}
-
-struct HomeInventoryItem: Decodable, Identifiable {
-    let id: UUID
-    let displayName: String
-    let unit: String
-    let parLevel: Double?
-    let quantity: Double?
-
-    var isRunningLow: Bool {
-        guard let quantity, let parLevel else { return false }
-        return quantity < parLevel
-    }
+    case home, chat, capture, inventory, settings
 }
 
 struct HomeView: View {
     @Binding var selectedTab: AppTab
-    @ObservedObject var calendar: CalendarConnection
-    let api: AgoraClient
-    @State private var inventory: [HomeInventoryItem] = []
-    @State private var loading = true
-    @State private var inventoryError: String?
-    @Environment(\.scenePhase) private var scenePhase
+    @ObservedObject var store: InventoryStore
+    private var inventory: [InventoryItem] { store.activeItems }
+    private var loading: Bool { store.loading }
+    private var inventoryError: String? { store.error }
 
-    private var lowItems: [HomeInventoryItem] {
+    private var lowItems: [InventoryItem] {
         inventory.filter(\.isRunningLow).sorted {
             if $0.quantity == $1.quantity {
                 return $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
@@ -90,14 +75,7 @@ struct HomeView: View {
                     .accessibilityLabel("Settings")
                 }
             }
-            .task(id: calendar.accountID) {
-                inventory = []; inventoryError = nil
-                await loadInventory()
-            }
-            .refreshable { await loadInventory() }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active { Task { await loadInventory() } }
-            }
+            .refreshable { await store.refresh() }
         }
     }
 
@@ -147,7 +125,7 @@ struct HomeView: View {
                 ProgressView("Checking your inventory…").font(.subheadline)
             } else if let inventoryError {
                 Text(inventoryError).font(.subheadline).foregroundStyle(.secondary)
-                Button("Try again") { Task { await loadInventory() } }
+                Button("Try again") { Task { await store.refresh() } }
                     .disabled(loading)
             } else if inventory.isEmpty {
                 Text("Your inventory is empty.").font(.subheadline.weight(.semibold))
@@ -182,6 +160,8 @@ struct HomeView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
+            Button("View inventory") { selectedTab = .inventory }
+                .font(.subheadline.weight(.semibold))
         }
     }
 
@@ -208,18 +188,4 @@ struct HomeView: View {
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
     }
 
-    @MainActor
-    private func loadInventory() async {
-        loading = true
-        defer { loading = false }
-        do {
-            let items = try await api.fetch("v1/inventory", as: [HomeInventoryItem].self)
-            try Task.checkCancellation()
-            inventory = items
-            inventoryError = nil
-        } catch {
-            if Task.isCancelled { return }
-            inventoryError = (error as? BrowserError)?.detail ?? "Couldn’t load your inventory. Please try again."
-        }
-    }
 }

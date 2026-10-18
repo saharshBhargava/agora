@@ -101,7 +101,8 @@ final class AgoraClientTests: XCTestCase {
         let items = try await client.fetch("v1/inventory", as: [InventoryRow].self)
         XCTAssertEqual(items, [InventoryRow(id: "item-1", displayName: "Milk"), InventoryRow(id: "item-2", displayName: "Eggs")])
 
-        let missing = AgoraClient(calendar: calendar, baseURL: nil, http: http)
+        // Explicitly empty so this check also works in builds with a configured backend.
+        let missing = AgoraClient(calendar: calendar, baseURL: URL(string: ""), http: http)
         do {
             _ = try await missing.fetch("v1/inventory", as: [InventoryRow].self)
             XCTFail("Expected not configured")

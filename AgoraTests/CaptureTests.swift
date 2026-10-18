@@ -57,3 +57,27 @@ final class CaptureTests: XCTestCase {
         XCTAssertFalse((Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") as? String ?? "").isEmpty)
     }
 }
+
+
+extension CaptureTests {
+    func testCameraPhotoResultReturnsTheNewLibraryItemForImmediateReview() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 32, height: 32)).image { context in
+            UIColor.systemTeal.setFill(); context.fill(CGRect(x: 0, y: 0, width: 32, height: 32))
+        }
+        var result: Result<(URL, CaptureItem.Kind)?, Error>?
+        let coordinator = CameraPicker.Coordinator { result = $0 }
+        coordinator.imagePickerController(UIImagePickerController(), didFinishPickingMediaWithInfo: [.originalImage: image])
+        let (file, kind) = try XCTUnwrap(try XCTUnwrap(result).get())
+        defer { try? FileManager.default.removeItem(at: file) }
+        let library = MediaLibrary(directory: directory)
+        let first = await library.add(file: file, kind: kind)
+        let second = await library.add(file: file, kind: kind)
+        let capture = try XCTUnwrap(second)
+        XCTAssertEqual(capture.kind, .image)
+        XCTAssertNotEqual(first?.id, capture.id)
+        XCTAssertEqual(library.items.first?.id, capture.id)
+        XCTAssertNotNil(MediaLibrary.thumbnail(library.url(for: capture)))
+    }
+}

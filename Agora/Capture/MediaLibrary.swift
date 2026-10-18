@@ -10,6 +10,7 @@ struct CaptureItem: Identifiable, Codable, Equatable {
     let createdAt: Date
     var caption: SavedCaption? = nil
     var purchasedFrom: String? = nil
+    var recognition: SavedRecognition? = nil
     var title: String {
         switch kind { case .image: return "Photo"; case .video: return "Video"; case .document: return "Document scan" }
     }
@@ -74,6 +75,13 @@ actor MediaRepository {
         try persist(items)
         return items
     }
+    func saveRecognition(_ recognition: SavedRecognition, for id: UUID) throws -> [CaptureItem] {
+        var items = try load()
+        guard let index = items.firstIndex(where: { $0.id == id }) else { throw CaptureFailure.missingFile }
+        items[index].recognition = recognition
+        try persist(items)
+        return items
+    }
     func remove(_ item: CaptureItem) throws -> [CaptureItem] {
         let items = try load().filter { $0.id != item.id }
         try persist(items)
@@ -90,24 +98,31 @@ final class MediaLibrary: ObservableObject {
     @Published var error: String?
     let directory: URL
     private let repository: MediaRepository
-    init() {
-        directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Agora/Media", isDirectory: true)
-        repository = MediaRepository(directory: directory)
+    init(directory: URL? = nil) {
+        self.directory = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Agora/Media", isDirectory: true)
+        repository = MediaRepository(directory: self.directory)
     }
     func load() async {
         do { items = try await repository.load() }
         catch { self.error = "Could not load your media: \(error.localizedDescription)" }
     }
     func url(for item: CaptureItem) -> URL { directory.appendingPathComponent(item.filename) }
-    func add(file: URL, kind: CaptureItem.Kind) async {
-        do { items = try await repository.add(file: file, kind: kind) }
-        catch { self.error = error.localizedDescription }
+    @discardableResult
+    func add(file: URL, kind: CaptureItem.Kind) async -> CaptureItem? {
+        do {
+            let updated = try await repository.add(file: file, kind: kind)
+            items = updated
+            return updated.first
+        } catch { self.error = error.localizedDescription; return nil }
     }
     func saveCaption(_ caption: SavedCaption, for id: UUID) async throws {
         items = try await repository.saveCaption(caption, for: id)
     }
     func savePurchasedFrom(_ store: String, for id: UUID) async throws {
         items = try await repository.savePurchasedFrom(store, for: id)
+    }
+    func saveRecognition(_ recognition: SavedRecognition, for id: UUID) async throws {
+        items = try await repository.saveRecognition(recognition, for: id)
     }
     func remove(_ item: CaptureItem) async {
         do { items = try await repository.remove(item) }

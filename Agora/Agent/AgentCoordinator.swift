@@ -97,17 +97,17 @@ final class AgentCoordinator: ObservableObject {
     private func run(provider: ModelProvider, contents initial: [[String: Any]], id: UUID) async {
         var contents = initial
         var failures = 0
-        let deadline = ContinuousClock.now + .seconds(240)
+        var turn = 0
         defer {
             if calendarMutationInFlight == id { calendarMutationInFlight = nil }
             if generation == id { running = false; task = nil; browser.state.status = status }
         }
         do {
             try repository.record(task: id, operation: "task", phase: "running")
-            for turn in 0..<24 {
-                AppLog.event(.agent, "turn.started", count: turn + 1)
+            while true {
+                turn += 1
+                AppLog.event(.agent, "turn.started", count: turn)
                 try Task.checkCancellation(); guard generation == id else { return }
-                guard ContinuousClock.now < deadline else { throw BrowserError("task_budget_exhausted", "Send a message to continue.") }
                 guard try JSONSerialization.data(withJSONObject: contents).count < 1_500_000 else { throw BrowserError("conversation_limit", "Start a new chat to continue.") }
                 status = "Thinking…"
                 let response = try await provider.nextTurn(contents: contents, tools: BrowserCall.schemas + (calendar?.connected == true ? CalendarCall.schemas : []))
@@ -181,7 +181,6 @@ final class AgentCoordinator: ObservableObject {
                 history = contents // Only commit complete, correlated tool exchanges.
                 if failures >= 3 { throw BrowserError("repeated_tool_errors", "Review the browser and try again.") }
             }
-            throw BrowserError("task_budget_exhausted", "Reached 24 model turns. Send a message to continue.")
         } catch {
             guard generation == id, !Task.isCancelled else { return }
             AppLog.failure(.agent, "task.failed", error: error)

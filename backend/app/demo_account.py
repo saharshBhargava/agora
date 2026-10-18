@@ -99,6 +99,17 @@ async def _seed(db: Database, user_id: UUID) -> None:
         stores = [merchants["PCC Community Markets"], merchants["Safeway"], merchants["QFC"], market]
 
         await _detections_and_purchases(conn, household_id, user_id, stores, rng)
+        # Include a recent reviewed camera capture alongside the server-recognized history.
+        capture_id = await conn.fetchval(
+            "SELECT id FROM scans WHERE household_id = $1 ORDER BY captured_at DESC LIMIT 1", household_id)
+        if capture_id:
+            await conn.execute(
+                """UPDATE scans SET provider = 'gemini-client', model = 'gemini-flash-latest',
+                          frame_keys = '{}', frame_hashes = '{}', raw_video_key = NULL,
+                          media_deleted_at = now() WHERE id = $1""", capture_id)
+            await conn.execute(
+                """UPDATE scan_detections SET bbox = NULL, frame_index = NULL, count = 1,
+                          fill_fraction = NULL, auto_accepted = false WHERE scan_id = $1""", capture_id)
         items = {r["display_name"]: r["id"] for r in await conn.fetch(
             "SELECT id, display_name FROM inventory_items WHERE household_id = $1", household_id)}
         for name, store in (("2% milk", stores[0]), ("large eggs", stores[3]), ("coffee beans", stores[0]),

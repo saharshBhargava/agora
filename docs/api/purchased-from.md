@@ -65,6 +65,28 @@ Errors are always `application/problem+json`:
 | `GET /v1/inventory`, `GET /v1/inventory/{id}` | Items carry `last_purchased_from` and `last_purchased_on`; detail adds `purchase_history` |
 | `PATCH /v1/inventory/{id}` | `preferred_merchant_id`: the store you *want* to buy from, kept separate from history |
 
+### Client-recognized captures
+
+`POST /v1/inventory/recognitions` saves reviewed Gemini results as JSON. It requires an
+`Idempotency-Key` (8–128 printable ASCII characters) and the same authentication as inventory calls.
+Send `household_id`, `captured_at` (timestamp with offset, no more than five minutes in the future),
+`media_kind` (`photos` or `video`), `model`, and 1–100 `items`. Optional capture fields are `location_id`,
+`purchased_from_merchant_id`, and `purchased_on` (the existing purchase-date rules apply).
+
+Each item requires `display_name` (1–120 characters), `unit` (1–20), `quantity` (0–10,000),
+and `confidence` (0–1). `category` (up to 40 characters) and `inventory_item_id` are optional.
+An existing item must be active, belong to this household, and have exactly the supplied unit.
+Without an item ID, a new inventory item is created. Quantities are observed totals at `captured_at`,
+not increments; newer observations remain the current quantity. Duplicate entries are rejected.
+
+The response is `201 {"recognition_id": "<scan UUID>", "items": [<inventory item objects>]}`.
+The whole batch, purchase provenance, forecast-refresh job and idempotency result commit atomically.
+Identical retries return the original response; changed payloads with the same key return
+`422 idempotency_key_reused`. Ownership failures return 404; invalid values, duplicates and unit
+mismatches return 422. Unknown fields, including media bytes and media references, are rejected.
+The server never uploads media or queues recognition for this endpoint. The saved scan can use the
+existing purchase-detail PATCH endpoints above. Refresh inventory after a replay to obtain current data.
+
 ### Merchant object
 
 ```json

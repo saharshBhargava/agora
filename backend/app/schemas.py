@@ -147,6 +147,46 @@ class ItemIn(Strict):
     preferred_merchant_id: UUID | None = None
 
 
+class RecognitionItemIn(Strict):
+    inventory_item_id: UUID | None = None
+    display_name: str = Field(min_length=1, max_length=120)
+    category: str | None = Field(default=None, max_length=40)
+    unit: str = Field(min_length=1, max_length=20)
+    quantity: float = Field(ge=0, le=10000, allow_inf_nan=False)
+    confidence: float = Field(ge=0, le=1, allow_inf_nan=False)
+
+    @field_validator("display_name", "unit")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value.strip()
+
+
+class RecognitionIn(Strict):
+    """Reviewed, client-recognized metadata only. No media or media references accepted."""
+    household_id: UUID
+    captured_at: datetime
+    media_kind: Literal["photos", "video"]
+    model: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9._-]+$")
+    location_id: UUID | None = None
+    purchased_from_merchant_id: UUID | None = None
+    purchased_on: PurchaseDate | None = None
+    items: list[RecognitionItemIn] = Field(min_length=1, max_length=100)
+
+    @field_validator("captured_at")
+    @classmethod
+    def valid_time(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value > datetime.now(UTC) + timedelta(minutes=5):
+            raise ValueError("captured_at must include a time zone and cannot be in the future")
+        return value
+
+
+class RecognitionOut(BaseModel):
+    recognition_id: UUID
+    items: list[ItemOut]
+
+
 class ItemPatch(Strict):
     display_name: str | None = Field(default=None, min_length=1, max_length=120)
     location_id: UUID | None = None
