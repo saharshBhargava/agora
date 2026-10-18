@@ -10,7 +10,10 @@ from app.config import get_settings
 from app.db import Database
 from app.jobs import Worker
 from app.main import build_pipeline
+from app.notifications import NotificationService
+from app.price_search import PriceSearchProvider
 from app.shopping import ShoppingRefresher
+from app.watch_ops import WatchService
 
 log = logging.getLogger("agora.worker")
 
@@ -25,7 +28,12 @@ async def main() -> None:
         await pipeline.forecaster.start()
         shopping = ShoppingRefresher(db)
         await shopping.start()
-        worker = Worker(db, {**pipeline.handlers, **shopping.handlers}, settings.worker_concurrency)
+        watches = WatchService(db, settings, PriceSearchProvider(settings, client))
+        notifications = NotificationService(db, settings)
+        await watches.start()
+        await notifications.start()
+        worker = Worker(db, {**pipeline.handlers, **shopping.handlers, **watches.handlers,
+                            **notifications.handlers}, settings.worker_concurrency)
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:
@@ -36,6 +44,7 @@ async def main() -> None:
         try:
             await worker.run()
         finally:
+            await notifications.close()
             await db.close()
 
 

@@ -192,6 +192,77 @@ Captions and confirmed inventory metadata keep their original provider/model lab
 Local keys are isolated by connection and destination. Changing an endpoint requires saving its credential
 for that destination. Browser and Calendar tool validation and approval rules apply to both providers.
 
+## Price watches and remote alerts
+
+The wishlist now has **Set up price watch**, reviewed product/price/fulfillment criteria, six-hour checks,
+verified offers and a persistent offer inbox. Add a direct HTTPS product URL, or configure server-side web
+discovery with a reasoning model and enabled search providers, configured separately:
+
+- Model: `AGORA_WATCH_MODEL_PROVIDER=gemini` uses `AGORA_WATCH_SEARCH_MODEL=gemini-2.5-flash` and
+  `AGORA_WATCH_SEARCH_API_KEY` (legacy name; falls back to `AGORA_GEMINI_API_KEY`). Alternatively set
+  `AGORA_WATCH_MODEL_PROVIDER=openai-compatible`, `AGORA_OPENAI_BASE_URL` and `AGORA_OPENAI_MODEL`
+  for a reachable tool-calling model; `AGORA_OPENAI_API_KEY` is optional for local servers.
+- Search: `AGORA_WATCH_SEARCH_PROVIDERS=["exa","parallel","firecrawl","keenable","tavily","brave"]`.
+  Exa, Parallel and Keenable have supported public routes enabled by `AGORA_WATCH_SEARCH_KEYLESS=true`.
+  No search key is required for those routes. Optional `AGORA_EXA_API_KEY`, `AGORA_PARALLEL_API_KEY`,
+  `AGORA_FIRECRAWL_API_KEY`, `AGORA_KEENABLE_API_KEY`, `AGORA_TAVILY_API_KEY` and `AGORA_BRAVE_API_KEY`
+  enable their authenticated APIs. Firecrawl, Tavily and Brave are skipped without their keys.
+  Use `AGORA_WATCH_SEARCH_KEYLESS=false` to restrict searches to configured credentials.
+
+The router rotates providers, falls back on errors, respects cooldowns, and returns the first successful
+response. Default limits include 12 provider attempts per watch run and 25 seconds per search call
+(`AGORA_WATCH_PROVIDER_REQUEST_BUDGET`, `AGORA_WATCH_SEARCH_TIMEOUT_S`). Public routes have provider
+quotas; production capacity may need keys. An optional `google` provider preserves grounded Google search
+when explicitly listed and a Gemini key is present. The model provider need not be Gemini.
+
+Phone model credentials do not power background searches. An unavailable background model and an
+unconfigured search route produce distinct `discovery_status` values; APNs is independent of both.
+If `/v1/watches` returns 404, deploy the watch backend first; setting a key cannot add a missing endpoint.
+One bounded controller chooses searches, reads and foreground interaction handoffs from returned evidence.
+Search-source metadata establishes URLs; merchant Product/Offer structured data establishes prices. Unsupported pages,
+unverified variants, delivery regions, quantities, costs or deadlines cannot produce a qualifying alert.
+For delivery, use a supported published region such as `US`; pickup needs an exact supported store/region.
+See the full [watch contract](docs/api/price-watches.md) for coverage and limits.
+
+The inbox works without push setup. To enable APNs, configure these secrets in the backend environment:
+
+- `AGORA_APNS_ENABLED=true`
+- `AGORA_APNS_KEY_ID` and `AGORA_APNS_TEAM_ID` from the Apple developer account
+- `AGORA_APNS_PRIVATE_KEY`: the contents of the APNs `.p8` signing key, preserving PEM newlines
+- `AGORA_APNS_TOPIC=dev.agora.browserchat` (change only if the app bundle identifier changes)
+
+For remote push, set `AGORA_CODE_SIGN_ENTITLEMENTS = Agora/Agora.entitlements` in your untracked
+`Config/Local.xcconfig`, then enable Push Notifications for that App ID and its signing profile.
+The default build omits this capability so Personal Team signing can run watches and the offer inbox
+without a paid Apple membership. The optional entitlement uses
+development/sandbox for Debug and production for Release. Users explicitly enable alerts when reviewing
+a watch, then approve the iOS notification permission prompt. A device registration response distinguishes
+configured server delivery from an unavailable push service. Device registrations transfer to the current
+signed-in account; sign-out unregisters the device and removes delivered notifications.
+
+Default service limits are 25 active watches per household, five pages, three search requests and eight
+model turns per check attempt, 90 seconds per attempt,
+600 reserved search attempts per household per rolling day (three reserved per check), 30 user-triggered
+checks per household/hour, and a five-minute manual-check cooldown per watch. Each user also has a 20-alert
+daily ceiling; each subscription can choose a lower per-watch cap and quiet hours. Configure `AGORA_WATCH_*`
+limits as described in `backend/.env.example`.
+
+The six-hour worker coalesces missed intervals. Render's free sleeping service cannot guarantee timely
+unattended checks; use continuously available hosting when that guarantee matters. No hosting plan change
+is applied by this code. The designated demo account has realistic watches, offers, inbox history and
+simulated delivery; it never calls search providers or APNs.
+
+Local verification: run this from `backend/` to start an isolated worker/API on port 18767:
+
+```sh
+AGORA_TEST_DATABASE_URL=postgresql://localhost/postgres uv run python -m tests.support.ios_watch_server
+```
+
+Run
+`AgoraTests/WatchLiveTests` on the simulator. It exercises real auth, API, database, worker, inbox/read,
+session restore and criteria invalidation through the designated account. `test_watch_pipeline.py` exercises
+the ordinary-account pipeline with only external HTTP discovery, merchant and APNs boundaries mocked.
+
 ## 5. Perceptron (optional)
 
 If the Perceptron sponsor gives you a key, set these in Render: `AGORA_PERCEPTRON_API_KEY=<key>`,

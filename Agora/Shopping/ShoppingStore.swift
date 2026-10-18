@@ -10,6 +10,7 @@ final class ShoppingStore: ObservableObject {
     @Published private(set) var error: String?
     @Published private(set) var notice: String?
     @Published private(set) var context = UUID()
+    let watches: WatchStore
     private let api: AgoraClient
     private let inventory: InventoryStore
     private var subscription: AnyCancellable?
@@ -20,6 +21,7 @@ final class ShoppingStore: ObservableObject {
 
     init(api: AgoraClient, inventory: InventoryStore) {
         self.api = api; self.inventory = inventory
+        self.watches = WatchStore(api: api, inventory: inventory)
         subscription = inventory.$householdID.combineLatest(inventory.$context)
             .removeDuplicates { $0.0 == $1.0 && $0.1 == $1.1 }.sink { [weak self] household, _ in
             guard let self else { return }

@@ -405,8 +405,9 @@ explains why it thinks so, and turns that into a shopping list per store in one 
 
 ## Six-hour replenishment refresh and shopping ideas
 
-**Status:** replenishment scheduling, wishlist management and suggestion UI are implemented. Live retailer
-price monitoring is deferred; retain user-entered target prices without implying a verified offer.
+**Status:** replenishment scheduling, wishlist management, suggestions and reviewed price-watch UI are
+implemented. User-entered targets stay distinct from verified source offers; unsupported merchant evidence
+cannot trigger a matching-price claim. See [price watches](api/price-watches.md).
 See [backend refresh design](backend-spec.md#45-prices-deals-small-businesses).
 
 - Replenishment checks run through backend jobs at 00:00, 06:00, 12:00 and 18:00 UTC, including while the
@@ -419,7 +420,16 @@ See [backend refresh design](backend-spec.md#45-prices-deals-small-businesses).
 - Accept, reject with a reason, snooze, feedback, edit, pin, priorities, mark purchased and remove all use
   existing wishlist endpoints. Failed refreshes retain previous results; account/household switches clear
   shopping state and discard stale responses.
-- Price-watch checks will use the same six-hour requirement when merchant integrations are added.
+- Price-watch checks run every six hours plus initial/manual checks; they use server credentials and durable
+  jobs independently of Find ideas. The active wishlist row opens **Set up price watch**. Confirm product,
+  per-item target, optional total, quantity, condition, fulfillment and alerts before activating.
+- The wishlist toolbar opens **Price watches** and **Offer inbox**. Detail shows last successful/next check,
+  failures vs no matches, explicit verification gaps, current vs historical offers, evidence and retailer link.
+- Push permission is requested after explicit opt-in; denial or unavailable APNs does not hide the inbox.
+  Alert taps open the watch after authenticated loading. Account/household changes clear watch/inbox state.
+- Research can refine searches and follow source links within server-enforced budgets. When it reports
+  `interaction_urls`, the latest confirmed run shows **Needs browser review**. An explicit tap opens the
+  shared browser privately and selects Chat; no model action or purchase starts automatically.
 
 ## Replenishment to Calendar: backend contract
 
@@ -433,3 +443,8 @@ Refetch on `trip.updated`. Display persisted trips and recover uncertain writes 
 lookup, never a new request identity. Demo recovery uses `GET /v1/demo/calendar/events/by-request?key=...`.
 Keep demo traffic on the private Calendar routes; ordinary accounts use their actual Google Calendar.
 A `409 duplicate_request` means retry the same request key after the competing transaction finishes.
+
+Price-watch capability responses now include `discovery_status` (`available`, `model_not_configured`,
+`search_not_configured`). The watch UI distinguishes model setup from web-provider setup and does not
+interpret a failed capability request or a service 404 as unavailable retailer discovery. Scheduled
+research uses server model/provider settings; foreground model credentials remain on the phone.

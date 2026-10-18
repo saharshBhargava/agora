@@ -308,8 +308,12 @@ price targets/decisions remain intact. The app fetches saved state on foreground
 active; this is separate from the six-hour generation cadence. A continuously available worker is needed
 for timely unattended checks; sleeping hosting delays work until the worker resumes.
 
-**Deferred by scope:** live retailer prices, price histories, deal alerts and six-hour price-watch checks.
-The price capabilities below remain design proposals. No displayed target is presented as a current offer.
+**Implemented:** confirmed price watches attached to wishlist items, bounded Google Search discovery,
+source-verified Product/Offer observations, six-hour checks, deterministic matching, persistent offer inbox
+and APNs outbox delivery. See [price watch contract](api/price-watches.md). Targets remain separate from
+verified offers. Unsupported source fields never become implied price/availability guarantees. Server search
+and APNs credentials are required for those external integrations; demo behavior is isolated by `users.is_demo`.
+Broader retailer adapters, receipt-linked price history and the aggregates/routing below remain proposals.
 
 - `price_observations` comes from receipts (real prices you paid), seeded history for demo merchants, and optionally agent-browsed product pages.
 - A continuous aggregate `price_daily` (min/avg per product per merchant per day) drives "lowest in 30 days" and target-price alerts.

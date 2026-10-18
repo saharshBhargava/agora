@@ -3,4 +3,6 @@ AGORA_GOOGLE_IOS_CLIENT_ID = 875535919816-pt11h5vsprq94mktf5of9ltfbu529evl.apps.
 AGORA_GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.875535919816-pt11h5vsprq94mktf5of9ltfbu529evl
 // Shared hosted backend. Demo uses Agora Calendar; ordinary accounts use Google. Override locally if needed.
 AGORA_API_BASE_URL = https:/$()/agora-api-yq3m.onrender.com
+// Optional remote push capability; leave empty for Personal Team signing and in-app alerts.
+AGORA_CODE_SIGN_ENTITLEMENTS =
 #include? "Local.xcconfig"

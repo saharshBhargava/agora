@@ -55,6 +55,7 @@ async def ensure_demo_account(db: Database, settings: Settings) -> UUID:
         await _calendar(db, existing)
         await _trips(db, existing)
         await _shopping_refresh(db, existing)
+        await _price_watches(db, existing)
         return existing
     user_id = await ensure_user(db, DEMO_SUBJECT, VISIBLE_HANDLE, settings.demo_display_name)
     async with db.system() as conn:
@@ -131,6 +132,7 @@ async def _seed(db: Database, user_id: UUID) -> None:
     await _calendar(db, user_id)
     await _trips(db, user_id)
     await _shopping_refresh(db, user_id)
+    await _price_watches(db, user_id)
 
 
 async def _commerce(db: Database, user_id: UUID) -> None:
@@ -334,3 +336,71 @@ async def _shopping_refresh(db: Database, user_id: UUID) -> None:
                       evidence = '[{"kind":"other","detail":"You keep milk in the fridge."}]'::jsonb
                WHERE household_id = $1 AND title = 'Oat milk' AND evidence @> '[{"type":"consumption"}]'::jsonb""",
             household_id)
+
+
+async def _price_watches(db: Database, user_id: UUID) -> None:
+    """Backfill a confirmed skillet watch and its previous observation without external effects."""
+    from app.price_search import Offer
+    from app.watch_schemas import WatchCriteria
+
+    now = datetime.now(UTC)
+    async with db.scoped(user_id) as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo.watches'), hashtext($1))", str(user_id))
+        if await conn.fetchval('SELECT 1 FROM price_watches WHERE created_by=$1', user_id):
+            return
+        item = await conn.fetchrow("SELECT * FROM wishlist_items WHERE title='Cast iron skillet' "
+                                   "AND status='active' ORDER BY created_at LIMIT 1")
+        if not item:
+            return
+        household_id = item['household_id']
+        checked = now-timedelta(hours=1)
+        criteria = WatchCriteria(query='Lodge 12 inch cast iron skillet',
+                                 required_terms=['Lodge', '12 inch', 'skillet'],
+                                 excluded_terms=['lid only'], target_price_cents=3999, quantity=1,
+                                 product_url='https://www.lodgecastiron.com/product/round-cast-iron-classic-skillet',
+                                 fulfillment='delivery', location='Seattle, WA 98107').model_dump(mode='json')
+        watch_id = await conn.fetchval(
+            """INSERT INTO price_watches(household_id,wishlist_item_id,created_by,criteria,confirmed_at,
+               last_checked_at,last_successful_at,next_check_at,last_result)
+               VALUES($1,$2,$3,$4,$5,$5,$5,$6,'matched') RETURNING id""",
+            household_id, item['id'], user_id, criteria, checked, now+timedelta(hours=5))
+        await conn.execute(
+            """INSERT INTO watch_subscriptions(watch_id,household_id,user_id,push_enabled,quiet_start_hour,
+               quiet_end_hour,timezone,last_notified_at) VALUES($1,$2,$3,true,22,8,'America/Los_Angeles',$4)""",
+            watch_id, household_id, user_id, checked)
+        run_id = await conn.fetchval(
+            """INSERT INTO watch_runs(household_id,watch_id,user_id,criteria_version,status,trigger,created_at,
+               started_at,finished_at,offer_count,match_count) VALUES($1,$2,$3,1,'succeeded','scheduled',$4,$4,$4,1,1)
+               RETURNING id""", household_id, watch_id, user_id, checked)
+        listing_id = await conn.fetchval(
+            """INSERT INTO watch_listings(household_id,watch_id,url,merchant)
+               VALUES($1,$2,$3,'Lodge Cast Iron') RETURNING id""", household_id, watch_id, criteria['product_url'])
+        offer = Offer(url=criteria['product_url'], title=criteria['query'], merchant='Lodge Cast Iron',
+                      price_cents=2999, available=True, available_quantity=12, shipping_cents=0, tax_cents=300,
+                      fees_cents=0, condition='new', fulfillment='delivery', location=criteria['location'],
+                      observed_at=checked, arrives_by=now+timedelta(days=2),
+                      evidence='Product page: 12 inch skillet, in stock, $29.99.').model_dump(mode='json')
+        observation_id = await conn.fetchval(
+            """INSERT INTO watch_observations(household_id,watch_id,listing_id,run_id,criteria_version,
+               offer,observed_at,eligible,reason) VALUES($1,$2,$3,$4,1,$5,$6,true,'confirmed_criteria_met')
+               RETURNING id""",
+            household_id, watch_id, listing_id, run_id, offer, checked)
+        match_id = await conn.fetchval(
+            """INSERT INTO watch_matches(household_id,watch_id,observation_id,criteria_version,fingerprint,title,
+               url,merchant,unit_price_cents,total_price_cents,currency,quantity,shipping_cents,tax_cents,
+               fulfillment,location,condition,observed_at,matched_at,evidence,reason)
+               VALUES($1,$2,$3,1,'skillet-2999',$4,$5,'Lodge Cast Iron',2999,3299,'USD',1,0,300,'delivery',
+                 $6,'new',$7,$7,$8,'Matches your confirmed size, price and delivery preferences.') RETURNING id""",
+            household_id, watch_id, observation_id, criteria['query'], criteria['product_url'], criteria['location'],
+            checked, ['12 inch cast iron skillet; new; in stock.'])
+        notification_id = await conn.fetchval(
+            """INSERT INTO notifications(household_id,user_id,watch_id,match_id,title,body,created_at)
+               VALUES($1,$2,$3,$4,'Your skillet meets your target',
+                 'Lodge 12 inch cast iron skillet is $29.99, below your $39.99 target. Review the offer.',$5)
+               RETURNING id""", household_id, user_id, watch_id, match_id, checked)
+        await conn.execute(
+            """INSERT INTO notification_outbox(household_id,user_id,notification_id,status,attempts,delivered_at)
+               VALUES($1,$2,$3,'sent',1,$4)""", household_id, user_id, notification_id, checked)
+        await conn.execute(
+            """INSERT INTO push_devices(user_id,token,environment) VALUES($1,$2,'sandbox')
+               ON CONFLICT(token,environment) DO NOTHING""", user_id, 'a'*64)

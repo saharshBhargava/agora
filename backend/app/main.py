@@ -18,8 +18,10 @@ from app.errors import Problem, handle_problem, handle_validation, problem_respo
 from app.google_calendar import GoogleCalendar
 from app.jobs import Worker
 from app.migrate import migration_status
+from app.notifications import NotificationService
 from app.payments import SimulatedPaymentProvider, make_payment_provider
 from app.pipeline import Pipeline
+from app.price_search import PriceSearchProvider
 from app.routers import (
     account,
     agent,
@@ -32,8 +34,10 @@ from app.routers import (
     inventory,
     lists,
     merchants,
+    notifications,
     scans,
     trips,
+    watches,
     wishlist,
 )
 from app.routers.events import Broadcaster
@@ -41,6 +45,7 @@ from app.shopping import ShoppingRefresher
 from app.storage import make_storage
 from app.vision.providers import make_provider
 from app.vision.service import VisionService
+from app.watch_ops import WatchService
 
 log = logging.getLogger("agora.http")
 # The git commit this process runs: set by Render for Git-backed services, or AGORA_GIT_COMMIT elsewhere.
@@ -86,11 +91,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.demo_payments = SimulatedPaymentProvider()
         app.state.verifier = TokenVerifier(settings)
         app.state.shopping = ShoppingRefresher(db)
-        app.state.worker = Worker(db, {**pipeline.handlers, **app.state.shopping.handlers}, settings.worker_concurrency)
+        app.state.watches = WatchService(db, settings, PriceSearchProvider(settings, client))
+        app.state.notifications = NotificationService(db, settings)
+        app.state.worker = Worker(db, {**pipeline.handlers, **app.state.shopping.handlers,
+                                      **app.state.watches.handlers, **app.state.notifications.handlers},
+                                  settings.worker_concurrency)
         worker_task = None
         if settings.run_worker_in_process:
             await pipeline.forecaster.start()
             await app.state.shopping.start()
+            await app.state.watches.start()
+            await app.state.notifications.start()
             worker_task = asyncio.create_task(app.state.worker.run())
         log.info("startup env=%s timescale=%s vision=%s/%s auth=%s", settings.env, db.timescale,
                  settings.vision_provider, settings.vision_fallback, settings.auth_mode)
@@ -103,6 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 with suppress(asyncio.CancelledError):
                     await worker_task
             await broadcaster.stop()
+            await app.state.notifications.close()
             await client.aclose()
             await db.close()
 
@@ -113,7 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     if settings.cors_origins:
         app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=False,
-                           allow_methods=["GET", "POST", "PATCH", "DELETE"],
+                           allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
                            allow_headers=["Authorization", "Content-Type", "Idempotency-Key"])
 
     max_body = settings.max_video_bytes + 1024 * 1024
@@ -158,7 +170,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     for router in (account.router, inventory.router, merchants.router, scans.router, events.router,
                    audit.router, calendar.router, wishlist.router, forecasts.router, lists.router,
-                   agent.router, budgets.router, demo.router, trips.router):
+                   agent.router, budgets.router, demo.router, trips.router, watches.router, notifications.router):
         app.include_router(router)
     return app
 

@@ -163,3 +163,14 @@ data while Render is down, or `--import-snapshot <file>` for a backup. See SETUP
 - Tiger's own backups/PITR on this plan, and a restore into a new Tiger service, are untested.
 - No staging environment. The release rehearsal on a throwaway database stands in for one.
 - GitHub branch protection (required checks/reviews) is unverified; an admin can enable it in Settings → Branches.
+
+## Price-watch release configuration
+
+The watch release adds migration `0016_price_watches.sql` and uses the existing in-process worker.
+No additional hosting service is needed. Search providers default to the six adapters documented in
+[SETUP](../SETUP.md#price-watches-and-remote-alerts); Exa, Parallel and Keenable can use public keyless routes.
+Background model configuration is independent: use Gemini or a reachable OpenAI-compatible model.
+APNs defaults off; source verification and the persisted offer inbox work without it. Native push signing
+is opt-in so Personal Team builds remain supported. Deploy applies additive demo backfills, never resets.
+Verify `/readyz` reports migration 0016 and no pending migrations; unauthenticated `/v1/watches` must return
+401 instead of 404. These checks do not prove an ordinary account has a configured inference model.

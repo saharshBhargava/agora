@@ -8,6 +8,7 @@ struct ShoppingView: View {
     @State private var editing: WishlistItem?
     @State private var rejecting: WishlistItem?
     @State private var expandedHistory = false
+    @State private var watching: WishlistItem?
 
     var body: some View {
         List {
@@ -21,11 +22,12 @@ struct ShoppingView: View {
                     Button("Try again") { Task { await store.refresh() } }
                 }
                 if let notice = store.notice { Text(notice).font(.subheadline).foregroundStyle(.secondary) }
+                WatchShoppingNotice(store: store.watches)
                 if !store.canUse { Text("Sign in and choose a household in Inventory to start.").foregroundStyle(.secondary) }
             }
             if selection == "wishlist" {
                 Section {
-                    Text("Save what you want and the price you'd like to pay. Live retailer prices aren't connected yet.")
+                    Text("Save what you want and the price you'd like to pay. Set up a price watch to review exact product criteria and find matching offers.")
                         .font(.subheadline).foregroundStyle(.secondary)
                     if store.active.isEmpty && !store.loading {
                         ContentUnavailableView("Make room for something good", systemImage: "heart", description: Text("Add an item, set a target price, or accept a suggestion."))
@@ -84,6 +86,12 @@ struct ShoppingView: View {
         }
         .navigationTitle(selection == "wishlist" ? "Wishlist" : "Suggested for you")
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Menu {
+                    NavigationLink { WatchListView(store: store.watches) } label: { Label("Price watches", systemImage: "binoculars") }
+                    NavigationLink { WatchInboxView(store: store.watches) } label: { Label("Offer inbox", systemImage: "tray") }
+                } label: { Label("Watches and inbox", systemImage: "binoculars") }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { adding = true } label: { Label("Add item", systemImage: "plus") }
                     .disabled(!store.canUse)
@@ -91,9 +99,10 @@ struct ShoppingView: View {
         }
         .overlay { if store.loading && store.items.isEmpty { ProgressView("Loading shopping…") } }
         .refreshable { await store.refresh() }
-        .task { await store.refresh() }
+        .task { await store.refresh(); await store.watches.refresh() }
         .sheet(isPresented: $adding) { WishlistEditor(store: store) }
         .sheet(item: $editing) { WishlistEditor(store: store, item: $0) }
+        .sheet(item: $watching) { item in WatchEditor(store: store.watches, itemID: item.id, item: item, watch: store.watches.watch(for: item)) }
         .sheet(item: $rejecting) { WishlistRejection(store: store, item: $0) }
     }
 
@@ -131,6 +140,7 @@ struct ShoppingView: View {
                     Button { rejecting = item } label: { Image(systemName: "xmark").accessibilityLabel("Reject suggestion") }
                 }.disabled(store.busy)
             } else if item.status == "active" {
+                Button("Set up price watch") { watching = item }.buttonStyle(.bordered)
                 HStack {
                     Button("Purchased") { Task { await store.act(item, action: "purchased") } }.buttonStyle(.bordered)
                     Spacer()

@@ -18,6 +18,7 @@ final class CalendarConnection: ObservableObject {
     private let http: URLSession
     private var revision = UUID()
     private var restoring = false
+    var beforeSignOut: (() async -> Void)?
     var configurationIssue: String? { authorization.configurationIssue }
 
     init(authorization: GoogleCalendarAuthorizing? = nil, http: URLSession? = nil,
@@ -89,6 +90,7 @@ final class CalendarConnection: ObservableObject {
     }
     func signOut() async {
         guard !connecting else { return }
+        await beforeSignOut?()
         do { if demoBaseURL != nil { try sessionStore.save(nil) } }
         catch { message = "Could not remove the saved session. Try signing out again."; return }
         revision = UUID(); authorization.signOut(); apply(nil); checking = false
@@ -96,6 +98,7 @@ final class CalendarConnection: ObservableObject {
     func disconnect() async {
         if isDemoAccount { await signOut(); return }
         guard !connecting else { return }
+        await beforeSignOut?()
         connecting = true; revision = UUID()
         defer { connecting = false }
         do { try await authorization.disconnect(); apply(nil) }

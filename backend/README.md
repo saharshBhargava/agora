@@ -121,6 +121,15 @@ Wishlist contract, lifecycle and scoring: [docs/api/wishlist.md](../docs/api/wis
 lists: [docs/api/forecasts-and-lists.md](../docs/api/forecasts-and-lists.md). UI work waiting on the
 frontend team: [docs/frontend-requests.md](../docs/frontend-requests.md).
 
+Price watches: [docs/api/price-watches.md](../docs/api/price-watches.md). `watch_ops.py` handles versioned
+criteria, six-hour jobs and deterministic matching; `watch_research.py` runs the bounded research controller;
+`price_search.py` provides grounded URL discovery and verifies
+merchant structured data; `notifications.py` handles the persistent inbox outbox and APNs. Configure external
+credentials and always-available hosting as described in [SETUP](../SETUP.md#price-watches-and-remote-alerts).
+
+Trip persistence, native Calendar recovery and duplicate prevention:
+[docs/api/replenishment-trips.md](../docs/api/replenishment-trips.md).
+
 ## Where things live
 
 ```
@@ -402,7 +411,8 @@ stock and forecasts, not a model API, and require no additional credentials. Sle
 execution; keep the worker available for timely checks. Last-success/next-check/failure status is available
 at `GET /v1/wishlist/refresh-status`; `POST /v1/wishlist/refresh` runs a check on demand with idempotency.
 
-Live retailer-price monitoring remains deferred. Target prices are user preferences, not observed deals.
+Price watches now monitor supported retailer pages and discover sources through configured research.
+Target prices remain user preferences until merchant evidence meets the confirmed criteria.
 The designated demo account is backfilled with refresh status without resetting existing history.
 
 ### Replenishment shopping trips
@@ -416,3 +426,7 @@ See [the API contract](../docs/api/replenishment-trips.md) for concurrency, reco
 The native planner must reserve the reviewed list before creating its Calendar event, then report the outcome.
 The backend release does not include the native planner UI. No unattended server scheduling, store-hours lookup
 or route optimization is included.
+
+Price-watch web discovery uses `app/web_search.py` for provider routing and `app/watch_model.py` for
+the OpenAI-compatible reasoning transport. Search-provider keys are independent of the reasoning model;
+see [setup](../SETUP.md) and [price watches](../docs/api/price-watches.md) for keyless routes and budgets.

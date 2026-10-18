@@ -20,6 +20,8 @@
     </dict>
     <key>AgoraAPIBaseURL</key>
     <string>$(AGORA_API_BASE_URL)</string>
+    <key>AgoraPushEnvironment</key>
+    <string>$(AGORA_PUSH_ENVIRONMENT)</string>
     <key>GIDClientID</key>
     <string>$(AGORA_GOOGLE_IOS_CLIENT_ID)</string>
     <key>CFBundleURLTypes</key>

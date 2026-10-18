@@ -3,6 +3,8 @@ import GoogleSignIn
 
 @main
 struct BrowserChatApp: App {
+    @UIApplicationDelegateAdaptor(AgoraNotificationDelegate.self) private var notificationsDelegate
+    @ObservedObject private var push = PushNotifications.shared
     @StateObject private var workspace = ChatWorkspace()
     @State private var selectedTab: AppTab = .home
     @Environment(\.scenePhase) private var scenePhase
@@ -30,6 +32,14 @@ struct BrowserChatApp: App {
                 .background { ShoppingRefresh(store: workspace.shopping) }
             }
             .tint(.teal)
+            .sheet(isPresented: Binding(get: { push.openWatchID != nil && workspace.calendar.connected },
+                                       set: { if !$0 { push.openWatchID = nil } })) {
+                if let id = push.openWatchID {
+                    NavigationStack { WatchDetailView(store: workspace.shopping.watches, watchID: id) }
+                }
+            }
+            .background { PushSessionSync(calendar: workspace.calendar, api: workspace.api) }
+            .background { WatchBrowserReviewNavigation(store: workspace.shopping.watches, selectedTab: $selectedTab) }
             .onOpenURL { url in
                 if workspace.calendar.configurationIssue == nil { _ = GIDSignIn.sharedInstance.handle(url) }
             }
@@ -38,6 +48,19 @@ struct BrowserChatApp: App {
                 if phase != .active { workspace.agent.stop(reason: "Paused while the app is inactive. Press Resume to continue.", paused: true) }
             }
         }
+    }
+}
+
+private struct PushSessionSync: View {
+    @ObservedObject var calendar: CalendarConnection
+    let api: AgoraClient
+    @Environment(\.scenePhase) private var phase
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0)
+            .task(id: "\(calendar.accountID ?? "signed-out")-\(calendar.connected)-\(phase == .active)") {
+                if !calendar.connected { PushNotifications.shared.suspend() }
+                else if phase == .active { await PushNotifications.shared.sync(api: api) }
+            }
     }
 }
 
@@ -58,9 +81,41 @@ final class ChatWorkspace: ObservableObject {
         let calendar = CalendarConnection(demoBaseURL: origin); self.calendar = calendar
         settings.demoCalendar = calendar
         api = AgoraClient(calendar: calendar)
+        calendar.beforeSignOut = { [weak api] in
+            if let api { await PushNotifications.shared.signOut(api: api) }
+        }
         inventory = InventoryStore(api: api, calendar: calendar)
         shopping = ShoppingStore(api: api, inventory: inventory)
         agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar, shopping: shopping)
+        shopping.watches.browserReviewHandler = { [weak self] url in
+            guard let self, self.calendar.connected, self.inventory.accountID == self.calendar.accountID else {
+                throw BrowserError("account_changed", "Sign in again before opening this browser review.")
+            }
+            try self.browser.policy.validate(url)
+            self.agent.stop(reason: "You have control of this watch review. Continue directly in the browser.")
+            self.browser.close()
+            self.browser.state.isOpen = true
+            self.browser.state.privateMode = true
+            self.browser.setPresentationFromUser(.expanded)
+            self.browser.state.status = "Private browser review · You have control"
+            let context = self.shopping.watches.context, account = self.calendar.accountID
+            let epoch = self.browser.epoch, lease = self.browser.lease
+            Task { [weak self] in
+                guard let self, self.calendar.connected, self.calendar.accountID == account,
+                      self.shopping.watches.context == context, self.browser.epoch == epoch,
+                      self.browser.lease == lease else { return }
+                do { _ = try await self.browser.open(url) }
+                catch {
+                    guard self.calendar.connected, self.calendar.accountID == account,
+                          self.shopping.watches.context == context, self.browser.epoch == epoch else { return }
+                    // Manual/private mode deliberately blocks open's final observation. User takeover
+                    // and a new browser session also end monitoring without replacing their status.
+                    if let browserError = error as? BrowserError,
+                       ["user_action_required", "cancelled", "stale_session"].contains(browserError.code) { return }
+                    self.browser.state.status = InventoryStore.message(error)
+                }
+            }
+        }
     }
 }
 
@@ -92,6 +147,19 @@ private struct ShoppingRefresh: View {
                     await store.refresh()
                     do { try await Task.sleep(for: .seconds(30)) } catch { return }
                 }
+            }
+    }
+}
+
+private struct WatchBrowserReviewNavigation: View {
+    @ObservedObject var store: WatchStore
+    @Binding var selectedTab: AppTab
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0)
+            .onChange(of: store.browserReviewRequestID) { _, request in
+                guard request != nil, store.canUse else { return }
+                PushNotifications.shared.openWatchID = nil
+                selectedTab = .chat
             }
     }
 }

@@ -45,6 +45,25 @@ services:
         sync: false
       - key: AGORA_RUN_WORKER_IN_PROCESS
         value: "true"
+      - key: AGORA_WATCH_SEARCH_MODEL
+        value: gemini-2.5-flash
+      - key: AGORA_APNS_ENABLED
+        value: "false"
+      - key: AGORA_WATCH_MODEL_PROVIDER
+        value: gemini
+      - key: AGORA_WATCH_SEARCH_PROVIDERS
+        value: '["exa","parallel","firecrawl","keenable","tavily","brave"]'
+      - key: AGORA_WATCH_SEARCH_KEYLESS
+        value: "true"
+      # Reasoning uses AGORA_GEMINI_API_KEY or the legacy AGORA_WATCH_SEARCH_API_KEY override.
+      # For a different model, use openai-compatible with AGORA_OPENAI_BASE_URL/MODEL/API_KEY.
+      # Search is independent: public Exa/Parallel/Keenable routes work without search keys.
+      # Optional AGORA_EXA_API_KEY, AGORA_PARALLEL_API_KEY, AGORA_FIRECRAWL_API_KEY,
+      # AGORA_KEENABLE_API_KEY, AGORA_TAVILY_API_KEY, AGORA_BRAVE_API_KEY belong in Environment.
+      # Remote iOS alerts require AGORA_APNS_KEY_ID, AGORA_APNS_TEAM_ID,
+      # AGORA_APNS_PRIVATE_KEY (multiline .p8 PEM), AGORA_APNS_TOPIC=dev.agora.browserchat,
+      # and AGORA_APNS_ENABLED=true. Keep signing credentials in Render Environment only.
+      # Timely six-hour checks require continuously available hosting; sleeping delays the worker.
       - key: AGORA_SEED_ON_BOOT          # idempotent: creates demo accounts once, never overwrites
         value: "true"
       - key: AGORA_SEED_NEW_USERS        # sample history belongs only to the designated demo account

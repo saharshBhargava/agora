@@ -85,11 +85,11 @@ a Gmail account just to let the frontend team sign in. See [frontend handoff](fr
 | Capture | Photos/video, model captions and recognition, user review and metadata-only inventory save | Real Google/provider/device flows still need appropriate real-account testing; built-in demo ignores media |
 | Model routing | `Agora/Models/` abstraction; Gemini/OpenAI-compatible connections, profiles, per-feature assignment; demo override | Do not revert to Gemini-only controllers or send demo captures to external models |
 | Recognition details | Readable brand/variant/package-size fields composed into reviewed item names; shared validation and Gemini-compatible schema | Do not restore the earlier broad-name-only prompt or unsupported generation-schema constraints |
-| Wishlist | Backend lifecycle, priority ranking, suggestions and feedback; native Wishlist and Suggested views (`Agora/Shopping/`, 7bc3f8e); realistic demo rows | Live retailer price monitoring is deferred |
+| Wishlist | Backend lifecycle, priority ranking, suggestions and feedback; native Wishlist and Suggested views (`Agora/Shopping/`, 7bc3f8e); realistic demo rows | Reviewed price watches, source verification and offer inbox are implemented; real discovery needs a backend model connection |
 | Forecasts/lists | Backend run-outs, histories, list CRUD and generation; demo backfill | Full native run-out/list screens/integration remain requested |
 | Commerce | Backend policy, mandates, approval/outcome lifecycle, pause/resume, budgets/spend, stable provider idempotency | Native commerce approval/mandate/budget UI remains requested; no real Stripe/Visa provider wired |
 | Calendar | Native tools and approval; demo-private routes + persistence; ordinary native Google route | Upcoming-trip summary UI and automatic list-to-trip scheduling are not implemented |
-| Suggestions/price watches | Six-hour backend replenishment jobs (00/06/12/18 UTC, `0014_wishlist_refresh.sql`), `POST /v1/wishlist/refresh`, on-demand model ideas (7bc3f8e) | Price monitoring not implemented. Not live until a release containing 7bc3f8e is deployed |
+| Suggestions/price watches | Six-hour backend replenishment jobs (00/06/12/18 UTC, `0014_wishlist_refresh.sql`), `POST /v1/wishlist/refresh`, on-demand model ideas (7bc3f8e) | Price watches add migration 0016, six-provider discovery, bounded model research and optional APNs. Deployment verification is recorded separately below |
 | Other roadmap | Design notes describe receipts, scores/social, richer prices and additional integrations | Do not claim them live or create their proposed tables simply because they appear in the spec |
 | Operations | CI + PR release rehearsal (migration guard, upgrade and rollback compatibility), GitHub-driven deploy with smoke checks and automatic rollback, deploy/rollback/status/restart for any writer, readiness with commit + migration state, keep-warm monitor, daily encrypted DB backup, local launcher/snapshots | First live managed release/rollback/backup run, a tested restore into a new database, verified branch protection and staging. The pipeline needs the owner's one-time secrets (deployment.md) |
 
@@ -105,3 +105,18 @@ a Gmail account just to let the frontend team sign in. See [frontend handoff](fr
 
 If a later inspection disagrees with this snapshot, resolve against current main/live provider evidence and
 update the dated record. Do not change the deployment just to make it match an older document.
+
+## Watchlist release preparation — October 18, 2026 UTC
+
+Prepared on top of `a3c9a97`, preserving managed releases and trip-backend migration 0015. Migration
+`0016_price_watches.sql` adds reviewed criteria, checks, merchant observations, matches, inbox and optional
+push delivery, with idempotent designated-account backfill. Native watch setup/history/inbox and explicit
+browser handoff are included; the separate uncommitted trip-planner UI is excluded.
+
+Search supports Exa, Parallel, Firecrawl, Keenable, Tavily and Brave with provider fallback and budgets.
+Exa/Parallel/Keenable keyless searches were verified live. The reasoning model is independently configured
+as Gemini or an OpenAI-compatible service; phone model credentials are not uploaded. APNs and the native
+push entitlement are optional. See [watch contract](api/price-watches.md).
+
+This entry records repository changes and local verification, not a claim that production has this release.
+Confirm the release commit and applied migrations with `/readyz` after the managed deploy succeeds.

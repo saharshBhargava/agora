@@ -9,6 +9,10 @@ feedback teaches the agent without changing an item's status.
 All routes are under `/v1/wishlist`, need `Authorization: Bearer <token>`, and return RFC 7807
 `application/problem+json` errors. Every change publishes a `wishlist.updated` event on `GET /v1/events`.
 
+Active items can now have a separately confirmed [price watch](price-watches.md). Adding/editing a wishlist
+target alone does not authorize monitoring. Changes to an item's identity, quantity, target or deadline
+invalidate the watch's earlier confirmation; purchasing/removing the item completes its watch.
+
 The examples below were captured from the running app (`kedar` dev account). IDs and timestamps will differ.
 
 ## Contents
