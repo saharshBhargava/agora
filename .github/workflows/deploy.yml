@@ -10,6 +10,9 @@ name: deploy
 # Anyone with write access can also run it by hand (Actions > deploy > Run workflow, or `gh workflow run`):
 #   deploy a ref · roll back · status · restart. See docs/deployment.md.
 
+# The target commit is in the title so the keep-warm monitor can tell which commit a run released.
+run-name: "release ${{ github.event.workflow_run.head_sha || inputs.ref || 'main' }} (${{ inputs.action || 'deploy' }})"
+
 on:
   workflow_run:
     workflows: [backend]
@@ -26,6 +29,10 @@ on:
         description: "deploy: commit/branch to release (default main). rollback: optional commit to return to"
         required: false
         default: ""
+      auto:
+        description: "Started by the keep-warm monitor (honours the deploy freeze)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -68,7 +75,7 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "Target: $sha ($(git log -1 --format=%s "$sha"))"
       - name: Deploy freeze
-        if: github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' || inputs.auto
         run: |
           if git cat-file -e "${{ steps.target.outputs.sha }}:.github/deploy-freeze" 2>/dev/null; then
             echo "::notice::Automatic releases are frozen (.github/deploy-freeze exists on main). Manual runs still work."
