@@ -731,3 +731,16 @@ p { margin: 0; }
 .receipt-cam-photos { justify-self: start; white-space: nowrap; flex: none; }
 .receipt-cam-use { white-space: nowrap; }
 .receipt-cam-spacer { flex: none; }
+
+/* ---- camera start (iOS needs a tap before getUserMedia) ---- */
+.camera-wrap { position: relative; flex: 1; display: flex; }
+.receipt-cam-stage .camera-wrap { position: absolute; inset: 0; }
+.camera-start {
+  appearance: none; position: absolute; inset: 0; z-index: 1; border: 0; border-radius: 0; cursor: pointer;
+  background: rgba(17, 17, 17, 0.92); color: #ffffff; font: inherit; font-size: 20px; font-weight: 700;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+}
+.camera-start:focus-visible { outline: 3px solid #ffffff; outline-offset: -6px; }
+.camera-blocked p { max-width: 320px; line-height: 1.45; font-size: 14px; }
+.camera-blocked-actions { display: flex; gap: var(--space-1); }
+.camera-blocked-actions .btn { width: auto; }

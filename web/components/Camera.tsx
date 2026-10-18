@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Box } from '@/lib/types';
 import { FRAME_W, frameBoxToDisplay, frameHeight, tapToFrame } from '@/lib/frame';
 import { propBase64, type PropName } from '@/lib/props';
-import { parkStream, takeParkedStream } from '@/lib/stream';
+import { hasParkedStream, parkStream, takeParkedStream } from '@/lib/stream';
 
 const FRAME_MS = 500; // 2 fps
 const QUALITY = 0.6;
@@ -25,7 +25,12 @@ export type CameraProps = {
   hideFallback?: boolean;
 };
 
-/** Rear camera preview. Streams a 640 px JPEG frame every 500 ms; tapping the preview sends identifyAt. No shutter. */
+/**
+ * Rear camera preview. Streams a 640 px JPEG frame every 500 ms; tapping the preview sends identifyAt.
+ * iOS Safari only grants the camera from a user gesture, so the first getUserMedia call happens in the
+ * "Start camera" tap (or reuses a stream parked by the previous screen); re-acquiring on visibility or
+ * track end keeps working after that.
+ */
 export function Camera({ send, enabled, region, label, pending = true, mockHref, persist = false, hideFallback = false }: CameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const persistRef = useRef(persist);
@@ -33,6 +38,8 @@ export function Camera({ send, enabled, region, label, pending = true, mockHref,
   const boxRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
   const [denied, setDenied] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  const startRef = useRef<() => void>(() => undefined);
   const [, setTick] = useState(0);
   const sendRef = useRef(send);
   const enabledRef = useRef(enabled);
@@ -45,6 +52,7 @@ export function Camera({ send, enabled, region, label, pending = true, mockHref,
     let stopped = false;
     let stream: MediaStream | null = null;
     let acquiring = false;
+    let started = false;
     let wake: { release: () => Promise<void> } | null = null;
 
     const requestWake = async () => {
@@ -66,11 +74,23 @@ export function Camera({ send, enabled, region, label, pending = true, mockHref,
     const healthy = (s: MediaStream | null): boolean =>
       !!s && s.getTracks().length > 0 && s.getTracks().every((t) => t.readyState === 'live' && !t.muted);
 
+    // A device without a rear camera (or a picky constraint) gets one retry with any camera.
+    const open = (): Promise<MediaStream> =>
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false }).catch((e: unknown) => {
+        const name = (e as { name?: string } | null)?.name;
+        if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+          return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+        throw e;
+      });
+
     const acquire = async () => {
       if (stopped || acquiring) return;
       acquiring = true;
+      started = true;
       try {
-        const next = takeParkedStream() ?? (await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false }));
+        // open() runs synchronously inside the tap handler, before any await, so it counts as the gesture.
+        const next = takeParkedStream() ?? (await open());
         if (stopped) {
           next.getTracks().forEach((t) => t.stop());
           return;
@@ -93,20 +113,23 @@ export function Camera({ send, enabled, region, label, pending = true, mockHref,
         }
         setReady(true);
         void requestWake();
-      } catch {
-        if (!stopped && !stream) setDenied(true);
+      } catch (e) {
+        if (stopped || stream) return;
+        if ((e as { name?: string } | null)?.name === 'NotAllowedError') setBlocked(true);
+        else setDenied(true);
       } finally {
         acquiring = false;
       }
     };
 
     const onVisibility = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (!started || document.visibilityState !== 'visible') return;
       if (!healthy(stream)) void acquire();
       else void requestWake();
     };
 
-    void acquire();
+    startRef.current = () => void acquire();
+    if (hasParkedStream()) void acquire();
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       stopped = true;
@@ -144,6 +167,21 @@ export function Camera({ send, enabled, region, label, pending = true, mockHref,
     return () => window.removeEventListener('resize', on);
   }, []);
 
+  if (blocked) {
+    return (
+      <div className="camera-denied camera-blocked" role="alert">
+        <p>
+          Safari blocked the camera. Tap aA in the address bar → Website Settings → Camera → Allow, then reload.
+          Also check Settings → Apps → Safari → Camera.
+        </p>
+        <div className="camera-blocked-actions">
+          <button type="button" className="btn btn-sm" onClick={() => window.location.reload()}>Reload</button>
+          {!hideFallback && <a className="btn btn-sm btn-secondary" href={mockHref}>Use sample items</a>}
+        </div>
+      </div>
+    );
+  }
+
   if (denied) {
     return (
       <div className="camera-denied">
@@ -170,13 +208,23 @@ export function Camera({ send, enabled, region, label, pending = true, mockHref,
   }
 
   return (
-    <div className="camera" ref={boxRef} onClick={onTap} role="button" tabIndex={0} aria-label="Live view. Tap an item to identify it.">
-      <video ref={videoRef} className="camera-video" autoPlay muted playsInline />
-      {outline && <span className={`camera-outline${pending ? ' camera-outline-pending' : ''}`} style={outline} />}
-      {outline && label && (
-        <span className="region-label camera-label" style={{ left: outline.left, top: outline.top }}>
-          <span className="region-label-dot" aria-hidden="true" />{label}
-        </span>
+    <div className="camera-wrap">
+      <div className="camera" ref={boxRef} onClick={onTap} role="button" tabIndex={0} aria-label="Live view. Tap an item to identify it.">
+        <video ref={videoRef} className="camera-video" autoPlay muted playsInline />
+        {outline && <span className={`camera-outline${pending ? ' camera-outline-pending' : ''}`} style={outline} />}
+        {outline && label && (
+          <span className="region-label camera-label" style={{ left: outline.left, top: outline.top }}>
+            <span className="region-label-dot" aria-hidden="true" />{label}
+          </span>
+        )}
+      </div>
+      {!ready && (
+        <button type="button" className="camera-start" onClick={() => startRef.current()}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="1.8" aria-hidden="true">
+            <path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" />
+          </svg>
+          <span>Start camera</span>
+        </button>
       )}
     </div>
   );

@@ -30,3 +30,8 @@ export function parkStream(s: MediaStream): void {
     if (parked === s) parked = null;
   }, LINGER_MS);
 }
+
+/** Whether a live stream is waiting to be taken (a camera can start without a tap). */
+export function hasParkedStream(): boolean {
+  return live(parked);
+}

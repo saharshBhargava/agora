@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { Chip, Run } from '@/lib/types';
 
@@ -73,6 +73,9 @@ test('Camera sends a frame within 600 ms of mounting', async () => {
   const toDataURL = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,QUJD');
   const send = vi.fn(() => true);
   const { unmount } = render(<Camera send={send} enabled region={null} mockHref="?mock=1" />);
+  expect(getUserMedia).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Start camera' }));
+  expect(getUserMedia).toHaveBeenCalledTimes(1);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0); // camera granted
   });
@@ -98,6 +101,7 @@ test('Camera sends no frames while disabled', async () => {
   vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,QUJD');
   const send = vi.fn(() => true);
   render(<Camera send={send} enabled={false} region={null} mockHref="?mock=1" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Start camera' }));
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
   expect(send).not.toHaveBeenCalled();
@@ -108,7 +112,43 @@ test('Camera shows a friendly message and a sample-items link when permission is
     value: { getUserMedia: vi.fn(async () => { throw new Error('denied'); }) }, configurable: true,
   });
   render(<Camera send={vi.fn(() => true)} enabled region={null} mockHref="?mock=1" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Start camera' }));
   expect(await screen.findByRole('link', { name: 'Use sample items' })).toHaveAttribute('href', '?mock=1');
+});
+
+test('Camera waits for the Start camera tap before asking for the camera', async () => {
+  const getUserMedia = vi.fn(async () => ({ getTracks: () => [] }));
+  Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
+  render(<Camera send={vi.fn(() => true)} enabled region={null} mockHref="?mock=1" />);
+  await act(async () => {});
+  expect(getUserMedia).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Start camera' }));
+  expect(getUserMedia).toHaveBeenCalledWith({ video: { facingMode: 'environment' }, audio: false });
+});
+
+test('a NotAllowedError shows Safari help with Reload and the sample-items link', async () => {
+  const err = Object.assign(new Error('denied'), { name: 'NotAllowedError' });
+  Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia: vi.fn(async () => { throw err; }) }, configurable: true });
+  render(<Camera send={vi.fn(() => true)} enabled region={null} mockHref="?mock=1" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Start camera' }));
+  expect(await screen.findByText(/Safari blocked the camera\. Tap aA in the address bar → Website Settings → Camera → Allow, then reload\./)).toBeInTheDocument();
+  expect(screen.getByText(/Settings → Apps → Safari → Camera/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Use sample items' })).toHaveAttribute('href', '?mock=1');
+});
+
+test('a NotFoundError retries once without facingMode', async () => {
+  const err = Object.assign(new Error('none'), { name: 'NotFoundError' });
+  const getUserMedia = vi.fn(async (c: MediaStreamConstraints) => {
+    if (typeof c.video === 'object') throw err;
+    return { getTracks: () => [] };
+  });
+  Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
+  render(<Camera send={vi.fn(() => true)} enabled region={null} mockHref="?mock=1" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Start camera' }));
+  await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+  expect(getUserMedia.mock.calls[1][0]).toEqual({ video: true, audio: false });
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Start camera' })).toBeNull());
 });
 
 test('tapToFrame maps a tap through object-fit cover to frame pixels', () => {
@@ -260,6 +300,7 @@ test('Camera holds a wake lock and re-acquires the camera when visible again or 
   Object.defineProperty(document, 'visibilityState', { get: () => visibility, configurable: true });
 
   const { unmount } = render(<Camera send={vi.fn(() => true)} enabled region={null} mockHref="?mock=1" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Start camera' }));
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(getUserMedia).toHaveBeenCalledTimes(1);
   expect(request).toHaveBeenCalledWith('screen');
@@ -328,4 +369,17 @@ test('sample items read "Drop an item into the cart" and never say demo', () => 
   const { container } = render(<ShopperScreen />);
   expect(screen.getByText('Drop an item into the cart')).toBeInTheDocument();
   expect(container.textContent).not.toMatch(/demo|mock|fake|seed/i);
+});
+
+test('a stream parked by the cart camera starts the next camera without a tap or a new prompt', async () => {
+  const { parkStream } = await import('@/lib/stream');
+  const track = { stop: vi.fn(), readyState: 'live', muted: false, onended: null };
+  parkStream({ getTracks: () => [track] } as unknown as MediaStream);
+  const getUserMedia = vi.fn();
+  Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
+  const { unmount } = render(<Camera send={vi.fn(() => true)} enabled region={null} mockHref="?mock=1" />);
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Start camera' })).toBeNull());
+  expect(getUserMedia).not.toHaveBeenCalled();
+  unmount();
+  expect(track.stop).toHaveBeenCalled();
 });
