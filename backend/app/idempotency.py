@@ -34,10 +34,10 @@ async def lookup(conn: asyncpg.Connection, user_id: UUID, key: str, digest: str)
 
 
 async def claim(conn: asyncpg.Connection, user_id: UUID, key: str, digest: str, status: int,
-                response: dict) -> bool:
+                response: dict, *, operation: str | None = None) -> bool:
     """Record the response. Returns False if a concurrent request with the same key won the race."""
     inserted = await conn.fetchval(
-        """INSERT INTO idempotency_keys (user_id, key, request_hash, status_code, response)
-           VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING RETURNING true""",
-        user_id, key, digest, status, response)
+        """INSERT INTO idempotency_keys (user_id, key, request_hash, status_code, response, operation)
+           VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING RETURNING true""",
+        user_id, key, digest, status, response, operation)
     return bool(inserted)

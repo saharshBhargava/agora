@@ -414,3 +414,16 @@ See [backend refresh design](backend-spec.md#45-prices-deals-small-businesses).
   existing wishlist endpoints. Failed refreshes retain previous results; account/household switches clear
   shopping state and discard stale responses.
 - Price-watch checks will use the same six-hour requirement when merchant integrations are added.
+
+## Replenishment to Calendar: backend contract
+
+The backend now supports persisted trips through `GET /v1/trips`, `POST /v1/trips` and
+`PATCH /v1/trips/{id}/outcome`; see [the contract](api/replenishment-trips.md). The native planner UI is a
+separate client change. Generate per-store lists, use Calendar free/busy to propose a time, show the exact
+list and event for approval, and reserve its current list version before writing to Calendar. Use the trip
+ID as the stable Calendar request identity and report the confirmed event reference or uncertain outcome.
+
+Refetch on `trip.updated`. Display persisted trips and recover uncertain writes through read-only event
+lookup, never a new request identity. Demo recovery uses `GET /v1/demo/calendar/events/by-request?key=...`.
+Keep demo traffic on the private Calendar routes; ordinary accounts use their actual Google Calendar.
+A `409 duplicate_request` means retry the same request key after the competing transaction finishes.

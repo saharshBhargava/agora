@@ -5,6 +5,7 @@ in app/demo_account.py (or, if it can never hold demo data, add it to NO_DEMO_DA
 """
 
 import time
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -110,6 +111,12 @@ async def test_demo_account_looks_real_and_is_full(demo_app):
     assert (await client.get("/v1/agent/intents?status=proposed", headers=headers)).json()
     spend = (await client.get("/v1/spend", headers=headers)).json()
     assert spend["total_cents"] > 0 and spend["budgets"]
+    trips = (await client.get("/v1/trips", headers=headers)).json()
+    assert trips and trips[0]["status"] == "scheduled" and trips[0]["event_id"]
+    events = (await client.get("/v1/demo/calendar/events", headers=headers)).json()
+    event = next(e for e in events if e["id"] == trips[0]["event_id"])
+    assert event["title"] == trips[0]["title"]
+    assert datetime.fromisoformat(event["start"]) == datetime.fromisoformat(trips[0]["start"])
 
 
 async def test_hosted_seed_keeps_non_demo_accounts_untouched(demo_app, monkeypatch):
@@ -136,6 +143,7 @@ async def test_new_features_backfill_existing_demo_without_duplicates(demo_app):
     app, _ = demo_app
     user_id = await ensure_demo_account(app.state.db, app.state.settings)
     async with app.state.db.system() as conn:
+        events_before = await conn.fetch("SELECT * FROM calendar_events WHERE user_id = $1 ORDER BY id", user_id)
         household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
         await conn.execute("DELETE FROM shopping_lists WHERE household_id = $1", household_id)
         await conn.execute("DELETE FROM consumption_forecasts WHERE household_id = $1", household_id)
@@ -147,6 +155,85 @@ async def test_new_features_backfill_existing_demo_without_duplicates(demo_app):
             "SELECT count(*) FROM shopping_list_items WHERE household_id = $1", household_id)
         assert item_count == 2
         assert await conn.fetchval("SELECT count(*) FROM consumption_forecasts WHERE household_id = $1", household_id)
+        assert await conn.fetchval("SELECT count(*) FROM replenishment_trips WHERE user_id = $1", user_id) == 1
+        assert await conn.fetch("SELECT * FROM calendar_events WHERE user_id = $1 ORDER BY id",
+                                user_id) == events_before
+
+
+async def test_generated_lists_to_reserved_trip_to_private_calendar_outcome(demo_app, monkeypatch):
+    """The phone's full Calendar flow uses its persisted approval and never reaches Google for this account."""
+    app, client = demo_app
+    headers = await demo_headers(client)
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("The designated account must never call Google")
+
+    monkeypatch.setattr(app.state.calendar, "calendar_request", forbidden)
+    generated = await client.post("/v1/lists/generate", headers=headers | {"Idempotency-Key": uuid4().hex},
+                                  json={"within_days": 14, "include_unassigned": True})
+    assert generated.status_code == 200, generated.text
+    lists = (await client.get("/v1/lists", headers=headers)).json()
+    existing = (await client.get("/v1/trips", headers=headers)).json()
+    lst = next(sl for sl in lists if sl["source"] == "generated" and sl["open_count"] and
+               all(t["list_id"] != sl["id"] for t in existing))
+    start = (datetime.now(UTC) + timedelta(days=4)).replace(hour=18, minute=0, second=0, microsecond=0)
+    window = {"start": start.isoformat(), "end": (start + timedelta(minutes=45)).isoformat(), "timezone": "Etc/UTC"}
+    availability = await client.post("/v1/demo/calendar/freebusy", headers=headers, json=window)
+    assert availability.status_code == 200 and not availability.json()["busy"]
+    body = window | {"list_id": lst["id"], "list_updated_at": lst["updated_at"],
+                     "title": f"Groceries at {lst['name']}", "description": "Restock items running low this week.",
+                     "location": lst["name"]}
+    reserved = await client.post("/v1/trips", headers=headers | {"Idempotency-Key": uuid4().hex}, json=body)
+    assert reserved.status_code == 201, reserved.text
+    trip = reserved.json()
+    calendar_body = {k: body[k] for k in ("start", "end", "timezone", "title", "description", "location")}
+    calendar_headers = headers | {"Idempotency-Key": trip["id"]}
+    event = await client.post("/v1/demo/calendar/events", headers=calendar_headers,
+                              json=calendar_body | {"confirmed": True})
+    assert event.status_code == 201, event.text
+    replay = await client.post("/v1/demo/calendar/events", headers=calendar_headers,
+                               json=calendar_body | {"confirmed": True})
+    assert replay.json() == event.json()
+    recovered_event = await client.get("/v1/demo/calendar/events/by-request", headers=headers,
+                                       params={"key": trip["id"]})
+    assert recovered_event.status_code == 200 and recovered_event.json() == event.json()
+    reported = await client.patch(f"/v1/trips/{trip['id']}/outcome", headers=headers,
+                                  json={"status": "scheduled", "event_id": event.json()["id"]})
+    assert reported.status_code == 200 and reported.json()["status"] == "scheduled"
+    recovered = next(t for t in (await client.get("/v1/trips", headers=headers)).json() if t["id"] == trip["id"])
+    assert recovered == reported.json() and recovered["event_id"] == event.json()["id"]
+    assert recovered["start"] == window["start"] and recovered["end"] == window["end"]
+    busy = await client.post("/v1/demo/calendar/freebusy", headers=headers, json=window)
+    assert len(busy.json()["busy"]) == 1
+
+
+async def test_private_calendar_recovery_scope_and_missing_event(demo_app, signing_key):
+    app, client = demo_app
+    headers = await demo_headers(client)
+    assert (await client.get("/v1/demo/calendar/events/by-request", headers=headers,
+                             params={"key": uuid4().hex})).status_code == 404
+    start = datetime.now(UTC) + timedelta(days=6)
+    body = {"start": start.isoformat(), "end": (start + timedelta(minutes=30)).isoformat(),
+            "timezone": "Etc/UTC", "title": "Pick up groceries", "confirmed": True}
+    key = uuid4().hex
+    created = await client.post("/v1/demo/calendar/events", headers=headers | {"Idempotency-Key": key}, json=body)
+    assert created.status_code == 201
+    stranger = {"Authorization": "Bearer " + google_token(signing_key, email="ordinary@example.com",
+                                                          email_verified=True)}
+    assert (await client.get("/v1/demo/calendar/events/by-request", headers=stranger,
+                             params={"key": key})).status_code == 403
+    me = (await client.get("/v1/me", headers=headers)).json()
+    wrong_key = uuid4().hex
+    async with app.state.db.system() as conn:
+        await conn.execute(
+            """INSERT INTO idempotency_keys (user_id, key, request_hash, status_code, response, operation)
+               VALUES ($1,$2,'hash',201,$3,'other')""", UUID(me["id"]), wrong_key, created.json())
+    wrong = await client.get("/v1/demo/calendar/events/by-request", headers=headers, params={"key": wrong_key})
+    assert wrong.status_code == 409 and wrong.json()["title"] == "idempotency_key_reused"
+    async with app.state.db.system() as conn:
+        await conn.execute("DELETE FROM calendar_events WHERE id = $1", UUID(created.json()["id"]))
+    missing = await client.get("/v1/demo/calendar/events/by-request", headers=headers, params={"key": key})
+    assert missing.status_code == 409 and missing.json()["title"] == "outcome_unknown"
 
 
 async def test_google_sign_in_with_the_demo_address_reaches_the_same_account(demo_app, signing_key):
