@@ -44,9 +44,9 @@ struct HouseholdSettingsLinks: View {
             }
             Hairline()
             NavigationLink {
-                SpendingLimitsSettingsView()
+                SpendingView(store: workspace.commerce)
             } label: {
-                DibsLinkRow(title: "Spending limits", detail: "Purchase limits and availability", symbol: "creditcard", tint: 0xF6D9CC)
+                DibsLinkRow(title: "Spending limits", detail: "Approvals, spending authority and budget", symbol: "creditcard", tint: 0xF6D9CC)
             }
         }
         .buttonStyle(.plain)
@@ -279,24 +279,3 @@ private struct AutonomySettingsView: View {
     }
 }
 
-private struct SpendingLimitsSettingsView: View {
-    var body: some View {
-        ShelfPage {
-            ShelfHero(title: "Spending limits", subtitle: "Purchase limits and availability.")
-            VStack(alignment: .leading, spacing: 10) {
-                ShelfSectionTitle("Purchase limits")
-                SettingsCard(symbol: "creditcard", tint: 0xF6D9CC, title: "Not available yet") {
-                    SettingsParagraphs(paragraphs: ["Dibs does not currently track spending or enforce purchase limits. Browser action approvals are still required, but they do not check purchase amounts."])
-                }
-            }
-            VStack(alignment: .leading, spacing: 10) {
-                ShelfSectionTitle("Model usage")
-                VStack(alignment: .leading, spacing: 4) {
-                    SettingsParagraphs(paragraphs: ["Manage Gemini API usage through Google AI Studio. Purchase limits do not cover model usage."])
-                    SettingsLink(title: "Manage usage in Google AI Studio", url: URL(string: "https://aistudio.google.com/")!)
-                }
-                .dibsCard()
-            }
-        }
-    }
-}

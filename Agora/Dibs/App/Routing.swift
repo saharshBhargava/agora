@@ -42,6 +42,8 @@ public enum HouseholdPage: Hashable, Sendable {
     case assistant
     /// Photo and video capture that recognizes items for the pantry.
     case capture
+    /// What the assistant may spend: approvals, spending authority, budgets and the pause switch.
+    case spending
 }
 
 /// A link to join a run: `dibs://join?run=<id>` or `https://<server>/join?run=<id>`.

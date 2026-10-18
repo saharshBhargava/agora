@@ -7,9 +7,10 @@ extension Color {
     static let bodyInk = Color(hex: 0x2B2A27)
 }
 
-/// Full-width 56 pt button. `.ink` is the main action, `.blue` the share action, `.secondary` a white card button.
+/// Full-width 56 pt button. `.ink` is the main action, `.blue` the share action, `.secondary` a white card button,
+/// `.danger` a stop action (the assistant's pause).
 struct DibsButtonStyle: ButtonStyle {
-    enum Kind { case ink, blue, secondary }
+    enum Kind { case ink, blue, secondary, danger }
     var kind: Kind = .ink
     var fontSize: CGFloat = 17
     @Environment(\.isEnabled) private var isEnabled
@@ -42,6 +43,7 @@ struct DibsButtonStyle: ButtonStyle {
         case .ink: return .ink
         case .blue: return .meBlue
         case .secondary: return .card
+        case .danger: return .danger
         }
     }
 }

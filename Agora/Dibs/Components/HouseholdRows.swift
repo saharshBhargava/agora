@@ -24,6 +24,8 @@ struct DibsLinkRow: View {
     let detail: String
     let symbol: String
     var tint: UInt32 = Palette.tileHex[2]
+    /// A small ink count pill before the chevron (approvals waiting); hidden when nil.
+    var badge: String? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -38,6 +40,16 @@ struct DibsLinkRow: View {
                     .lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if let badge {
+                Text(badge)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .monospacedDigit()
+                    .padding(.horizontal, 8)
+                    .frame(minWidth: 24, minHeight: 24)
+                    .background(Capsule().fill(Color.ink))
+                    .accessibilityLabel("\(badge) waiting")
+            }
             DibsChevron()
         }
         .padding(.vertical, 10)

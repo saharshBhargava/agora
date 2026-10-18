@@ -36,6 +36,7 @@ final class ChatWorkspace: ObservableObject {
     let inventory: InventoryStore
     let shopping: ShoppingStore
     let trips: TripStore
+    let commerce: CommerceStore
     let images: ItemImageStore
     let watchBrowser: WatchBrowserRunner
     init() {
@@ -53,7 +54,8 @@ final class ChatWorkspace: ObservableObject {
         inventory = InventoryStore(api: api, calendar: calendar)
         shopping = ShoppingStore(api: api, inventory: inventory)
         trips = TripStore(api: api, inventory: inventory, calendar: calendar)
-        agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar, shopping: shopping, trips: trips)
+        commerce = CommerceStore(api: api, inventory: inventory)
+        agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar, shopping: shopping, trips: trips, commerce: commerce)
         let agent = agent
         watchBrowser = WatchBrowserRunner(api: api, browser: browser, store: shopping.watches) { [weak agent, weak calendar] in
             calendar?.connected == true && calendar?.isDemoAccount == false && agent?.running == false

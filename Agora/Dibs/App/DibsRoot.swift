@@ -147,11 +147,13 @@ struct HouseholdPageView: View {
             case .pantry:
                 InventoryListView(store: workspace.inventory, onScan: { model.openHousehold(.capture) })
             case .wishlist:
-                ShoppingView(store: workspace.shopping, settings: workspace.settings)
+                ShoppingView(store: workspace.shopping, settings: workspace.settings, commerce: workspace.commerce)
             case .assistant:
                 ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser)
             case .capture:
                 CaptureView(settings: workspace.settings, inventory: workspace.inventory)
+            case .spending:
+                SpendingView(store: workspace.commerce)
             }
         }
         .toolbar(.visible, for: .navigationBar)

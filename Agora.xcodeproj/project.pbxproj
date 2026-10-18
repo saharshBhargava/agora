@@ -7,581 +7,596 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		031FF340F363B6378C813B5C /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 4D7BAB1065059C1409674D09 /* GoogleSignInSwift */; };
-		04CA66464E5E07D35AF0092E /* ClaimView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A5CEB26A889D9D13CA5DAB5 /* ClaimView.swift */; };
-		053204B9438F78EB0E41DFCD /* BrowserViewport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9F3BD0C17DE9C7BCD90BA02 /* BrowserViewport.swift */; };
-		0639E874343EB349B471D511 /* CartCamera.swift in Sources */ = {isa = PBXBuildFile; fileRef = D985D93B72894AE353ADC31B /* CartCamera.swift */; };
-		0A000A92C20414FA95F1948A /* FrameEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 339953B1D6DA42D8A896D9E5 /* FrameEncoder.swift */; };
-		0ABB63838C27726CE0391E4C /* RunSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF04AC74EBBA9EEEDB6FAA05 /* RunSocket.swift */; };
-		0BF32E86B97A988D3AD59735 /* dibs-run.json in Resources */ = {isa = PBXBuildFile; fileRef = FC3A6F8CBC1721D0C331D077 /* dibs-run.json */; };
-		0CFFC9E49D67BD4A2C4234A9 /* GeminiCaptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8C455BD9C06D21EC99595E /* GeminiCaptionService.swift */; };
-		0DF49C0BA7147EF126E3BE6D /* SettleLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = D713A7C899E358909F57FC03 /* SettleLogic.swift */; };
-		1330F61867FB96F0EACC0676 /* ModelTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B564DC6665A0B210E20107 /* ModelTypes.swift */; };
-		14DC810B0FDF76745DC48AAC /* WishView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62C3969C3A2531F43A8FD4D3 /* WishView.swift */; };
-		17264E09CA564647BEF52D49 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 376BC58DF81418D8D75BE679 /* Foundation.framework */; };
-		17F5BA42E2304D3BD97EF882 /* JoinView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FC90796C6ECB4E117F1ABA /* JoinView.swift */; };
-		183A8F5946FFA275F4393AD4 /* BrowserPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D02C54AF0E4CD1CEFA20016 /* BrowserPolicy.swift */; };
-		18E3903D9CDB00C08C8BA4E0 /* WatchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25BD910F61CC4CC4583BEA6A /* WatchStore.swift */; };
-		1B7F317651EDF3EDD037B680 /* ReceiptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C58F59AE363DDF8B4B43AEF /* ReceiptView.swift */; };
-		1BDF0DE9C86FD32A0B6B430C /* CalendarConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B88A667FC51CA03E3E1A6E0 /* CalendarConnection.swift */; };
-		1CC510111890BF0C18D841A6 /* LocalModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C3F94FE8B2251E8A0F68F1C /* LocalModelTests.swift */; };
-		1EF6135624DF8A00C6EE4CB7 /* DibsAPITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9C3031E82DF480705A3A847 /* DibsAPITests.swift */; };
-		1F8ADF47375C9C5FF6EF275F /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F80A552902F8415E98E1B8E2 /* BrowserSession.swift */; };
-		1F9447C413A92E025EC3E2C2 /* BrowserChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3A761D2358C0445CCDEB4D4 /* BrowserChatApp.swift */; };
-		20F2B4B5D87916BCC2078921 /* WatchViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16BC366B6A30B954E66D4796 /* WatchViews.swift */; };
-		22DC1878D4D9F826BCF9E23E /* OverCapSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C74902C3DD740CB71AFA84EF /* OverCapSheet.swift */; };
-		22F11224186BAB46EDCAC21A /* DibsRunStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ACD2543C6D3297CCF377AC7 /* DibsRunStoreTests.swift */; };
-		241AE8EEF650EBE52B9578A1 /* Protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD4190A5C9DC62AD8FB20AF7 /* Protocol.swift */; };
-		25D1E948ACDB99D7650207CF /* UndoToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF947A2B2B9E5D512AA48F8E /* UndoToast.swift */; };
-		25D209C6A4A1FACB216E3F8F /* DebugLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2289665713024C72736F423C /* DebugLaunch.swift */; };
-		25EE73ACB59AD1EF149171D2 /* MediaLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170DD17F9EBEB60E9E6F885A /* MediaLibrary.swift */; };
-		26E19DF40188E0C7D3259D99 /* DibsModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72FCBD4D3100012920CAAEA7 /* DibsModelTests.swift */; };
-		28B06E7C6B10DD9CCB518354 /* InventoryForms.swift in Sources */ = {isa = PBXBuildFile; fileRef = F39E4B424E7FD3C32B2F20EA /* InventoryForms.swift */; };
-		2A17EFCE99177A65702803E9 /* HeldBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A2E8F1B870C0434F8678F2 /* HeldBadge.swift */; };
-		2A97DBE1BFA7094795E04CDE /* GeminiInventoryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 045FB66BDC6FB7B7A6EE9B7C /* GeminiInventoryService.swift */; };
-		2CBA8E2CF8D85CEF68C5A4F1 /* RunStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7CAF30320954736B98FC6BF /* RunStore.swift */; };
-		2D94A26B9A19B7C4E8235119 /* ShoppingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A24CC0606C38D5893D38A573 /* ShoppingStore.swift */; };
-		31005B2D8104103370DEE488 /* ClaimLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D98E028AB719452C46878C9 /* ClaimLogic.swift */; };
-		326D0BD807B595F1371B2826 /* ModelIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 053D37021CD80E22AFB1567B /* ModelIntegrationTests.swift */; };
-		32CC25A4696D1E52CAF5F1D8 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC25150D5B48B99BA3B4B64 /* SettingsView.swift */; };
-		33AD27E74C2A33FF6BE85150 /* DibsFrameEncoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 417D3BC733386D1C166750D9 /* DibsFrameEncoderTests.swift */; };
-		348C9C251CE772F3834639D1 /* StoreBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = D090CFB79370A196A514EE2D /* StoreBrowser.swift */; };
-		34904EE7981EF975FA51E11E /* ShopperLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CE1BBA927F495A9BE5D5071 /* ShopperLogic.swift */; };
-		357A0444EA8FED7A6FC78F36 /* RunText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BAF1E9272CA28A7FA0B45D4 /* RunText.swift */; };
-		38C49A789B2ED712ED0B435C /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EE742A6AE0D68B69FEFB542 /* CaptureView.swift */; };
-		3A9DBAAB9C4EDAB7D7260C5F /* InventoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA58A17E86007F1DB2EF6EE9 /* InventoryView.swift */; };
-		3C60D0BF0C32E684FBA56981 /* GeminiModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C538136B092984AB0B4223F /* GeminiModelTests.swift */; };
-		3CC9DCFBCC4F564ACCF71620 /* CaptionHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC3A977222D4C48017E72F46 /* CaptionHTTPClient.swift */; };
-		3E7FDBC82A8C5D1E059483D2 /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BD79948F6CD91FA3AA6A366 /* AppLog.swift */; };
-		408082564B5D51260FE68CB6 /* QRCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51827BC562FC38D546A26FF /* QRCode.swift */; };
-		40E6CC1D4D2DC79BBE02E73F /* PushNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63E0C5DB3B6868BBCA07B587 /* PushNotifications.swift */; };
-		44F4206F9FE980F2347988E2 /* StartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B643D4422CCFDF80051C85 /* StartView.swift */; };
-		46714C5CAFF597A9B37962E7 /* TaskRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E4C29236A0133CD77A957B7 /* TaskRepository.swift */; };
-		48F434664CDD34997B42EF1F /* CaptionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5579F2FA6328D2D2218E2B2E /* CaptionController.swift */; };
-		4BBBC017635236AC9C510325 /* DibsSettleLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A55202CF20F8ADF99BADA63 /* DibsSettleLogicTests.swift */; };
-		4C433651503E5F174CD4B014 /* ShoppingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 322E84DC0A9E55DF6FD34371 /* ShoppingTests.swift */; };
-		4E47C4EF1146DDAF0961771E /* DibsBrowserScripts.js in Resources */ = {isa = PBXBuildFile; fileRef = D958295A50692F132B3CF591 /* DibsBrowserScripts.js */; };
-		4E6373E8DE8DD049F79FD306 /* QFCTraffic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C52D08D31FB66ECF4C29A2E /* QFCTraffic.swift */; };
-		4F231D8B09B8C27E6920E3A3 /* ItemImageLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEE9B41E9091FCDB591F0C9F /* ItemImageLiveTests.swift */; };
-		50367E5E051EDFBF99764D09 /* LiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F035FC26D49CCB9B5DE544F /* LiveView.swift */; };
-		54C9BB2E9475BFC43C1623AB /* DibsCartWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8326B6B926968504332FE3A /* DibsCartWatcherTests.swift */; };
-		55B48CA70E6F5B52A979CA0F /* OpenAICompatibleClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B06E8D8ACAADE8FC63FC8B6 /* OpenAICompatibleClient.swift */; };
-		57ECA07C402E7A4724EC7127 /* DibsScanGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA83E1D4D12E04D16D0CA717 /* DibsScanGeometryTests.swift */; };
-		5C1D03F12F51CB46498E1512 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBDDE0CC2701B41924CD0497 /* SettingsStore.swift */; };
-		5D1DF6487D5C341F889A93B5 /* QuantityStepper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FE024E95A744167458E1E19 /* QuantityStepper.swift */; };
-		5E5B101D94C9502695BE7F0C /* BrowserToolExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3DA4CAD10F51B895F6C4950 /* BrowserToolExecutor.swift */; };
-		5E8474209056B455622A3099 /* DibsRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BE554A177F02BE58CA7C920 /* DibsRoutingTests.swift */; };
-		5E91D8C5AEFD8F2E40F8B65D /* ServerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7D3418EA3DD4E124189061C /* ServerConfig.swift */; };
-		5FE485F99B6F3D1561EE097A /* PreviewData.swift in Sources */ = {isa = PBXBuildFile; fileRef = C767515ADC8BEF91FDB6430E /* PreviewData.swift */; };
-		5FFF396C29A6860F33809BD2 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1647E37C8776345AD2D05157 /* ChatView.swift */; };
-		60586139F9CD9F29E3375E3A /* PriceWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9C107F2B30A9E641F282499 /* PriceWorker.swift */; };
-		60936E479DA93CFB72D79093 /* ConversationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BAEC626D254AF4000D3FCCB /* ConversationStore.swift */; };
-		61C19AF83EE0460B74E80F8E /* Avatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CACBB8D09A5A062FADCF1C5 /* Avatar.swift */; };
-		65E27BE3BC7597B5CD357B11 /* ItemImages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 947A0EF5883783EDD4D612B1 /* ItemImages.swift */; };
-		6766B7729A9744D8966F8453 /* DibsHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E61C3D5126C5398B0F33DD6 /* DibsHomeView.swift */; };
-		67E77A967233A22C8796AB09 /* Tray.swift in Sources */ = {isa = PBXBuildFile; fileRef = C871281119989179814B8A4A /* Tray.swift */; };
-		6AB56078AFF06500CBAECCDA /* ModelSettingsRenderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72988BE821C064BC08728B1D /* ModelSettingsRenderTests.swift */; };
-		6C9361FEC2D3C031D2ACA4B1 /* TripsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3129C3C817B658AF5DCE2AA3 /* TripsView.swift */; };
-		6DC86B56A9E0EE85EE36F0DD /* ChipCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B71304780C05D41408355E32 /* ChipCard.swift */; };
-		6E5331C474EF7A2578879CC4 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18F48FFDCC2FB9779FD5BDF9 /* AppModel.swift */; };
-		6F1E01B6D7C7B53EB9E34222 /* AgoraClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDEB0D5E169C0A60271AD7FD /* AgoraClientTests.swift */; };
-		729D56F58EA9DC1EDC56DBEE /* DibsClaimLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 672A5A3430921C08DC6BC663 /* DibsClaimLogicTests.swift */; };
-		730B9CAD6839C83DEFD326B1 /* RemoveZone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94A849B98660B88DAA6E21B2 /* RemoveZone.swift */; };
-		78576BE5A3DE216D57D566B3 /* InventoryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9BD92E3E693A952C4FCE05C /* InventoryModels.swift */; };
-		785A972C800D37CA1E0BCD83 /* InventoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AE7F1D1696BE30DE93EDD93 /* InventoryStore.swift */; };
-		790C8F739ADB1940A89092AB /* ShopperCamera.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1690DF12769A924ED3346697 /* ShopperCamera.swift */; };
-		7EF67C4874CC75A50828875C /* BrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3764C202ADDE563FCF845FF /* BrowserTests.swift */; };
-		7F45FC90F95782337F10F248 /* FixChipSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 283534674DD6E795DF3E7027 /* FixChipSheet.swift */; };
-		8060F4DE6978671A11A2D546 /* ModelConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69BDC5A10388FEEC06D7E79B /* ModelConfiguration.swift */; };
-		818AA5F8258B975971EF4D64 /* HouseholdRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57A01B641BE914F544BC59CD /* HouseholdRows.swift */; };
-		8279DB9CB5DC6031AE49EFE8 /* GoogleCalendarAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF80B8107391A357C0C5CD54 /* GoogleCalendarAuthorization.swift */; };
-		82BEFA7CE1CBA7DEA9FE0342 /* DibsFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93D576C1DA4906A8F230C0D4 /* DibsFixture.swift */; };
-		83BC4E8F2E81D62B74782517 /* DibsAppModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AD1381849F7746600AA90F7 /* DibsAppModelTests.swift */; };
-		84696799830AE814DCB2565D /* dibs-run-partly.json in Resources */ = {isa = PBXBuildFile; fileRef = 8B36077254E5670440187142 /* dibs-run-partly.json */; };
-		846E804F728531B81C1A8FA2 /* ModelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CECF1548EA94C8F8EA38F64 /* ModelProvider.swift */; };
-		8A20230DD6EEF26BE41327EC /* ReceiptCamera.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96080B49927405474DB743D0 /* ReceiptCamera.swift */; };
-		8BFDD7EB4EEBA9A34F26CF6E /* ShoppingTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A80E66BFA0C45A99D45970F /* ShoppingTools.swift */; };
-		8CE98FC5A99042D448A8E72A /* ReceiptCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE690706A174E10B4E8B3C67 /* ReceiptCheckView.swift */; };
-		8EC55C4A472379046C5B2F21 /* DibsAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7B346E4C903EABEE1A50C78 /* DibsAPI.swift */; };
-		8EF5A338E73CBC82E6898308 /* CapturePickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA5A9DA68DDB8CEBA4B02354 /* CapturePickers.swift */; };
-		91B22AB74E841B6DEF278166 /* GeminiModelClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D19EF9E6C3530581BFDF878B /* GeminiModelClient.swift */; };
-		9333A3275363FE6BE3CA58D7 /* WishLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 700EEB333620DF26BCD4714A /* WishLogic.swift */; };
-		9341919883A5A424E6444427 /* RecognitionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 128ECC980DD857A9B3806E05 /* RecognitionView.swift */; };
-		94B6BED09142478F732726EE /* ItemImageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90B87D0B8D7472FA40437365 /* ItemImageTests.swift */; };
-		966EBEED8CD89394057BEB29 /* AgoraClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F973E2DF6A4306D0C74C7B /* AgoraClient.swift */; };
-		9772104E247E0E7358A01D53 /* CaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5532AB3C723C614E65B6CB31 /* CaptureTests.swift */; };
-		97F31D56E7BD882E47699F34 /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD17D01287ED12A87BDC4FCC /* WatchModels.swift */; };
-		9B6FD18BF777384CD9F06D36 /* SettleLines.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDB511071DCD7A323D2C068B /* SettleLines.swift */; };
-		9BDB99851E370E0B44C6BABE /* DibsWishLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5B25EF0D048610BD7DAAE25 /* DibsWishLogicTests.swift */; };
-		9DCA88DF5DC8ACDA8D1C2A88 /* DibsRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 527BDFE098CDCA9ACAFEBD0C /* DibsRoot.swift */; };
-		A048058098CF8564E8E2766B /* DibsAPI+Wish.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67D6A23CCEFF1FC9F4737BD8 /* DibsAPI+Wish.swift */; };
-		A528BF85FA7E12157B767CDD /* ChatMessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFDAA08D7EBB307FC9D966FA /* ChatMessageView.swift */; };
-		AD3FA7A8960804005F4929EC /* BrowserScripts.js in Resources */ = {isa = PBXBuildFile; fileRef = 3AA92193AD978AC6846ED3F0 /* BrowserScripts.js */; };
-		ADB8C83B1148ED5B106824B6 /* CaptionPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCDA623704C060E81AA5D9F6 /* CaptionPanel.swift */; };
-		AE44FC808D72FA02BA17EC51 /* Styles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95238E01D27B61E87F998E48 /* Styles.swift */; };
-		AEB268EE56FA40D96ACE69D6 /* dibs-run-receipt.json in Resources */ = {isa = PBXBuildFile; fileRef = E3483C25A69257AAE7FB76BA /* dibs-run-receipt.json */; };
-		B15101253F8C3B59EB7F6951 /* ScanGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10661FCB9C04688B30ED9152 /* ScanGeometry.swift */; };
-		B23070E1C63DC8968A9ADA26 /* ChatAttachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B888CFCEC36F18C25A4FCE /* ChatAttachments.swift */; };
-		B5F374EA7FF026747056D1B7 /* DibsQuantityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FF25FC9938A09CDEC2C9271 /* DibsQuantityTests.swift */; };
-		B6E905206935AF495EE6B32F /* LocalModelMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = 276CC4E01A673F78E704A36D /* LocalModelMedia.swift */; };
-		B79436845C52F70A7293FE36 /* Tokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E369916C6AD916EBBFADE9 /* Tokens.swift */; };
-		BA8AF79B02AB9D985F433D6F /* SettleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45F0C257535D5EB89560AC3A /* SettleView.swift */; };
-		BAFCE516F24D8E37BA4C87A9 /* CartRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AE74A3C0EE5AAADB3E2A294 /* CartRows.swift */; };
-		BB0EA6E90D25EDD73F060560 /* Money.swift in Sources */ = {isa = PBXBuildFile; fileRef = 628B47EBAECF1C8756E0D4E2 /* Money.swift */; };
-		BB9ED4E4F001A1647D04B5DE /* TripPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06759E90F44145D80393B010 /* TripPlanner.swift */; };
-		BC7E17548E5551853E0C1833 /* CalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E197162D182A046D893DB67F /* CalendarTests.swift */; };
-		BFB1BC40981BCB9B4C082E15 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F3ABBB0BFC5EE2E5A954044F /* Assets.xcassets */; };
-		C06FF6CB7C012A68F82CB985 /* AgentCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FE29E34E48414745732BE0 /* AgentCoordinator.swift */; };
-		C0738C4D5817BD7DCA293613 /* SettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8457AB2113CFD719CA50ADA /* SettingsSheet.swift */; };
-		C1A23A978E51D32A5378BA3F /* TripTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60EAEBFFBB64C816B5ADD35E /* TripTests.swift */; };
-		C22D0F73CAE57C6D0047D4B5 /* StoreSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F3B3087DB3FDADC86A3F253 /* StoreSetup.swift */; };
-		C268A20A32760EFE6EE4B571 /* DibsBrowserTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = C66016043271AD3657860C0B /* DibsBrowserTools.swift */; };
-		C2A8F2D3B7710A502184C18F /* ChatInterfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A6846ED1A827E0E3D4BA2A4 /* ChatInterfaceTests.swift */; };
-		C63BB95F74F9C8E48D64E639 /* Routing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E82FDFA1FB2F946523E5490 /* Routing.swift */; };
-		C6B734CA1C17CBFE34BC84C5 /* RecognitionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D6261853DAA37D046ABFC7A /* RecognitionController.swift */; };
-		C7BEE96DD0FF0EDB1369F44C /* ShoppingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2B27579CA321B32BD31509F /* ShoppingView.swift */; };
-		CA3978FC02A47196CD7330EF /* PriceBrowserThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 579DD03FA8017C306C839609 /* PriceBrowserThumbnail.swift */; };
-		CADA86BD6F27BE45B32833B3 /* ShopperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E6BA5FA4F960393ADD48920 /* ShopperView.swift */; };
-		D1E5B441AD2B4CE486D6D489 /* browser-fixture.html in Resources */ = {isa = PBXBuildFile; fileRef = BD2F27D61A394DCC83BEE232 /* browser-fixture.html */; };
-		D20ADA742CF7613C2019AFA3 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = EF48E7CD39C622104829872B /* GoogleSignIn */; };
-		D32EA73AFD1DEF2E7398B779 /* SuggestionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E3115E1A775A889460DB05 /* SuggestionService.swift */; };
-		D3BFBAAD48EFDFAC4248E8E4 /* CaptionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F051E80D1BCF5FE578C1CD85 /* CaptionModels.swift */; };
-		D4E2238B963BB7C8FBC99095 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 376BC58DF81418D8D75BE679 /* Foundation.framework */; };
-		D615C742E0F16A13B3B0E150 /* TripLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D166B730126AC04E7F960CD1 /* TripLiveTests.swift */; };
-		D688183E8C3D0A6413744040 /* CartWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0CF35E6D2D5B804AD5AA5DA /* CartWatcher.swift */; };
-		D68E542AA7A4405A03E7F30C /* WatchBrowserRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1F96F439F71309246984A3 /* WatchBrowserRunner.swift */; };
-		D91DB1BEDA1EECC75FA8F353 /* Run.swift in Sources */ = {isa = PBXBuildFile; fileRef = 445DE7A84ADAF649C6A7FE26 /* Run.swift */; };
-		DF232B2F30C5BF209F216EE9 /* DuplicateCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3797AE66867ECCFD96511540 /* DuplicateCard.swift */; };
-		E0243B4296921364819477F7 /* WatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55A22BAD4E9DC303613EB8DB /* WatchTests.swift */; };
-		E3857AF73318AF0529F4D71A /* UnclaimedList.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B1CB7776F68F8E027D3CC6 /* UnclaimedList.swift */; };
-		E3DBA717CB9C2719985FF841 /* ShoppingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695DBCEF245C056ED3FAAA6A /* ShoppingModels.swift */; };
-		E6C7C1D86C3DAA5B33E5EFD1 /* DibsPriceWorkerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A368D4B11ED5E648B15A1C5 /* DibsPriceWorkerTests.swift */; };
-		E8FB7F636470C2ACFD51CF6B /* NextRun.swift in Sources */ = {isa = PBXBuildFile; fileRef = A98EBADB19F79CFE73641B2E /* NextRun.swift */; };
-		EB62F5C4CDE183EB900CA22B /* CaptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90D01ACF414B36B3597A4AB6 /* CaptionTests.swift */; };
-		EB9F91362104A96E89B692E8 /* InventoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EA54FE2A0DC4FDE9EDB571E /* InventoryTests.swift */; };
-		F2CE1CD3A6C2148D513C7C2F /* TripModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7B5BA2F08495C9AD4FADAC /* TripModels.swift */; };
-		F3212DF9A50323DC80F44DE6 /* CalendarTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5DCE75CF5F7694036A37556 /* CalendarTools.swift */; };
-		F3585E2E48CBCC736CE0012E /* ModelFeatureServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78B794CCFD523D69A97B3C0C /* ModelFeatureServices.swift */; };
-		F4CDF88B7C29D9BC547343C8 /* TripStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23250D0267FA96FC6643CDF /* TripStore.swift */; };
-		F51FC638CEA90D1F26F237A8 /* dibs-run-settled.json in Resources */ = {isa = PBXBuildFile; fileRef = D2D134B42BC5E73C27015062 /* dibs-run-settled.json */; };
-		F5DB24AD2CC9F03344D79F0C /* CalendarOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC2E27A87EEE0F76359D13EB /* CalendarOnboardingView.swift */; };
-		F62A9F831CD207B5C8C9FD19 /* DibsLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1908AE8EE5E6F9141076ED70 /* DibsLog.swift */; };
-		FA3C1F15AC98CBE822C303A6 /* DibsRootTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F491D121855D616ED2F272B /* DibsRootTests.swift */; };
-		FAA23A92868D737C3D24D881 /* ModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7F0713A38D2FEC486FBFA04 /* ModelSettingsView.swift */; };
-		FB301E2271D09E7740831270 /* RecognitionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5262E37E3ADD1759B23159BC /* RecognitionModels.swift */; };
-		FC08C6A870504D2ED1A8AD35 /* ChatComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F73180B6880E65EB9B43208 /* ChatComposer.swift */; };
-		FCE7A200E9B668FC0255D0B0 /* WatchBrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25353D42BC435FFCA7F380F9 /* WatchBrowserTests.swift */; };
-		FD49DD680325E49A906D6EED /* DibsShopperLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2C9C702724C3A3D9E60F37F /* DibsShopperLogicTests.swift */; };
-		FD68B34F1D7A3AA5AA6A4446 /* DibsHouseholdTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4384A84EC5B231C62186FEF2 /* DibsHouseholdTests.swift */; };
+		014C73188DC19F92FBD5C890 /* GeminiCaptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD83389E2109ACB8747933DC /* GeminiCaptionService.swift */; };
+		03C20AADD671CE3A293980BC /* DibsRootTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E747DC570B68EF237631B12 /* DibsRootTests.swift */; };
+		03F46C4E4D68E89F82C7B500 /* browser-fixture.html in Resources */ = {isa = PBXBuildFile; fileRef = 142A45D90CA89AAB893E4ACD /* browser-fixture.html */; };
+		04F43544DB1C322CEDCD5EF8 /* DibsRunStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AEAE37AD883A66847CD35EA /* DibsRunStoreTests.swift */; };
+		06A760191104D49295E94E41 /* DibsAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A615779231D15FF0040ADD6F /* DibsAPI.swift */; };
+		06D97BA95B0C09E10837DE7F /* AgoraClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C77A973748C94214BB8A11A /* AgoraClient.swift */; };
+		0770FBACCC05BBB29756993D /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BE0C342B7D07484113C09D1 /* AppLog.swift */; };
+		07D4397C6EA2F319798415A6 /* QFCTraffic.swift in Sources */ = {isa = PBXBuildFile; fileRef = F36177E8DCA0782795FD3789 /* QFCTraffic.swift */; };
+		099DA638D31B345D7330D2B4 /* ServerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = E103AC17F53E2ADD344D1A02 /* ServerConfig.swift */; };
+		0B101E90A6F5B91C3169EF82 /* RecognitionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9ABA8BC847CD05AEF746DFB /* RecognitionModels.swift */; };
+		0E18FC135187C34C83118DEB /* DibsPriceWorkerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58787650F9142051ED2CB456 /* DibsPriceWorkerTests.swift */; };
+		0FF53927D72086E497CAC930 /* DibsFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EC23D0882223CD8524EC6FB /* DibsFixture.swift */; };
+		1297C052AC80D583EBD853DE /* DibsLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DBAA1FFFBD24528785C71E1 /* DibsLog.swift */; };
+		1410BC6B8CD635A21C36D939 /* CartWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B89FCE6077FD0C8A7F4134DC /* CartWatcher.swift */; };
+		14DDFADBD798288C5BF69EA6 /* BrowserViewport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A67406B1925676C12079295E /* BrowserViewport.swift */; };
+		178850BC218194A7069C6C29 /* FrameEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC80B6A224E2DD2B14D07540 /* FrameEncoder.swift */; };
+		19ABEEB7F83678D1267B73A6 /* DibsShopperLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD2C087FA2287FCC5140E51 /* DibsShopperLogicTests.swift */; };
+		19E5D2EC81AFF056CACDC368 /* ReceiptCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFD9273EB50AE8B5BFAC4A8F /* ReceiptCheckView.swift */; };
+		1A03DDD3BA82F66FBBB41ECF /* CaptionHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63AE592DED146048A6FD7D8F /* CaptionHTTPClient.swift */; };
+		1A42E808B4EE25D02E87EB6D /* InventoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EE92221227E51124A28FA1A /* InventoryTests.swift */; };
+		1B00DE2D73C15DDCB9CE1C64 /* ChatMessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E606B894C3163EF73725282 /* ChatMessageView.swift */; };
+		1B3F182187B66F235B03161F /* BrowserPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFE2516382B49A6F2A27B88B /* BrowserPolicy.swift */; };
+		1B9EA3290AAF282344CC710B /* GoogleCalendarAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47E33E7DB9C00B72EFC34CB0 /* GoogleCalendarAuthorization.swift */; };
+		1C2D858E5DC5034939D19AFD /* DibsCartWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 954D59B6A3BF0AF77244F0DB /* DibsCartWatcherTests.swift */; };
+		2171BC6DDD2265A800D805FB /* dibs-run-partly.json in Resources */ = {isa = PBXBuildFile; fileRef = 3EC3BFF63DF6D5D1B199142E /* dibs-run-partly.json */; };
+		241E4AA1FBA9D127E3619E2A /* DibsBrowserTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = D85C84CC957ECAE9852166D5 /* DibsBrowserTools.swift */; };
+		244598BC9165F7AACE0EC676 /* Run.swift in Sources */ = {isa = PBXBuildFile; fileRef = 537721300265F01E9272C8A1 /* Run.swift */; };
+		2468C784098D37FEC17A84DE /* ShoppingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 740BE917C660E11130BBD0B1 /* ShoppingView.swift */; };
+		262A141D03D69474290DD8E7 /* ScanGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98C3A46FAFCA2E6F4472DA5C /* ScanGeometry.swift */; };
+		2652AE6E0DA51D63CB8B112E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 90407A7CF101F73068A45155 /* Assets.xcassets */; };
+		2B9A1E75A97DB8602BB129B3 /* WatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F9EC188C1E8B57D5E013761 /* WatchTests.swift */; };
+		2CD86427D56621CC7E05AF01 /* DuplicateCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BBA976B78EEAC0AA1B2E0F4 /* DuplicateCard.swift */; };
+		300119468CD8FB9E745B00D6 /* HeldBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36BBD507D5CCE394F77A9EDC /* HeldBadge.swift */; };
+		314C6D13E807AAF97BC526C7 /* RunSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CB681D356E4D5C2BE51A8ED /* RunSocket.swift */; };
+		3250F58A2890120FC464114B /* PriceWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04D4F55F23636DA4E88FA2D /* PriceWorker.swift */; };
+		343E3392522E919FBA2689BC /* ChatAttachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8614AD2ED9E1E7EAA8CBAF2 /* ChatAttachments.swift */; };
+		35812E0D51759257100824AE /* ModelSettingsRenderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72A68A3EA7A4B6D3E0A5F3BC /* ModelSettingsRenderTests.swift */; };
+		35B1137F810A761DB52963AA /* DibsRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = D91810F0EB8A6A1465377D9A /* DibsRoot.swift */; };
+		35E8E0A207A3105A9BA3D408 /* DibsRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 053D1F6113B7A3CACB7DD5EE /* DibsRoutingTests.swift */; };
+		373841C921F8F561B8506520 /* ShoppingTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6D5233935C5AA6F5828522F /* ShoppingTools.swift */; };
+		388E670B5E1CA210DFDDA338 /* DibsModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F419E321BDD8BA0DCEAE8870 /* DibsModelTests.swift */; };
+		390A78D681ACEDA9B8655B27 /* WatchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C439516877BA44AC0096F225 /* WatchStore.swift */; };
+		3AA4726D9242764EE57C05E4 /* Protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92811DB040DDFEA9C8410498 /* Protocol.swift */; };
+		3C2B3E94D03F647248B0119E /* InventoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40910E05EE8D4A8D224FCB84 /* InventoryView.swift */; };
+		3C91778AD719774D37C98277 /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7284C643F36CE51F0B87637 /* BrowserSession.swift */; };
+		3DC6E93AAB04790E42C58772 /* TripTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BB882568D26AF764F3C95BB /* TripTests.swift */; };
+		3F4167F57CD5E14655F30192 /* CaptionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39D6084906BF3E83612152E8 /* CaptionModels.swift */; };
+		3F6DA4A17CCA85D2FC566F77 /* DibsAPITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3C3FAFE3AD348BA015E1F15 /* DibsAPITests.swift */; };
+		43A7C69285B240A5A8C3BE0E /* RunStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8045B20E20EF572C827453B6 /* RunStore.swift */; };
+		43ED28F31D2FBC3C3B30A621 /* OpenAICompatibleClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 973F1EFDB37BD12461C24A35 /* OpenAICompatibleClient.swift */; };
+		453A2ED2E70EB057D6790314 /* DibsSettleLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18A51DF162EFF9B43CE492DD /* DibsSettleLogicTests.swift */; };
+		4677AC15AF926CA3EB92DB6A /* ItemImages.swift in Sources */ = {isa = PBXBuildFile; fileRef = C026DFA121D8050D5315B316 /* ItemImages.swift */; };
+		476E05981F229B58E5DDD928 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8A69AB066B7EC3DAA604B4E2 /* Foundation.framework */; };
+		4783538F0E0274BF554CDC67 /* CommerceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 496B6B8E7A120D1A53776345 /* CommerceTests.swift */; };
+		48CBADF417CF662897EE4C90 /* DibsFrameEncoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1702140D20C020A36BC37B0D /* DibsFrameEncoderTests.swift */; };
+		4E4B356442032913AF98E776 /* StartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BE18287FE6FF9AC730D9A3 /* StartView.swift */; };
+		505E6B793B0F07451D3628FB /* DibsQuantityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0288C560C98BA311517339AB /* DibsQuantityTests.swift */; };
+		52DACDF06C91C2948317C398 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41D716C0BC6AA98BAE662E9A /* ChatView.swift */; };
+		58D9013168A66F5B94878B76 /* CommerceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD35C1B8A80A205C2EE8D66 /* CommerceModels.swift */; };
+		592D3DEB4CA0FE913186165D /* Routing.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA3058561F3518186F0C0D9F /* Routing.swift */; };
+		5A349A5A99715F6E762DD8F6 /* QRCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7F2B17BB0CD3EE1053764D0 /* QRCode.swift */; };
+		5A495DF6EEC00FE9A496EC09 /* PushNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8267A7472FC803CFE6BC8D8 /* PushNotifications.swift */; };
+		5AC7909C32DDE1A1A92266DF /* BrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8ACFB34FDBE441E5357F056 /* BrowserTests.swift */; };
+		5BCE5A7E15C68BF9DC5349D9 /* DibsScanGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E8CF72E9BAEA8B1D71A0F0 /* DibsScanGeometryTests.swift */; };
+		5CBE5466BBB39E62B2E736D2 /* MediaLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B41392D2A27085CA09A2A6 /* MediaLibrary.swift */; };
+		5CEA7241BFF0B99A232B8B08 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 2057095550337F336FDCE4DF /* GoogleSignIn */; };
+		5FD19EC4F7C1657C714B6A10 /* ChipCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 415189BC1C7AF59EC6738E79 /* ChipCard.swift */; };
+		60E15D32D3EEE82F717D5EAE /* RunText.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE503BD513577F03ECAEFE02 /* RunText.swift */; };
+		6420631A89FE6BDF9CE349D3 /* Styles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84813F49249B02E97730E5E6 /* Styles.swift */; };
+		64671A22B77CEEF309A47959 /* Avatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8956DB1B93ABE402D36264 /* Avatar.swift */; };
+		64D20937DEDCC0B6FB56099B /* ModelFeatureServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EBFAD75D80ADFAFD0AF36B /* ModelFeatureServices.swift */; };
+		665815B0513D4972FBE5247A /* CommerceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA13549E82D3EA4FEB5072F3 /* CommerceStore.swift */; };
+		66F58BDEED777D88B4F24962 /* TripPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD6B42BD153F45B304F4EA3D /* TripPlanner.swift */; };
+		67381B4FAEBEA559D484443F /* PreviewData.swift in Sources */ = {isa = PBXBuildFile; fileRef = F47730E5AA2F7167737F2203 /* PreviewData.swift */; };
+		6A074770487A08B8FF63EAC9 /* ShopperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 253A1BF9307010B7C475DA68 /* ShopperView.swift */; };
+		6C53CE5A8731B410FB780EB7 /* InventoryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0D34956FBF72326F2F54919 /* InventoryModels.swift */; };
+		6F94D489409CF99F9AAF4AF9 /* TripStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49C12026F8784E892417B332 /* TripStore.swift */; };
+		70E7CCEF18497986A7626662 /* SpendingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBA947062A99681A1C70956 /* SpendingView.swift */; };
+		714B536C43DB02E1549548C2 /* LocalModelMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = 035795C1835A129E70BD7B83 /* LocalModelMedia.swift */; };
+		75413268A2EBA32A97E2C2A5 /* WatchBrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41BDF99CFE1077ADDFF67202 /* WatchBrowserTests.swift */; };
+		7597B467CCAAC74F9B040464 /* LocalModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42EEBFD9E9007B77DA6A8717 /* LocalModelTests.swift */; };
+		770B26F03BEFAC3FC08D0293 /* CaptionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56E44FFE8DDCE7855AFA3BFA /* CaptionController.swift */; };
+		78429ED631BC5B1BF346E872 /* DibsAppModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8980A3366FC8916B5B11C3B /* DibsAppModelTests.swift */; };
+		785B9E55943D87085EF9C728 /* RemoveZone.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBAC8477EFD4AA73ADC2CF59 /* RemoveZone.swift */; };
+		79956FA8DF60F28182348A12 /* dibs-run-receipt.json in Resources */ = {isa = PBXBuildFile; fileRef = 38B91F93540D29B8E780A029 /* dibs-run-receipt.json */; };
+		7A377D907F7517C5E0F5C79E /* DibsHouseholdTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F74BF0B922CD77F0DFED246 /* DibsHouseholdTests.swift */; };
+		7A50E7BF70B8B1295B4FEBCB /* RecognitionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D231D9FDE9ACBB31998E6957 /* RecognitionController.swift */; };
+		7A93B24A54DB18DC837F87CE /* OverCapSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6EBE797ADD2D526D2123C32 /* OverCapSheet.swift */; };
+		7ACEE06D983AFE183E3FC7ED /* ItemImageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A40221A7EC960F5C6CD8CCE /* ItemImageTests.swift */; };
+		7D3AE6FAA2C4D6479619E4EB /* CalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEDA07A363852161A32CC543 /* CalendarTests.swift */; };
+		7EE5D706D75803BE7F1458B6 /* WatchViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D35AE56D9DFD1E4BF9DA8DB /* WatchViews.swift */; };
+		80A30657BB54B694BD15AE52 /* ShopperLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7A7ED20DE4212276D3725C7 /* ShopperLogic.swift */; };
+		840A738C02F81FC27A704D24 /* WishView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E96388A0F1A67198E05EF76C /* WishView.swift */; };
+		845FF583F8953028118AC8FF /* DibsWishLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E8B752BD078D9FCB359B74E /* DibsWishLogicTests.swift */; };
+		8507AF0AEC37BA78B40254ED /* dibs-run.json in Resources */ = {isa = PBXBuildFile; fileRef = 209C411F863819D787711F52 /* dibs-run.json */; };
+		86EA87D867D9062388F728D8 /* ShoppingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCACA69C11CACAE193229CF /* ShoppingModels.swift */; };
+		89D8FFDC83A6E4193001885E /* CalendarOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35776208111C792CBC339941 /* CalendarOnboardingView.swift */; };
+		8B102F0CF49DFC7DD11F6DA2 /* Tray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E3CFCF8FC17CF8886643BC9 /* Tray.swift */; };
+		8C2C5540ECD20A8C70F191D6 /* ModelConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CCB300A38FA5D6171B1BD2F /* ModelConfiguration.swift */; };
+		8C87503350BCBC50F53B9A64 /* dibs-run-settled.json in Resources */ = {isa = PBXBuildFile; fileRef = F1B08B4321D1EA27BCB96B06 /* dibs-run-settled.json */; };
+		8D3554CC84D376F920F7443A /* AgentCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3447B4E3C6601D56BAEC61DA /* AgentCoordinator.swift */; };
+		9172436272410780B6EC5838 /* ClaimView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10ECD116F2A54EFE514CEE23 /* ClaimView.swift */; };
+		91E2895B03B9CAB0F5130D40 /* SettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49051DB2398C6A706024F3F /* SettingsSheet.swift */; };
+		93B32D9C974834C6F99BA52D /* StoreBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCB1AAD076728AF3E8DA95F1 /* StoreBrowser.swift */; };
+		96C3571ECEC6C8E3B3AE1C12 /* BrowserToolExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48615B04D5A465DE642A7545 /* BrowserToolExecutor.swift */; };
+		975382777386F8559DE99E50 /* DibsClaimLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 330623934C326C902405D515 /* DibsClaimLogicTests.swift */; };
+		99793720988529C7438F4215 /* ReceiptCamera.swift in Sources */ = {isa = PBXBuildFile; fileRef = B66D24AA85187B58BB4706E2 /* ReceiptCamera.swift */; };
+		99AB3C8C83E37969D2DEAD56 /* DebugLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0776A6B587599C4DA62B2A7A /* DebugLaunch.swift */; };
+		9B492BD230A571820210B4EF /* SettleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D0C7871F8983AC65741BA5A /* SettleView.swift */; };
+		9C740F46E4D390AD612142EB /* WishLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0D5208A0847BC9920114C54 /* WishLogic.swift */; };
+		9FE66F30BFC27F790C2DA27D /* RecognitionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDE7B51E1456C1F038E55550 /* RecognitionView.swift */; };
+		A0458A0AB45E55052725D181 /* ShoppingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21C2EEBD638287FAB13D0F26 /* ShoppingStore.swift */; };
+		A26F2C53996A2F11D075EF34 /* CaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 682A415FBAADC724172BDC55 /* CaptureTests.swift */; };
+		A3655F1E6025230FD2CD8CE6 /* TaskRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00523FCB8C878FF4BAB6B667 /* TaskRepository.swift */; };
+		A5B7B4711ADBDB85B3E58873 /* GeminiModelClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010D85D8AC5DB939A0419CE8 /* GeminiModelClient.swift */; };
+		A7A15E1AD4B62B3895A693AF /* NextRun.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39E9D4391C4475C8E0AB9997 /* NextRun.swift */; };
+		AAB3ED8026F624F048CC2A01 /* SettleLines.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93D38FAF7FF57A88911744C4 /* SettleLines.swift */; };
+		AE765A368D2CD0695C183097 /* CalendarConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7158E4C60A218919A83ED7E /* CalendarConnection.swift */; };
+		B0DA63D9CCA4638B3BCA0CFB /* ItemImageLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E9C183247EC31160D87AB22 /* ItemImageLiveTests.swift */; };
+		B19D16F18D38DF00434D9A6C /* ConversationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EBEE69A60ED6EDA3E3DC703 /* ConversationStore.swift */; };
+		B2F64970C96C9DD4AF721CBE /* CaptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B765F11A89E50539BBA0D860 /* CaptionTests.swift */; };
+		B4377DCD4761F5B97C99C784 /* ModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC1BA6A0B864C0D564AAD9B8 /* ModelSettingsView.swift */; };
+		B488D54CACB62543A7DE36C3 /* ChatInterfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 669A21CC8525C9357BB4EC16 /* ChatInterfaceTests.swift */; };
+		B5E35ED0D2518796AF8103AC /* SettleLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C012B5641C625E1FEFA4E03 /* SettleLogic.swift */; };
+		B63D8F621E4774C331DF7211 /* CartCamera.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FAD396D49C7149B6EBE3B5F /* CartCamera.swift */; };
+		B6B8C5A21D7A0AC65BA58DE1 /* Tokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = C84F83DA5BED2D7CE098ED6D /* Tokens.swift */; };
+		B77CCCB76695520B2D974E64 /* FixChipSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5418236442A747407B90B24B /* FixChipSheet.swift */; };
+		B80BB6681559DA4C0EE23933 /* GeminiModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14EA818E51728C52B53A4DC4 /* GeminiModelTests.swift */; };
+		BA66A478841B85EC4772C44E /* UndoToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4D95C7DA6B19D11746AD69 /* UndoToast.swift */; };
+		BA74EA4B29231C58144701A8 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8A69AB066B7EC3DAA604B4E2 /* Foundation.framework */; };
+		BC2EC191120DD63E3AD335E4 /* CartRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D67ACB0388CFDDC1DAF771C /* CartRows.swift */; };
+		C0A4288490C9294B2CFFCAE0 /* LiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAC4F804898550B95AF7F9BF /* LiveView.swift */; };
+		C0FF464538103B3DCAA2CD24 /* TripsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97CCD477B8531F3E41487B94 /* TripsView.swift */; };
+		C2A796DEE53B4E5CD0FCB9AF /* PriceBrowserThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 354678CAE693C090705D9DFD /* PriceBrowserThumbnail.swift */; };
+		C3672949E24694F1B1D5BE9C /* ShoppingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27986440A274C7900D564342 /* ShoppingTests.swift */; };
+		C5AF606ADF1EF4DFD891EC7E /* InventoryForms.swift in Sources */ = {isa = PBXBuildFile; fileRef = B67D6D78C70011ACDBE2A594 /* InventoryForms.swift */; };
+		C61325EFCDB30AC5042C9AED /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 548EEC373F57068DEE06EA4C /* WatchModels.swift */; };
+		C6ACA6BB39E49AD849A1C0B3 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = CE1F9EC1BCAE48B47FA963FD /* GoogleSignInSwift */; };
+		C7AD35D1947EF94AD05BC72A /* ClaimLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E9B218FF6EBB96C381C49D /* ClaimLogic.swift */; };
+		CFE9F2A6C4E1F151A7C6C472 /* QuantityStepper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04A1A370662891A5F31A494 /* QuantityStepper.swift */; };
+		D004D05915AE2B1C6C4B8EEE /* AgoraClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E5F0AF34008C1A666F84867 /* AgoraClientTests.swift */; };
+		D15546F1BD0E705441545056 /* DibsBrowserScripts.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E5872678FD5B5CA50A467BC /* DibsBrowserScripts.js */; };
+		D291A70528CA8B381C245A2D /* DibsAPI+Wish.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80C678F244F7BDBB554C57A1 /* DibsAPI+Wish.swift */; };
+		D393AC4CCCB6FF7CB6C2F2E6 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A835B04AE76B63B60964792F /* SettingsStore.swift */; };
+		D4C7CA4A04AF049879453DDC /* ChatComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92C0E8275934D51AEE0C0324 /* ChatComposer.swift */; };
+		D5526BF2B4E8925C026A2254 /* CapturePickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E028C26CA9AE6183E9ACCB3C /* CapturePickers.swift */; };
+		D557CD95363DB2B1D169C264 /* DibsHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 388EAA02CBA533C83C888023 /* DibsHomeView.swift */; };
+		D7790DEDCE6EEBBD5A4FEE3D /* Money.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1488FAD04443C37AAED641F /* Money.swift */; };
+		D781F554AEDDEF681582A133 /* ModelTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AE667D0F221131797A0625B /* ModelTypes.swift */; };
+		D8D079FF34C807C9308097C5 /* ModelIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 809C579B0A035B8CE19AC3F4 /* ModelIntegrationTests.swift */; };
+		D9C264D859CBBC8CD7164C82 /* InventoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E22635F7D0351C7E941D9575 /* InventoryStore.swift */; };
+		DBFCBEBFA468DAE4997EEF4D /* HouseholdRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B0DC321AAB920C638CC0489 /* HouseholdRows.swift */; };
+		DC78F5853162BE56E745A42F /* CaptionPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3346FEB954E2B43ED9B401C0 /* CaptionPanel.swift */; };
+		DCE3A6D4D047B064BE2045E4 /* CommerceTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22CC505AD7FC2D2F6FFB3F0 /* CommerceTools.swift */; };
+		E0E3F6D3DD3610D348A415C7 /* ShopperCamera.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E6A3C5455747CA59CB39C85 /* ShopperCamera.swift */; };
+		E31400D5BC5D4E2E68247805 /* WatchBrowserRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C69750C8F7DA816511C3B31 /* WatchBrowserRunner.swift */; };
+		E46F0FC126C3FBFDC16FF5DA /* TripModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C75FF94E295DC1652D594C87 /* TripModels.swift */; };
+		E47BA482DB93DE9F2095444D /* TripLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C76CBD71ADE8EB8F2BDE1A1D /* TripLiveTests.swift */; };
+		E824499D9E94C767DD0FB521 /* StoreSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0464BB03DD04F8E0609941D /* StoreSetup.swift */; };
+		E82C7F7EFE2D7C93EBC1B5AE /* GeminiInventoryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2089EFAAA74612861C5EFC40 /* GeminiInventoryService.swift */; };
+		E8821B713E790A75BAC2301B /* BrowserScripts.js in Resources */ = {isa = PBXBuildFile; fileRef = 5C496FB93AB758DE988DC478 /* BrowserScripts.js */; };
+		E8E78178E39A05D64BA24B0F /* JoinView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90D757BB1D6E77D79845E779 /* JoinView.swift */; };
+		E920D7C53F34199FD9EF58CE /* ModelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3EFCB625D69779ACEEDD2E5 /* ModelProvider.swift */; };
+		EA9D70A1B54507D022D104D3 /* ReceiptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0943DCB8A8AD3714C4D43E3 /* ReceiptView.swift */; };
+		EEF3EFF12D3BEF2DFACB6107 /* CalendarTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E85C50472967D6704A8B87B /* CalendarTools.swift */; };
+		EFA829D90BFF9EE4F5EBC2CE /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E08A1351312FDDDA13FF2CFE /* AppModel.swift */; };
+		F1EDCE63B6DA6C43B8D306F2 /* BrowserChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50444BFC83E97177502D8C33 /* BrowserChatApp.swift */; };
+		F88014C29B4EE9B7B888DF07 /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58003B5270B532F04FE400C /* CaptureView.swift */; };
+		FBF71C2A6AF9CD16AF6ABB2C /* UnclaimedList.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBBAE522EFBC8F218518F981 /* UnclaimedList.swift */; };
+		FCF9F2383A96472124C8D1D6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2493E7612A98ACB045F4CAB3 /* SettingsView.swift */; };
+		FE1D33D647620F95437A2EA9 /* SuggestionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1C77A7B99EC6D6C4D457DD4 /* SuggestionService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		F314D5EC951B487C27D372D0 /* PBXContainerItemProxy */ = {
+		6C873A6742CDA9AA1FA4152A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = E1850D01AB90D22E12183E2C /* Project object */;
+			containerPortal = 44B9C83B12FF68AD374BDD99 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 9D5C73A4E454140DDF39FE08;
+			remoteGlobalIDString = 68C738ABA3ECE6959DE068E2;
 			remoteInfo = Agora;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		045FB66BDC6FB7B7A6EE9B7C /* GeminiInventoryService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GeminiInventoryService.swift; path = Agora/Inventory/GeminiInventoryService.swift; sourceTree = "<group>"; };
-		053D37021CD80E22AFB1567B /* ModelIntegrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelIntegrationTests.swift; path = AgoraTests/ModelIntegrationTests.swift; sourceTree = "<group>"; };
-		06759E90F44145D80393B010 /* TripPlanner.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripPlanner.swift; path = Agora/Trips/TripPlanner.swift; sourceTree = "<group>"; };
-		075675C0C4AF1D40B5D96613 /* Agora.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Agora.xcconfig; path = Config/Agora.xcconfig; sourceTree = "<group>"; };
-		0BAF1E9272CA28A7FA0B45D4 /* RunText.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RunText.swift; path = Agora/Dibs/Model/RunText.swift; sourceTree = "<group>"; };
-		0BE554A177F02BE58CA7C920 /* DibsRoutingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsRoutingTests.swift; path = AgoraTests/DibsRoutingTests.swift; sourceTree = "<group>"; };
-		0C538136B092984AB0B4223F /* GeminiModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GeminiModelTests.swift; path = AgoraTests/GeminiModelTests.swift; sourceTree = "<group>"; };
-		0D6261853DAA37D046ABFC7A /* RecognitionController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RecognitionController.swift; path = Agora/Inventory/RecognitionController.swift; sourceTree = "<group>"; };
-		0EE742A6AE0D68B69FEFB542 /* CaptureView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptureView.swift; path = Agora/Capture/CaptureView.swift; sourceTree = "<group>"; };
-		10661FCB9C04688B30ED9152 /* ScanGeometry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ScanGeometry.swift; path = Agora/Dibs/Camera/ScanGeometry.swift; sourceTree = "<group>"; };
-		128ECC980DD857A9B3806E05 /* RecognitionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RecognitionView.swift; path = Agora/Inventory/RecognitionView.swift; sourceTree = "<group>"; };
-		1647E37C8776345AD2D05157 /* ChatView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatView.swift; path = Agora/App/ChatView.swift; sourceTree = "<group>"; };
-		1690DF12769A924ED3346697 /* ShopperCamera.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShopperCamera.swift; path = Agora/Dibs/Camera/ShopperCamera.swift; sourceTree = "<group>"; };
-		16BC366B6A30B954E66D4796 /* WatchViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchViews.swift; path = Agora/Shopping/WatchViews.swift; sourceTree = "<group>"; };
-		170DD17F9EBEB60E9E6F885A /* MediaLibrary.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MediaLibrary.swift; path = Agora/Capture/MediaLibrary.swift; sourceTree = "<group>"; };
-		18F48FFDCC2FB9779FD5BDF9 /* AppModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppModel.swift; path = Agora/Dibs/App/AppModel.swift; sourceTree = "<group>"; };
-		1908AE8EE5E6F9141076ED70 /* DibsLog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsLog.swift; path = Agora/Dibs/App/DibsLog.swift; sourceTree = "<group>"; };
-		1ACD2543C6D3297CCF377AC7 /* DibsRunStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsRunStoreTests.swift; path = AgoraTests/DibsRunStoreTests.swift; sourceTree = "<group>"; };
-		1B06E8D8ACAADE8FC63FC8B6 /* OpenAICompatibleClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OpenAICompatibleClient.swift; path = Agora/Models/OpenAICompatibleClient.swift; sourceTree = "<group>"; };
-		1C58F59AE363DDF8B4B43AEF /* ReceiptView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptView.swift; path = Agora/Dibs/Screens/ReceiptView.swift; sourceTree = "<group>"; };
-		1E6BA5FA4F960393ADD48920 /* ShopperView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShopperView.swift; path = Agora/Dibs/Screens/ShopperView.swift; sourceTree = "<group>"; };
-		1F035FC26D49CCB9B5DE544F /* LiveView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LiveView.swift; path = Agora/Dibs/Components/LiveView.swift; sourceTree = "<group>"; };
-		2289665713024C72736F423C /* DebugLaunch.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DebugLaunch.swift; path = Agora/Dibs/App/DebugLaunch.swift; sourceTree = "<group>"; };
-		25353D42BC435FFCA7F380F9 /* WatchBrowserTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchBrowserTests.swift; path = AgoraTests/WatchBrowserTests.swift; sourceTree = "<group>"; };
-		25BD910F61CC4CC4583BEA6A /* WatchStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchStore.swift; path = Agora/Shopping/WatchStore.swift; sourceTree = "<group>"; };
-		276CC4E01A673F78E704A36D /* LocalModelMedia.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LocalModelMedia.swift; path = Agora/Models/LocalModelMedia.swift; sourceTree = "<group>"; };
-		283534674DD6E795DF3E7027 /* FixChipSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = FixChipSheet.swift; path = Agora/Dibs/Components/FixChipSheet.swift; sourceTree = "<group>"; };
-		2BAEC626D254AF4000D3FCCB /* ConversationStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ConversationStore.swift; path = Agora/Chat/ConversationStore.swift; sourceTree = "<group>"; };
-		2BD79948F6CD91FA3AA6A366 /* AppLog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppLog.swift; path = Agora/Storage/AppLog.swift; sourceTree = "<group>"; };
-		2D02C54AF0E4CD1CEFA20016 /* BrowserPolicy.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserPolicy.swift; path = Agora/Browser/BrowserPolicy.swift; sourceTree = "<group>"; };
-		2FF25FC9938A09CDEC2C9271 /* DibsQuantityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsQuantityTests.swift; path = AgoraTests/DibsQuantityTests.swift; sourceTree = "<group>"; };
-		3129C3C817B658AF5DCE2AA3 /* TripsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripsView.swift; path = Agora/Trips/TripsView.swift; sourceTree = "<group>"; };
-		322E84DC0A9E55DF6FD34371 /* ShoppingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShoppingTests.swift; path = AgoraTests/ShoppingTests.swift; sourceTree = "<group>"; };
-		3346CD9BF62AB6A2CC41D7AB /* Agora.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Agora.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		339953B1D6DA42D8A896D9E5 /* FrameEncoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = FrameEncoder.swift; path = Agora/Dibs/Camera/FrameEncoder.swift; sourceTree = "<group>"; };
-		376BC58DF81418D8D75BE679 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
-		3797AE66867ECCFD96511540 /* DuplicateCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DuplicateCard.swift; path = Agora/Dibs/Components/DuplicateCard.swift; sourceTree = "<group>"; };
-		37F973E2DF6A4306D0C74C7B /* AgoraClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgoraClient.swift; path = Agora/API/AgoraClient.swift; sourceTree = "<group>"; };
-		3A368D4B11ED5E648B15A1C5 /* DibsPriceWorkerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsPriceWorkerTests.swift; path = AgoraTests/DibsPriceWorkerTests.swift; sourceTree = "<group>"; };
-		3AA92193AD978AC6846ED3F0 /* BrowserScripts.js */ = {isa = PBXFileReference; includeInIndex = 1; name = BrowserScripts.js; path = Agora/Browser/BrowserScripts.js; sourceTree = "<group>"; };
-		3CE1BBA927F495A9BE5D5071 /* ShopperLogic.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShopperLogic.swift; path = Agora/Dibs/Model/ShopperLogic.swift; sourceTree = "<group>"; };
-		3E61C3D5126C5398B0F33DD6 /* DibsHomeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsHomeView.swift; path = Agora/Dibs/Screens/DibsHomeView.swift; sourceTree = "<group>"; };
-		417D3BC733386D1C166750D9 /* DibsFrameEncoderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsFrameEncoderTests.swift; path = AgoraTests/DibsFrameEncoderTests.swift; sourceTree = "<group>"; };
-		4384A84EC5B231C62186FEF2 /* DibsHouseholdTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsHouseholdTests.swift; path = AgoraTests/DibsHouseholdTests.swift; sourceTree = "<group>"; };
-		445DE7A84ADAF649C6A7FE26 /* Run.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Run.swift; path = Agora/Dibs/Model/Run.swift; sourceTree = "<group>"; };
-		45F0C257535D5EB89560AC3A /* SettleView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettleView.swift; path = Agora/Dibs/Screens/SettleView.swift; sourceTree = "<group>"; };
-		4A7B5BA2F08495C9AD4FADAC /* TripModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripModels.swift; path = Agora/Trips/TripModels.swift; sourceTree = "<group>"; };
-		4AD1381849F7746600AA90F7 /* DibsAppModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsAppModelTests.swift; path = AgoraTests/DibsAppModelTests.swift; sourceTree = "<group>"; };
-		4C3F94FE8B2251E8A0F68F1C /* LocalModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LocalModelTests.swift; path = AgoraTests/LocalModelTests.swift; sourceTree = "<group>"; };
-		4FE024E95A744167458E1E19 /* QuantityStepper.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = QuantityStepper.swift; path = Agora/Dibs/Components/QuantityStepper.swift; sourceTree = "<group>"; };
-		5262E37E3ADD1759B23159BC /* RecognitionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RecognitionModels.swift; path = Agora/Inventory/RecognitionModels.swift; sourceTree = "<group>"; };
-		527BDFE098CDCA9ACAFEBD0C /* DibsRoot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsRoot.swift; path = Agora/Dibs/App/DibsRoot.swift; sourceTree = "<group>"; };
-		5532AB3C723C614E65B6CB31 /* CaptureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptureTests.swift; path = AgoraTests/CaptureTests.swift; sourceTree = "<group>"; };
-		5579F2FA6328D2D2218E2B2E /* CaptionController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionController.swift; path = Agora/Capture/CaptionController.swift; sourceTree = "<group>"; };
-		55A22BAD4E9DC303613EB8DB /* WatchTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchTests.swift; path = AgoraTests/WatchTests.swift; sourceTree = "<group>"; };
-		579DD03FA8017C306C839609 /* PriceBrowserThumbnail.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PriceBrowserThumbnail.swift; path = Agora/Dibs/Agent/PriceBrowserThumbnail.swift; sourceTree = "<group>"; };
-		57A01B641BE914F544BC59CD /* HouseholdRows.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HouseholdRows.swift; path = Agora/Dibs/Components/HouseholdRows.swift; sourceTree = "<group>"; };
-		57FE29E34E48414745732BE0 /* AgentCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgentCoordinator.swift; path = Agora/Agent/AgentCoordinator.swift; sourceTree = "<group>"; };
-		5A6846ED1A827E0E3D4BA2A4 /* ChatInterfaceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatInterfaceTests.swift; path = AgoraTests/ChatInterfaceTests.swift; sourceTree = "<group>"; };
-		5B8C455BD9C06D21EC99595E /* GeminiCaptionService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GeminiCaptionService.swift; path = Agora/Capture/GeminiCaptionService.swift; sourceTree = "<group>"; };
-		5F73180B6880E65EB9B43208 /* ChatComposer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatComposer.swift; path = Agora/Chat/ChatComposer.swift; sourceTree = "<group>"; };
-		60EAEBFFBB64C816B5ADD35E /* TripTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripTests.swift; path = AgoraTests/TripTests.swift; sourceTree = "<group>"; };
-		628B47EBAECF1C8756E0D4E2 /* Money.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Money.swift; path = Agora/Dibs/Model/Money.swift; sourceTree = "<group>"; };
-		62C3969C3A2531F43A8FD4D3 /* WishView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WishView.swift; path = Agora/Dibs/Screens/WishView.swift; sourceTree = "<group>"; };
-		63E0C5DB3B6868BBCA07B587 /* PushNotifications.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PushNotifications.swift; path = Agora/Shopping/PushNotifications.swift; sourceTree = "<group>"; };
-		672A5A3430921C08DC6BC663 /* DibsClaimLogicTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsClaimLogicTests.swift; path = AgoraTests/DibsClaimLogicTests.swift; sourceTree = "<group>"; };
-		67D6A23CCEFF1FC9F4737BD8 /* DibsAPI+Wish.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = "DibsAPI+Wish.swift"; path = "Agora/Dibs/Net/DibsAPI+Wish.swift"; sourceTree = "<group>"; };
-		695DBCEF245C056ED3FAAA6A /* ShoppingModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShoppingModels.swift; path = Agora/Shopping/ShoppingModels.swift; sourceTree = "<group>"; };
-		69B564DC6665A0B210E20107 /* ModelTypes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelTypes.swift; path = Agora/Models/ModelTypes.swift; sourceTree = "<group>"; };
-		69BDC5A10388FEEC06D7E79B /* ModelConfiguration.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelConfiguration.swift; path = Agora/Models/ModelConfiguration.swift; sourceTree = "<group>"; };
-		6A55202CF20F8ADF99BADA63 /* DibsSettleLogicTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsSettleLogicTests.swift; path = AgoraTests/DibsSettleLogicTests.swift; sourceTree = "<group>"; };
-		6B88A667FC51CA03E3E1A6E0 /* CalendarConnection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarConnection.swift; path = Agora/Calendar/CalendarConnection.swift; sourceTree = "<group>"; };
-		6CACBB8D09A5A062FADCF1C5 /* Avatar.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Avatar.swift; path = Agora/Dibs/Components/Avatar.swift; sourceTree = "<group>"; };
-		6EA54FE2A0DC4FDE9EDB571E /* InventoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryTests.swift; path = AgoraTests/InventoryTests.swift; sourceTree = "<group>"; };
-		6F491D121855D616ED2F272B /* DibsRootTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsRootTests.swift; path = AgoraTests/DibsRootTests.swift; sourceTree = "<group>"; };
-		700EEB333620DF26BCD4714A /* WishLogic.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WishLogic.swift; path = Agora/Dibs/Model/WishLogic.swift; sourceTree = "<group>"; };
-		72988BE821C064BC08728B1D /* ModelSettingsRenderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelSettingsRenderTests.swift; path = AgoraTests/ModelSettingsRenderTests.swift; sourceTree = "<group>"; };
-		72B643D4422CCFDF80051C85 /* StartView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StartView.swift; path = Agora/Dibs/Screens/StartView.swift; sourceTree = "<group>"; };
-		72FCBD4D3100012920CAAEA7 /* DibsModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsModelTests.swift; path = AgoraTests/DibsModelTests.swift; sourceTree = "<group>"; };
-		75A2E8F1B870C0434F8678F2 /* HeldBadge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HeldBadge.swift; path = Agora/Dibs/Components/HeldBadge.swift; sourceTree = "<group>"; };
-		78B794CCFD523D69A97B3C0C /* ModelFeatureServices.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelFeatureServices.swift; path = Agora/Models/ModelFeatureServices.swift; sourceTree = "<group>"; };
-		7A80E66BFA0C45A99D45970F /* ShoppingTools.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShoppingTools.swift; path = Agora/Shopping/ShoppingTools.swift; sourceTree = "<group>"; };
-		7C52D08D31FB66ECF4C29A2E /* QFCTraffic.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = QFCTraffic.swift; path = Agora/Dibs/Agent/QFCTraffic.swift; sourceTree = "<group>"; };
-		7E82FDFA1FB2F946523E5490 /* Routing.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Routing.swift; path = Agora/Dibs/App/Routing.swift; sourceTree = "<group>"; };
-		8B36077254E5670440187142 /* dibs-run-partly.json */ = {isa = PBXFileReference; includeInIndex = 1; name = "dibs-run-partly.json"; path = "Fixtures/dibs-run-partly.json"; sourceTree = "<group>"; };
-		8D98E028AB719452C46878C9 /* ClaimLogic.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaimLogic.swift; path = Agora/Dibs/Model/ClaimLogic.swift; sourceTree = "<group>"; };
-		8E4C29236A0133CD77A957B7 /* TaskRepository.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TaskRepository.swift; path = Agora/Storage/TaskRepository.swift; sourceTree = "<group>"; };
-		8F3B3087DB3FDADC86A3F253 /* StoreSetup.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StoreSetup.swift; path = Agora/Dibs/Agent/StoreSetup.swift; sourceTree = "<group>"; };
-		90B87D0B8D7472FA40437365 /* ItemImageTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ItemImageTests.swift; path = AgoraTests/ItemImageTests.swift; sourceTree = "<group>"; };
-		90D01ACF414B36B3597A4AB6 /* CaptionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionTests.swift; path = AgoraTests/CaptionTests.swift; sourceTree = "<group>"; };
-		93D576C1DA4906A8F230C0D4 /* DibsFixture.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsFixture.swift; path = AgoraTests/DibsFixture.swift; sourceTree = "<group>"; };
-		947A0EF5883783EDD4D612B1 /* ItemImages.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ItemImages.swift; path = Agora/Images/ItemImages.swift; sourceTree = "<group>"; };
-		94A849B98660B88DAA6E21B2 /* RemoveZone.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RemoveZone.swift; path = Agora/Dibs/Components/RemoveZone.swift; sourceTree = "<group>"; };
-		95238E01D27B61E87F998E48 /* Styles.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Styles.swift; path = Agora/Dibs/Design/Styles.swift; sourceTree = "<group>"; };
-		96080B49927405474DB743D0 /* ReceiptCamera.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCamera.swift; path = Agora/Dibs/Components/ReceiptCamera.swift; sourceTree = "<group>"; };
-		96E369916C6AD916EBBFADE9 /* Tokens.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Tokens.swift; path = Agora/Dibs/Design/Tokens.swift; sourceTree = "<group>"; };
-		981F40CE9E3BE6BAA028C457 /* AgoraTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AgoraTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		9A5CEB26A889D9D13CA5DAB5 /* ClaimView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaimView.swift; path = Agora/Dibs/Screens/ClaimView.swift; sourceTree = "<group>"; };
-		9AE74A3C0EE5AAADB3E2A294 /* CartRows.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CartRows.swift; path = Agora/Dibs/Components/CartRows.swift; sourceTree = "<group>"; };
-		9AE7F1D1696BE30DE93EDD93 /* InventoryStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryStore.swift; path = Agora/Inventory/InventoryStore.swift; sourceTree = "<group>"; };
-		9CECF1548EA94C8F8EA38F64 /* ModelProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelProvider.swift; path = Agora/Agent/ModelProvider.swift; sourceTree = "<group>"; };
-		9DC25150D5B48B99BA3B4B64 /* SettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = Agora/App/SettingsView.swift; sourceTree = "<group>"; };
-		A24CC0606C38D5893D38A573 /* ShoppingStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShoppingStore.swift; path = Agora/Shopping/ShoppingStore.swift; sourceTree = "<group>"; };
-		A3764C202ADDE563FCF845FF /* BrowserTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserTests.swift; path = AgoraTests/BrowserTests.swift; sourceTree = "<group>"; };
-		A5DCE75CF5F7694036A37556 /* CalendarTools.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarTools.swift; path = Agora/Calendar/CalendarTools.swift; sourceTree = "<group>"; };
-		A98EBADB19F79CFE73641B2E /* NextRun.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NextRun.swift; path = Agora/Dibs/Model/NextRun.swift; sourceTree = "<group>"; };
-		A9B1CB7776F68F8E027D3CC6 /* UnclaimedList.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UnclaimedList.swift; path = Agora/Dibs/Components/UnclaimedList.swift; sourceTree = "<group>"; };
-		AA83E1D4D12E04D16D0CA717 /* DibsScanGeometryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsScanGeometryTests.swift; path = AgoraTests/DibsScanGeometryTests.swift; sourceTree = "<group>"; };
-		AF1F96F439F71309246984A3 /* WatchBrowserRunner.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchBrowserRunner.swift; path = Agora/Shopping/WatchBrowserRunner.swift; sourceTree = "<group>"; };
-		B51827BC562FC38D546A26FF /* QRCode.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = QRCode.swift; path = Agora/Dibs/Components/QRCode.swift; sourceTree = "<group>"; };
-		B71304780C05D41408355E32 /* ChipCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChipCard.swift; path = Agora/Dibs/Components/ChipCard.swift; sourceTree = "<group>"; };
-		B7E3115E1A775A889460DB05 /* SuggestionService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SuggestionService.swift; path = Agora/Shopping/SuggestionService.swift; sourceTree = "<group>"; };
-		B7F0713A38D2FEC486FBFA04 /* ModelSettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelSettingsView.swift; path = Agora/Models/ModelSettingsView.swift; sourceTree = "<group>"; };
-		BA5A9DA68DDB8CEBA4B02354 /* CapturePickers.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CapturePickers.swift; path = Agora/Capture/CapturePickers.swift; sourceTree = "<group>"; };
-		BD2F27D61A394DCC83BEE232 /* browser-fixture.html */ = {isa = PBXFileReference; includeInIndex = 1; name = "browser-fixture.html"; path = "Fixtures/browser-fixture.html"; sourceTree = "<group>"; };
-		BDEB0D5E169C0A60271AD7FD /* AgoraClientTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgoraClientTests.swift; path = AgoraTests/AgoraClientTests.swift; sourceTree = "<group>"; };
-		C23250D0267FA96FC6643CDF /* TripStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripStore.swift; path = Agora/Trips/TripStore.swift; sourceTree = "<group>"; };
-		C3A761D2358C0445CCDEB4D4 /* BrowserChatApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserChatApp.swift; path = Agora/App/BrowserChatApp.swift; sourceTree = "<group>"; };
-		C3DA4CAD10F51B895F6C4950 /* BrowserToolExecutor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserToolExecutor.swift; path = Agora/Browser/BrowserToolExecutor.swift; sourceTree = "<group>"; };
-		C66016043271AD3657860C0B /* DibsBrowserTools.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsBrowserTools.swift; path = Agora/Dibs/Agent/DibsBrowserTools.swift; sourceTree = "<group>"; };
-		C74902C3DD740CB71AFA84EF /* OverCapSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OverCapSheet.swift; path = Agora/Dibs/Components/OverCapSheet.swift; sourceTree = "<group>"; };
-		C767515ADC8BEF91FDB6430E /* PreviewData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PreviewData.swift; path = Agora/Dibs/Design/PreviewData.swift; sourceTree = "<group>"; };
-		C871281119989179814B8A4A /* Tray.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Tray.swift; path = Agora/Dibs/Components/Tray.swift; sourceTree = "<group>"; };
-		CC2E27A87EEE0F76359D13EB /* CalendarOnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarOnboardingView.swift; path = Agora/Calendar/CalendarOnboardingView.swift; sourceTree = "<group>"; };
-		CD17D01287ED12A87BDC4FCC /* WatchModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchModels.swift; path = Agora/Shopping/WatchModels.swift; sourceTree = "<group>"; };
-		CD4190A5C9DC62AD8FB20AF7 /* Protocol.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Protocol.swift; path = Agora/Dibs/Model/Protocol.swift; sourceTree = "<group>"; };
-		CDB511071DCD7A323D2C068B /* SettleLines.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettleLines.swift; path = Agora/Dibs/Components/SettleLines.swift; sourceTree = "<group>"; };
-		CF947A2B2B9E5D512AA48F8E /* UndoToast.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UndoToast.swift; path = Agora/Dibs/Components/UndoToast.swift; sourceTree = "<group>"; };
-		D090CFB79370A196A514EE2D /* StoreBrowser.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StoreBrowser.swift; path = Agora/Dibs/Agent/StoreBrowser.swift; sourceTree = "<group>"; };
-		D0CF35E6D2D5B804AD5AA5DA /* CartWatcher.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CartWatcher.swift; path = Agora/Dibs/Camera/CartWatcher.swift; sourceTree = "<group>"; };
-		D166B730126AC04E7F960CD1 /* TripLiveTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripLiveTests.swift; path = AgoraTests/TripLiveTests.swift; sourceTree = "<group>"; };
-		D19EF9E6C3530581BFDF878B /* GeminiModelClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GeminiModelClient.swift; path = Agora/Models/GeminiModelClient.swift; sourceTree = "<group>"; };
-		D2C9C702724C3A3D9E60F37F /* DibsShopperLogicTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsShopperLogicTests.swift; path = AgoraTests/DibsShopperLogicTests.swift; sourceTree = "<group>"; };
-		D2D134B42BC5E73C27015062 /* dibs-run-settled.json */ = {isa = PBXFileReference; includeInIndex = 1; name = "dibs-run-settled.json"; path = "Fixtures/dibs-run-settled.json"; sourceTree = "<group>"; };
-		D713A7C899E358909F57FC03 /* SettleLogic.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettleLogic.swift; path = Agora/Dibs/Model/SettleLogic.swift; sourceTree = "<group>"; };
-		D7B346E4C903EABEE1A50C78 /* DibsAPI.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsAPI.swift; path = Agora/Dibs/Net/DibsAPI.swift; sourceTree = "<group>"; };
-		D7CAF30320954736B98FC6BF /* RunStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RunStore.swift; path = Agora/Dibs/Net/RunStore.swift; sourceTree = "<group>"; };
-		D7D3418EA3DD4E124189061C /* ServerConfig.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServerConfig.swift; path = Agora/Dibs/Net/ServerConfig.swift; sourceTree = "<group>"; };
-		D8457AB2113CFD719CA50ADA /* SettingsSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsSheet.swift; path = Agora/Dibs/Components/SettingsSheet.swift; sourceTree = "<group>"; };
-		D958295A50692F132B3CF591 /* DibsBrowserScripts.js */ = {isa = PBXFileReference; includeInIndex = 1; name = DibsBrowserScripts.js; path = Agora/Dibs/Agent/DibsBrowserScripts.js; sourceTree = "<group>"; };
-		D985D93B72894AE353ADC31B /* CartCamera.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CartCamera.swift; path = Agora/Dibs/Camera/CartCamera.swift; sourceTree = "<group>"; };
-		D9F3BD0C17DE9C7BCD90BA02 /* BrowserViewport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserViewport.swift; path = Agora/Browser/BrowserViewport.swift; sourceTree = "<group>"; };
-		DA58A17E86007F1DB2EF6EE9 /* InventoryView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryView.swift; path = Agora/App/InventoryView.swift; sourceTree = "<group>"; };
-		DCDA623704C060E81AA5D9F6 /* CaptionPanel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionPanel.swift; path = Agora/Capture/CaptionPanel.swift; sourceTree = "<group>"; };
-		DE690706A174E10B4E8B3C67 /* ReceiptCheckView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCheckView.swift; path = Agora/Dibs/Screens/ReceiptCheckView.swift; sourceTree = "<group>"; };
-		E197162D182A046D893DB67F /* CalendarTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarTests.swift; path = AgoraTests/CalendarTests.swift; sourceTree = "<group>"; };
-		E2B27579CA321B32BD31509F /* ShoppingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShoppingView.swift; path = Agora/Shopping/ShoppingView.swift; sourceTree = "<group>"; };
-		E3483C25A69257AAE7FB76BA /* dibs-run-receipt.json */ = {isa = PBXFileReference; includeInIndex = 1; name = "dibs-run-receipt.json"; path = "Fixtures/dibs-run-receipt.json"; sourceTree = "<group>"; };
-		E5B888CFCEC36F18C25A4FCE /* ChatAttachments.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatAttachments.swift; path = Agora/Chat/ChatAttachments.swift; sourceTree = "<group>"; };
-		E8326B6B926968504332FE3A /* DibsCartWatcherTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsCartWatcherTests.swift; path = AgoraTests/DibsCartWatcherTests.swift; sourceTree = "<group>"; };
-		E9BD92E3E693A952C4FCE05C /* InventoryModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryModels.swift; path = Agora/Inventory/InventoryModels.swift; sourceTree = "<group>"; };
-		EBDDE0CC2701B41924CD0497 /* SettingsStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsStore.swift; path = Agora/Storage/SettingsStore.swift; sourceTree = "<group>"; };
-		EC3A977222D4C48017E72F46 /* CaptionHTTPClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionHTTPClient.swift; path = Agora/Capture/CaptionHTTPClient.swift; sourceTree = "<group>"; };
-		EEE9B41E9091FCDB591F0C9F /* ItemImageLiveTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ItemImageLiveTests.swift; path = AgoraTests/ItemImageLiveTests.swift; sourceTree = "<group>"; };
-		EF04AC74EBBA9EEEDB6FAA05 /* RunSocket.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RunSocket.swift; path = Agora/Dibs/Net/RunSocket.swift; sourceTree = "<group>"; };
-		F051E80D1BCF5FE578C1CD85 /* CaptionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionModels.swift; path = Agora/Capture/CaptionModels.swift; sourceTree = "<group>"; };
-		F39E4B424E7FD3C32B2F20EA /* InventoryForms.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryForms.swift; path = Agora/Inventory/InventoryForms.swift; sourceTree = "<group>"; };
-		F3ABBB0BFC5EE2E5A954044F /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = assets/Assets.xcassets; sourceTree = "<group>"; };
-		F5B25EF0D048610BD7DAAE25 /* DibsWishLogicTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsWishLogicTests.swift; path = AgoraTests/DibsWishLogicTests.swift; sourceTree = "<group>"; };
-		F80A552902F8415E98E1B8E2 /* BrowserSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserSession.swift; path = Agora/Browser/BrowserSession.swift; sourceTree = "<group>"; };
-		F8FC90796C6ECB4E117F1ABA /* JoinView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = JoinView.swift; path = Agora/Dibs/Screens/JoinView.swift; sourceTree = "<group>"; };
-		F9C107F2B30A9E641F282499 /* PriceWorker.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PriceWorker.swift; path = Agora/Dibs/Agent/PriceWorker.swift; sourceTree = "<group>"; };
-		F9C3031E82DF480705A3A847 /* DibsAPITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsAPITests.swift; path = AgoraTests/DibsAPITests.swift; sourceTree = "<group>"; };
-		FC3A6F8CBC1721D0C331D077 /* dibs-run.json */ = {isa = PBXFileReference; includeInIndex = 1; name = "dibs-run.json"; path = "Fixtures/dibs-run.json"; sourceTree = "<group>"; };
-		FF80B8107391A357C0C5CD54 /* GoogleCalendarAuthorization.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GoogleCalendarAuthorization.swift; path = Agora/Calendar/GoogleCalendarAuthorization.swift; sourceTree = "<group>"; };
-		FFDAA08D7EBB307FC9D966FA /* ChatMessageView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatMessageView.swift; path = Agora/Chat/ChatMessageView.swift; sourceTree = "<group>"; };
+		00523FCB8C878FF4BAB6B667 /* TaskRepository.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TaskRepository.swift; path = Agora/Storage/TaskRepository.swift; sourceTree = "<group>"; };
+		010D85D8AC5DB939A0419CE8 /* GeminiModelClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GeminiModelClient.swift; path = Agora/Models/GeminiModelClient.swift; sourceTree = "<group>"; };
+		0288C560C98BA311517339AB /* DibsQuantityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsQuantityTests.swift; path = AgoraTests/DibsQuantityTests.swift; sourceTree = "<group>"; };
+		035795C1835A129E70BD7B83 /* LocalModelMedia.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LocalModelMedia.swift; path = Agora/Models/LocalModelMedia.swift; sourceTree = "<group>"; };
+		053D1F6113B7A3CACB7DD5EE /* DibsRoutingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsRoutingTests.swift; path = AgoraTests/DibsRoutingTests.swift; sourceTree = "<group>"; };
+		06B41392D2A27085CA09A2A6 /* MediaLibrary.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MediaLibrary.swift; path = Agora/Capture/MediaLibrary.swift; sourceTree = "<group>"; };
+		0776A6B587599C4DA62B2A7A /* DebugLaunch.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DebugLaunch.swift; path = Agora/Dibs/App/DebugLaunch.swift; sourceTree = "<group>"; };
+		0CB681D356E4D5C2BE51A8ED /* RunSocket.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RunSocket.swift; path = Agora/Dibs/Net/RunSocket.swift; sourceTree = "<group>"; };
+		0CCB300A38FA5D6171B1BD2F /* ModelConfiguration.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelConfiguration.swift; path = Agora/Models/ModelConfiguration.swift; sourceTree = "<group>"; };
+		10ECD116F2A54EFE514CEE23 /* ClaimView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaimView.swift; path = Agora/Dibs/Screens/ClaimView.swift; sourceTree = "<group>"; };
+		142A45D90CA89AAB893E4ACD /* browser-fixture.html */ = {isa = PBXFileReference; includeInIndex = 1; name = "browser-fixture.html"; path = "Fixtures/browser-fixture.html"; sourceTree = "<group>"; };
+		14EA818E51728C52B53A4DC4 /* GeminiModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GeminiModelTests.swift; path = AgoraTests/GeminiModelTests.swift; sourceTree = "<group>"; };
+		1702140D20C020A36BC37B0D /* DibsFrameEncoderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsFrameEncoderTests.swift; path = AgoraTests/DibsFrameEncoderTests.swift; sourceTree = "<group>"; };
+		18A51DF162EFF9B43CE492DD /* DibsSettleLogicTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsSettleLogicTests.swift; path = AgoraTests/DibsSettleLogicTests.swift; sourceTree = "<group>"; };
+		1BE0C342B7D07484113C09D1 /* AppLog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppLog.swift; path = Agora/Storage/AppLog.swift; sourceTree = "<group>"; };
+		1C012B5641C625E1FEFA4E03 /* SettleLogic.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettleLogic.swift; path = Agora/Dibs/Model/SettleLogic.swift; sourceTree = "<group>"; };
+		2089EFAAA74612861C5EFC40 /* GeminiInventoryService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GeminiInventoryService.swift; path = Agora/Inventory/GeminiInventoryService.swift; sourceTree = "<group>"; };
+		209C411F863819D787711F52 /* dibs-run.json */ = {isa = PBXFileReference; includeInIndex = 1; name = "dibs-run.json"; path = "Fixtures/dibs-run.json"; sourceTree = "<group>"; };
+		21C2EEBD638287FAB13D0F26 /* ShoppingStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShoppingStore.swift; path = Agora/Shopping/ShoppingStore.swift; sourceTree = "<group>"; };
+		2493E7612A98ACB045F4CAB3 /* SettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = Agora/App/SettingsView.swift; sourceTree = "<group>"; };
+		253A1BF9307010B7C475DA68 /* ShopperView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShopperView.swift; path = Agora/Dibs/Screens/ShopperView.swift; sourceTree = "<group>"; };
+		25E9B218FF6EBB96C381C49D /* ClaimLogic.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaimLogic.swift; path = Agora/Dibs/Model/ClaimLogic.swift; sourceTree = "<group>"; };
+		27986440A274C7900D564342 /* ShoppingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShoppingTests.swift; path = AgoraTests/ShoppingTests.swift; sourceTree = "<group>"; };
+		2A40221A7EC960F5C6CD8CCE /* ItemImageTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ItemImageTests.swift; path = AgoraTests/ItemImageTests.swift; sourceTree = "<group>"; };
+		2AEAE37AD883A66847CD35EA /* DibsRunStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsRunStoreTests.swift; path = AgoraTests/DibsRunStoreTests.swift; sourceTree = "<group>"; };
+		2C69750C8F7DA816511C3B31 /* WatchBrowserRunner.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchBrowserRunner.swift; path = Agora/Shopping/WatchBrowserRunner.swift; sourceTree = "<group>"; };
+		2C77A973748C94214BB8A11A /* AgoraClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgoraClient.swift; path = Agora/API/AgoraClient.swift; sourceTree = "<group>"; };
+		2EE92221227E51124A28FA1A /* InventoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryTests.swift; path = AgoraTests/InventoryTests.swift; sourceTree = "<group>"; };
+		330623934C326C902405D515 /* DibsClaimLogicTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsClaimLogicTests.swift; path = AgoraTests/DibsClaimLogicTests.swift; sourceTree = "<group>"; };
+		3346FEB954E2B43ED9B401C0 /* CaptionPanel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionPanel.swift; path = Agora/Capture/CaptionPanel.swift; sourceTree = "<group>"; };
+		3447B4E3C6601D56BAEC61DA /* AgentCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgentCoordinator.swift; path = Agora/Agent/AgentCoordinator.swift; sourceTree = "<group>"; };
+		354678CAE693C090705D9DFD /* PriceBrowserThumbnail.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PriceBrowserThumbnail.swift; path = Agora/Dibs/Agent/PriceBrowserThumbnail.swift; sourceTree = "<group>"; };
+		35776208111C792CBC339941 /* CalendarOnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarOnboardingView.swift; path = Agora/Calendar/CalendarOnboardingView.swift; sourceTree = "<group>"; };
+		36BBD507D5CCE394F77A9EDC /* HeldBadge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HeldBadge.swift; path = Agora/Dibs/Components/HeldBadge.swift; sourceTree = "<group>"; };
+		388EAA02CBA533C83C888023 /* DibsHomeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsHomeView.swift; path = Agora/Dibs/Screens/DibsHomeView.swift; sourceTree = "<group>"; };
+		38B91F93540D29B8E780A029 /* dibs-run-receipt.json */ = {isa = PBXFileReference; includeInIndex = 1; name = "dibs-run-receipt.json"; path = "Fixtures/dibs-run-receipt.json"; sourceTree = "<group>"; };
+		39D6084906BF3E83612152E8 /* CaptionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionModels.swift; path = Agora/Capture/CaptionModels.swift; sourceTree = "<group>"; };
+		39E9D4391C4475C8E0AB9997 /* NextRun.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NextRun.swift; path = Agora/Dibs/Model/NextRun.swift; sourceTree = "<group>"; };
+		3E606B894C3163EF73725282 /* ChatMessageView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatMessageView.swift; path = Agora/Chat/ChatMessageView.swift; sourceTree = "<group>"; };
+		3E85C50472967D6704A8B87B /* CalendarTools.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarTools.swift; path = Agora/Calendar/CalendarTools.swift; sourceTree = "<group>"; };
+		3EC3BFF63DF6D5D1B199142E /* dibs-run-partly.json */ = {isa = PBXFileReference; includeInIndex = 1; name = "dibs-run-partly.json"; path = "Fixtures/dibs-run-partly.json"; sourceTree = "<group>"; };
+		40910E05EE8D4A8D224FCB84 /* InventoryView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryView.swift; path = Agora/App/InventoryView.swift; sourceTree = "<group>"; };
+		415189BC1C7AF59EC6738E79 /* ChipCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChipCard.swift; path = Agora/Dibs/Components/ChipCard.swift; sourceTree = "<group>"; };
+		41BDF99CFE1077ADDFF67202 /* WatchBrowserTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchBrowserTests.swift; path = AgoraTests/WatchBrowserTests.swift; sourceTree = "<group>"; };
+		41D716C0BC6AA98BAE662E9A /* ChatView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatView.swift; path = Agora/App/ChatView.swift; sourceTree = "<group>"; };
+		42EEBFD9E9007B77DA6A8717 /* LocalModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LocalModelTests.swift; path = AgoraTests/LocalModelTests.swift; sourceTree = "<group>"; };
+		47E33E7DB9C00B72EFC34CB0 /* GoogleCalendarAuthorization.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GoogleCalendarAuthorization.swift; path = Agora/Calendar/GoogleCalendarAuthorization.swift; sourceTree = "<group>"; };
+		48615B04D5A465DE642A7545 /* BrowserToolExecutor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserToolExecutor.swift; path = Agora/Browser/BrowserToolExecutor.swift; sourceTree = "<group>"; };
+		496B6B8E7A120D1A53776345 /* CommerceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CommerceTests.swift; path = AgoraTests/CommerceTests.swift; sourceTree = "<group>"; };
+		49C12026F8784E892417B332 /* TripStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripStore.swift; path = Agora/Trips/TripStore.swift; sourceTree = "<group>"; };
+		4BB882568D26AF764F3C95BB /* TripTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripTests.swift; path = AgoraTests/TripTests.swift; sourceTree = "<group>"; };
+		4EC23D0882223CD8524EC6FB /* DibsFixture.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsFixture.swift; path = AgoraTests/DibsFixture.swift; sourceTree = "<group>"; };
+		4FAD396D49C7149B6EBE3B5F /* CartCamera.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CartCamera.swift; path = Agora/Dibs/Camera/CartCamera.swift; sourceTree = "<group>"; };
+		4FD35C1B8A80A205C2EE8D66 /* CommerceModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CommerceModels.swift; path = Agora/Commerce/CommerceModels.swift; sourceTree = "<group>"; };
+		50444BFC83E97177502D8C33 /* BrowserChatApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserChatApp.swift; path = Agora/App/BrowserChatApp.swift; sourceTree = "<group>"; };
+		537721300265F01E9272C8A1 /* Run.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Run.swift; path = Agora/Dibs/Model/Run.swift; sourceTree = "<group>"; };
+		5418236442A747407B90B24B /* FixChipSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = FixChipSheet.swift; path = Agora/Dibs/Components/FixChipSheet.swift; sourceTree = "<group>"; };
+		548EEC373F57068DEE06EA4C /* WatchModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchModels.swift; path = Agora/Shopping/WatchModels.swift; sourceTree = "<group>"; };
+		56E44FFE8DDCE7855AFA3BFA /* CaptionController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionController.swift; path = Agora/Capture/CaptionController.swift; sourceTree = "<group>"; };
+		58787650F9142051ED2CB456 /* DibsPriceWorkerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsPriceWorkerTests.swift; path = AgoraTests/DibsPriceWorkerTests.swift; sourceTree = "<group>"; };
+		59503CD356D69BAFBA39C893 /* AgoraTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AgoraTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5C496FB93AB758DE988DC478 /* BrowserScripts.js */ = {isa = PBXFileReference; includeInIndex = 1; name = BrowserScripts.js; path = Agora/Browser/BrowserScripts.js; sourceTree = "<group>"; };
+		5D35AE56D9DFD1E4BF9DA8DB /* WatchViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchViews.swift; path = Agora/Shopping/WatchViews.swift; sourceTree = "<group>"; };
+		5DBAA1FFFBD24528785C71E1 /* DibsLog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsLog.swift; path = Agora/Dibs/App/DibsLog.swift; sourceTree = "<group>"; };
+		5DCACA69C11CACAE193229CF /* ShoppingModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShoppingModels.swift; path = Agora/Shopping/ShoppingModels.swift; sourceTree = "<group>"; };
+		5E747DC570B68EF237631B12 /* DibsRootTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsRootTests.swift; path = AgoraTests/DibsRootTests.swift; sourceTree = "<group>"; };
+		5E9C183247EC31160D87AB22 /* ItemImageLiveTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ItemImageLiveTests.swift; path = AgoraTests/ItemImageLiveTests.swift; sourceTree = "<group>"; };
+		5EBEE69A60ED6EDA3E3DC703 /* ConversationStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ConversationStore.swift; path = Agora/Chat/ConversationStore.swift; sourceTree = "<group>"; };
+		5F74BF0B922CD77F0DFED246 /* DibsHouseholdTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsHouseholdTests.swift; path = AgoraTests/DibsHouseholdTests.swift; sourceTree = "<group>"; };
+		5F9EC188C1E8B57D5E013761 /* WatchTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchTests.swift; path = AgoraTests/WatchTests.swift; sourceTree = "<group>"; };
+		63AE592DED146048A6FD7D8F /* CaptionHTTPClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionHTTPClient.swift; path = Agora/Capture/CaptionHTTPClient.swift; sourceTree = "<group>"; };
+		669A21CC8525C9357BB4EC16 /* ChatInterfaceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatInterfaceTests.swift; path = AgoraTests/ChatInterfaceTests.swift; sourceTree = "<group>"; };
+		682A415FBAADC724172BDC55 /* CaptureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptureTests.swift; path = AgoraTests/CaptureTests.swift; sourceTree = "<group>"; };
+		6AE667D0F221131797A0625B /* ModelTypes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelTypes.swift; path = Agora/Models/ModelTypes.swift; sourceTree = "<group>"; };
+		6D67ACB0388CFDDC1DAF771C /* CartRows.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CartRows.swift; path = Agora/Dibs/Components/CartRows.swift; sourceTree = "<group>"; };
+		6E6A3C5455747CA59CB39C85 /* ShopperCamera.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShopperCamera.swift; path = Agora/Dibs/Camera/ShopperCamera.swift; sourceTree = "<group>"; };
+		72A68A3EA7A4B6D3E0A5F3BC /* ModelSettingsRenderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelSettingsRenderTests.swift; path = AgoraTests/ModelSettingsRenderTests.swift; sourceTree = "<group>"; };
+		740BE917C660E11130BBD0B1 /* ShoppingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShoppingView.swift; path = Agora/Shopping/ShoppingView.swift; sourceTree = "<group>"; };
+		7E8B752BD078D9FCB359B74E /* DibsWishLogicTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsWishLogicTests.swift; path = AgoraTests/DibsWishLogicTests.swift; sourceTree = "<group>"; };
+		8045B20E20EF572C827453B6 /* RunStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RunStore.swift; path = Agora/Dibs/Net/RunStore.swift; sourceTree = "<group>"; };
+		809C579B0A035B8CE19AC3F4 /* ModelIntegrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelIntegrationTests.swift; path = AgoraTests/ModelIntegrationTests.swift; sourceTree = "<group>"; };
+		80C678F244F7BDBB554C57A1 /* DibsAPI+Wish.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = "DibsAPI+Wish.swift"; path = "Agora/Dibs/Net/DibsAPI+Wish.swift"; sourceTree = "<group>"; };
+		84813F49249B02E97730E5E6 /* Styles.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Styles.swift; path = Agora/Dibs/Design/Styles.swift; sourceTree = "<group>"; };
+		8A69AB066B7EC3DAA604B4E2 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		8B0DC321AAB920C638CC0489 /* HouseholdRows.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HouseholdRows.swift; path = Agora/Dibs/Components/HouseholdRows.swift; sourceTree = "<group>"; };
+		8E3CFCF8FC17CF8886643BC9 /* Tray.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Tray.swift; path = Agora/Dibs/Components/Tray.swift; sourceTree = "<group>"; };
+		8E5F0AF34008C1A666F84867 /* AgoraClientTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgoraClientTests.swift; path = AgoraTests/AgoraClientTests.swift; sourceTree = "<group>"; };
+		90407A7CF101F73068A45155 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = assets/Assets.xcassets; sourceTree = "<group>"; };
+		90D757BB1D6E77D79845E779 /* JoinView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = JoinView.swift; path = Agora/Dibs/Screens/JoinView.swift; sourceTree = "<group>"; };
+		92811DB040DDFEA9C8410498 /* Protocol.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Protocol.swift; path = Agora/Dibs/Model/Protocol.swift; sourceTree = "<group>"; };
+		92C0E8275934D51AEE0C0324 /* ChatComposer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatComposer.swift; path = Agora/Chat/ChatComposer.swift; sourceTree = "<group>"; };
+		93D38FAF7FF57A88911744C4 /* SettleLines.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettleLines.swift; path = Agora/Dibs/Components/SettleLines.swift; sourceTree = "<group>"; };
+		954D59B6A3BF0AF77244F0DB /* DibsCartWatcherTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsCartWatcherTests.swift; path = AgoraTests/DibsCartWatcherTests.swift; sourceTree = "<group>"; };
+		973F1EFDB37BD12461C24A35 /* OpenAICompatibleClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OpenAICompatibleClient.swift; path = Agora/Models/OpenAICompatibleClient.swift; sourceTree = "<group>"; };
+		97CCD477B8531F3E41487B94 /* TripsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripsView.swift; path = Agora/Trips/TripsView.swift; sourceTree = "<group>"; };
+		98C3A46FAFCA2E6F4472DA5C /* ScanGeometry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ScanGeometry.swift; path = Agora/Dibs/Camera/ScanGeometry.swift; sourceTree = "<group>"; };
+		9B5D98E0ADEA4BF94B6A28E2 /* Agora.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Agora.xcconfig; path = Config/Agora.xcconfig; sourceTree = "<group>"; };
+		9BBA976B78EEAC0AA1B2E0F4 /* DuplicateCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DuplicateCard.swift; path = Agora/Dibs/Components/DuplicateCard.swift; sourceTree = "<group>"; };
+		9D0C7871F8983AC65741BA5A /* SettleView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettleView.swift; path = Agora/Dibs/Screens/SettleView.swift; sourceTree = "<group>"; };
+		9E5872678FD5B5CA50A467BC /* DibsBrowserScripts.js */ = {isa = PBXFileReference; includeInIndex = 1; name = DibsBrowserScripts.js; path = Agora/Dibs/Agent/DibsBrowserScripts.js; sourceTree = "<group>"; };
+		9F9ADE1C37BF64FCC771B0F9 /* Agora.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Agora.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A04A1A370662891A5F31A494 /* QuantityStepper.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = QuantityStepper.swift; path = Agora/Dibs/Components/QuantityStepper.swift; sourceTree = "<group>"; };
+		A04D4F55F23636DA4E88FA2D /* PriceWorker.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PriceWorker.swift; path = Agora/Dibs/Agent/PriceWorker.swift; sourceTree = "<group>"; };
+		A0D34956FBF72326F2F54919 /* InventoryModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryModels.swift; path = Agora/Inventory/InventoryModels.swift; sourceTree = "<group>"; };
+		A0D5208A0847BC9920114C54 /* WishLogic.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WishLogic.swift; path = Agora/Dibs/Model/WishLogic.swift; sourceTree = "<group>"; };
+		A1EBFAD75D80ADFAFD0AF36B /* ModelFeatureServices.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelFeatureServices.swift; path = Agora/Models/ModelFeatureServices.swift; sourceTree = "<group>"; };
+		A22CC505AD7FC2D2F6FFB3F0 /* CommerceTools.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CommerceTools.swift; path = Agora/Commerce/CommerceTools.swift; sourceTree = "<group>"; };
+		A3C3FAFE3AD348BA015E1F15 /* DibsAPITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsAPITests.swift; path = AgoraTests/DibsAPITests.swift; sourceTree = "<group>"; };
+		A615779231D15FF0040ADD6F /* DibsAPI.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsAPI.swift; path = Agora/Dibs/Net/DibsAPI.swift; sourceTree = "<group>"; };
+		A67406B1925676C12079295E /* BrowserViewport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserViewport.swift; path = Agora/Browser/BrowserViewport.swift; sourceTree = "<group>"; };
+		A7284C643F36CE51F0B87637 /* BrowserSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserSession.swift; path = Agora/Browser/BrowserSession.swift; sourceTree = "<group>"; };
+		A835B04AE76B63B60964792F /* SettingsStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsStore.swift; path = Agora/Storage/SettingsStore.swift; sourceTree = "<group>"; };
+		A8614AD2ED9E1E7EAA8CBAF2 /* ChatAttachments.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatAttachments.swift; path = Agora/Chat/ChatAttachments.swift; sourceTree = "<group>"; };
+		AA3058561F3518186F0C0D9F /* Routing.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Routing.swift; path = Agora/Dibs/App/Routing.swift; sourceTree = "<group>"; };
+		AD6B42BD153F45B304F4EA3D /* TripPlanner.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripPlanner.swift; path = Agora/Trips/TripPlanner.swift; sourceTree = "<group>"; };
+		B66D24AA85187B58BB4706E2 /* ReceiptCamera.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCamera.swift; path = Agora/Dibs/Components/ReceiptCamera.swift; sourceTree = "<group>"; };
+		B67D6D78C70011ACDBE2A594 /* InventoryForms.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryForms.swift; path = Agora/Inventory/InventoryForms.swift; sourceTree = "<group>"; };
+		B7158E4C60A218919A83ED7E /* CalendarConnection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarConnection.swift; path = Agora/Calendar/CalendarConnection.swift; sourceTree = "<group>"; };
+		B765F11A89E50539BBA0D860 /* CaptionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionTests.swift; path = AgoraTests/CaptionTests.swift; sourceTree = "<group>"; };
+		B8267A7472FC803CFE6BC8D8 /* PushNotifications.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PushNotifications.swift; path = Agora/Shopping/PushNotifications.swift; sourceTree = "<group>"; };
+		B89FCE6077FD0C8A7F4134DC /* CartWatcher.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CartWatcher.swift; path = Agora/Dibs/Camera/CartWatcher.swift; sourceTree = "<group>"; };
+		B9ABA8BC847CD05AEF746DFB /* RecognitionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RecognitionModels.swift; path = Agora/Inventory/RecognitionModels.swift; sourceTree = "<group>"; };
+		BA13549E82D3EA4FEB5072F3 /* CommerceStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CommerceStore.swift; path = Agora/Commerce/CommerceStore.swift; sourceTree = "<group>"; };
+		BBBA947062A99681A1C70956 /* SpendingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SpendingView.swift; path = Agora/Commerce/SpendingView.swift; sourceTree = "<group>"; };
+		BC80B6A224E2DD2B14D07540 /* FrameEncoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = FrameEncoder.swift; path = Agora/Dibs/Camera/FrameEncoder.swift; sourceTree = "<group>"; };
+		BE503BD513577F03ECAEFE02 /* RunText.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RunText.swift; path = Agora/Dibs/Model/RunText.swift; sourceTree = "<group>"; };
+		C026DFA121D8050D5315B316 /* ItemImages.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ItemImages.swift; path = Agora/Images/ItemImages.swift; sourceTree = "<group>"; };
+		C3EFCB625D69779ACEEDD2E5 /* ModelProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelProvider.swift; path = Agora/Agent/ModelProvider.swift; sourceTree = "<group>"; };
+		C439516877BA44AC0096F225 /* WatchStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WatchStore.swift; path = Agora/Shopping/WatchStore.swift; sourceTree = "<group>"; };
+		C6EBE797ADD2D526D2123C32 /* OverCapSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OverCapSheet.swift; path = Agora/Dibs/Components/OverCapSheet.swift; sourceTree = "<group>"; };
+		C75FF94E295DC1652D594C87 /* TripModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripModels.swift; path = Agora/Trips/TripModels.swift; sourceTree = "<group>"; };
+		C76CBD71ADE8EB8F2BDE1A1D /* TripLiveTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TripLiveTests.swift; path = AgoraTests/TripLiveTests.swift; sourceTree = "<group>"; };
+		C84F83DA5BED2D7CE098ED6D /* Tokens.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Tokens.swift; path = Agora/Dibs/Design/Tokens.swift; sourceTree = "<group>"; };
+		C8980A3366FC8916B5B11C3B /* DibsAppModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsAppModelTests.swift; path = AgoraTests/DibsAppModelTests.swift; sourceTree = "<group>"; };
+		CC1BA6A0B864C0D564AAD9B8 /* ModelSettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelSettingsView.swift; path = Agora/Models/ModelSettingsView.swift; sourceTree = "<group>"; };
+		CCB1AAD076728AF3E8DA95F1 /* StoreBrowser.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StoreBrowser.swift; path = Agora/Dibs/Agent/StoreBrowser.swift; sourceTree = "<group>"; };
+		CD83389E2109ACB8747933DC /* GeminiCaptionService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GeminiCaptionService.swift; path = Agora/Capture/GeminiCaptionService.swift; sourceTree = "<group>"; };
+		D231D9FDE9ACBB31998E6957 /* RecognitionController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RecognitionController.swift; path = Agora/Inventory/RecognitionController.swift; sourceTree = "<group>"; };
+		D49051DB2398C6A706024F3F /* SettingsSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SettingsSheet.swift; path = Agora/Dibs/Components/SettingsSheet.swift; sourceTree = "<group>"; };
+		D6D5233935C5AA6F5828522F /* ShoppingTools.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShoppingTools.swift; path = Agora/Shopping/ShoppingTools.swift; sourceTree = "<group>"; };
+		D6E8CF72E9BAEA8B1D71A0F0 /* DibsScanGeometryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsScanGeometryTests.swift; path = AgoraTests/DibsScanGeometryTests.swift; sourceTree = "<group>"; };
+		D85C84CC957ECAE9852166D5 /* DibsBrowserTools.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsBrowserTools.swift; path = Agora/Dibs/Agent/DibsBrowserTools.swift; sourceTree = "<group>"; };
+		D91810F0EB8A6A1465377D9A /* DibsRoot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsRoot.swift; path = Agora/Dibs/App/DibsRoot.swift; sourceTree = "<group>"; };
+		DA4D95C7DA6B19D11746AD69 /* UndoToast.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UndoToast.swift; path = Agora/Dibs/Components/UndoToast.swift; sourceTree = "<group>"; };
+		DBAC8477EFD4AA73ADC2CF59 /* RemoveZone.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RemoveZone.swift; path = Agora/Dibs/Components/RemoveZone.swift; sourceTree = "<group>"; };
+		E028C26CA9AE6183E9ACCB3C /* CapturePickers.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CapturePickers.swift; path = Agora/Capture/CapturePickers.swift; sourceTree = "<group>"; };
+		E0464BB03DD04F8E0609941D /* StoreSetup.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StoreSetup.swift; path = Agora/Dibs/Agent/StoreSetup.swift; sourceTree = "<group>"; };
+		E08A1351312FDDDA13FF2CFE /* AppModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppModel.swift; path = Agora/Dibs/App/AppModel.swift; sourceTree = "<group>"; };
+		E103AC17F53E2ADD344D1A02 /* ServerConfig.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServerConfig.swift; path = Agora/Dibs/Net/ServerConfig.swift; sourceTree = "<group>"; };
+		E1488FAD04443C37AAED641F /* Money.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Money.swift; path = Agora/Dibs/Model/Money.swift; sourceTree = "<group>"; };
+		E22635F7D0351C7E941D9575 /* InventoryStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InventoryStore.swift; path = Agora/Inventory/InventoryStore.swift; sourceTree = "<group>"; };
+		E58003B5270B532F04FE400C /* CaptureView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptureView.swift; path = Agora/Capture/CaptureView.swift; sourceTree = "<group>"; };
+		E8ACFB34FDBE441E5357F056 /* BrowserTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserTests.swift; path = AgoraTests/BrowserTests.swift; sourceTree = "<group>"; };
+		E8BE18287FE6FF9AC730D9A3 /* StartView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StartView.swift; path = Agora/Dibs/Screens/StartView.swift; sourceTree = "<group>"; };
+		E96388A0F1A67198E05EF76C /* WishView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WishView.swift; path = Agora/Dibs/Screens/WishView.swift; sourceTree = "<group>"; };
+		EAC4F804898550B95AF7F9BF /* LiveView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LiveView.swift; path = Agora/Dibs/Components/LiveView.swift; sourceTree = "<group>"; };
+		EBBAE522EFBC8F218518F981 /* UnclaimedList.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UnclaimedList.swift; path = Agora/Dibs/Components/UnclaimedList.swift; sourceTree = "<group>"; };
+		EEDA07A363852161A32CC543 /* CalendarTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CalendarTests.swift; path = AgoraTests/CalendarTests.swift; sourceTree = "<group>"; };
+		EF8956DB1B93ABE402D36264 /* Avatar.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Avatar.swift; path = Agora/Dibs/Components/Avatar.swift; sourceTree = "<group>"; };
+		EFD9273EB50AE8B5BFAC4A8F /* ReceiptCheckView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCheckView.swift; path = Agora/Dibs/Screens/ReceiptCheckView.swift; sourceTree = "<group>"; };
+		EFE2516382B49A6F2A27B88B /* BrowserPolicy.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowserPolicy.swift; path = Agora/Browser/BrowserPolicy.swift; sourceTree = "<group>"; };
+		F0943DCB8A8AD3714C4D43E3 /* ReceiptView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptView.swift; path = Agora/Dibs/Screens/ReceiptView.swift; sourceTree = "<group>"; };
+		F1B08B4321D1EA27BCB96B06 /* dibs-run-settled.json */ = {isa = PBXFileReference; includeInIndex = 1; name = "dibs-run-settled.json"; path = "Fixtures/dibs-run-settled.json"; sourceTree = "<group>"; };
+		F1C77A7B99EC6D6C4D457DD4 /* SuggestionService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SuggestionService.swift; path = Agora/Shopping/SuggestionService.swift; sourceTree = "<group>"; };
+		F36177E8DCA0782795FD3789 /* QFCTraffic.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = QFCTraffic.swift; path = Agora/Dibs/Agent/QFCTraffic.swift; sourceTree = "<group>"; };
+		F419E321BDD8BA0DCEAE8870 /* DibsModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsModelTests.swift; path = AgoraTests/DibsModelTests.swift; sourceTree = "<group>"; };
+		F47730E5AA2F7167737F2203 /* PreviewData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PreviewData.swift; path = Agora/Dibs/Design/PreviewData.swift; sourceTree = "<group>"; };
+		F7A7ED20DE4212276D3725C7 /* ShopperLogic.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShopperLogic.swift; path = Agora/Dibs/Model/ShopperLogic.swift; sourceTree = "<group>"; };
+		F7F2B17BB0CD3EE1053764D0 /* QRCode.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = QRCode.swift; path = Agora/Dibs/Components/QRCode.swift; sourceTree = "<group>"; };
+		FBD2C087FA2287FCC5140E51 /* DibsShopperLogicTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DibsShopperLogicTests.swift; path = AgoraTests/DibsShopperLogicTests.swift; sourceTree = "<group>"; };
+		FDE7B51E1456C1F038E55550 /* RecognitionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RecognitionView.swift; path = Agora/Inventory/RecognitionView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		0A126B88727603DEF42C8108 /* Frameworks */ = {
+		0242F4ACF141B5FB172CC5B6 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				17264E09CA564647BEF52D49 /* Foundation.framework in Frameworks */,
+				476E05981F229B58E5DDD928 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		2377641A65DC0113D86BD445 /* Frameworks */ = {
+		833289F3A356ED52F57DE4E1 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D4E2238B963BB7C8FBC99095 /* Foundation.framework in Frameworks */,
-				D20ADA742CF7613C2019AFA3 /* GoogleSignIn in Frameworks */,
-				031FF340F363B6378C813B5C /* GoogleSignInSwift in Frameworks */,
+				BA74EA4B29231C58144701A8 /* Foundation.framework in Frameworks */,
+				5CEA7241BFF0B99A232B8B08 /* GoogleSignIn in Frameworks */,
+				C6ACA6BB39E49AD849A1C0B3 /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		1034C1431DE771ACA7B3BD16 = {
+		02B265B59A8B7E7089A4EF2E /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				41E0EF6682705FFF774EFCD0 /* Products */,
-				68D1FCEE25F32BD5D2F2FEDE /* Frameworks */,
-				075675C0C4AF1D40B5D96613 /* Agora.xcconfig */,
-				F3ABBB0BFC5EE2E5A954044F /* Assets.xcassets */,
-				5579F2FA6328D2D2218E2B2E /* CaptionController.swift */,
-				DCDA623704C060E81AA5D9F6 /* CaptionPanel.swift */,
-				F051E80D1BCF5FE578C1CD85 /* CaptionModels.swift */,
-				5B8C455BD9C06D21EC99595E /* GeminiCaptionService.swift */,
-				BA5A9DA68DDB8CEBA4B02354 /* CapturePickers.swift */,
-				170DD17F9EBEB60E9E6F885A /* MediaLibrary.swift */,
-				0EE742A6AE0D68B69FEFB542 /* CaptureView.swift */,
-				EC3A977222D4C48017E72F46 /* CaptionHTTPClient.swift */,
-				96E369916C6AD916EBBFADE9 /* Tokens.swift */,
-				C767515ADC8BEF91FDB6430E /* PreviewData.swift */,
-				95238E01D27B61E87F998E48 /* Styles.swift */,
-				D7B346E4C903EABEE1A50C78 /* DibsAPI.swift */,
-				D7D3418EA3DD4E124189061C /* ServerConfig.swift */,
-				D7CAF30320954736B98FC6BF /* RunStore.swift */,
-				67D6A23CCEFF1FC9F4737BD8 /* DibsAPI+Wish.swift */,
-				EF04AC74EBBA9EEEDB6FAA05 /* RunSocket.swift */,
-				18F48FFDCC2FB9779FD5BDF9 /* AppModel.swift */,
-				527BDFE098CDCA9ACAFEBD0C /* DibsRoot.swift */,
-				7E82FDFA1FB2F946523E5490 /* Routing.swift */,
-				2289665713024C72736F423C /* DebugLaunch.swift */,
-				1908AE8EE5E6F9141076ED70 /* DibsLog.swift */,
-				D0CF35E6D2D5B804AD5AA5DA /* CartWatcher.swift */,
-				D985D93B72894AE353ADC31B /* CartCamera.swift */,
-				10661FCB9C04688B30ED9152 /* ScanGeometry.swift */,
-				1690DF12769A924ED3346697 /* ShopperCamera.swift */,
-				339953B1D6DA42D8A896D9E5 /* FrameEncoder.swift */,
-				579DD03FA8017C306C839609 /* PriceBrowserThumbnail.swift */,
-				C66016043271AD3657860C0B /* DibsBrowserTools.swift */,
-				D090CFB79370A196A514EE2D /* StoreBrowser.swift */,
-				D958295A50692F132B3CF591 /* DibsBrowserScripts.js */,
-				F9C107F2B30A9E641F282499 /* PriceWorker.swift */,
-				7C52D08D31FB66ECF4C29A2E /* QFCTraffic.swift */,
-				8F3B3087DB3FDADC86A3F253 /* StoreSetup.swift */,
-				72B643D4422CCFDF80051C85 /* StartView.swift */,
-				62C3969C3A2531F43A8FD4D3 /* WishView.swift */,
-				F8FC90796C6ECB4E117F1ABA /* JoinView.swift */,
-				45F0C257535D5EB89560AC3A /* SettleView.swift */,
-				9A5CEB26A889D9D13CA5DAB5 /* ClaimView.swift */,
-				1E6BA5FA4F960393ADD48920 /* ShopperView.swift */,
-				DE690706A174E10B4E8B3C67 /* ReceiptCheckView.swift */,
-				1C58F59AE363DDF8B4B43AEF /* ReceiptView.swift */,
-				3E61C3D5126C5398B0F33DD6 /* DibsHomeView.swift */,
-				A9B1CB7776F68F8E027D3CC6 /* UnclaimedList.swift */,
-				96080B49927405474DB743D0 /* ReceiptCamera.swift */,
-				B71304780C05D41408355E32 /* ChipCard.swift */,
-				75A2E8F1B870C0434F8678F2 /* HeldBadge.swift */,
-				D8457AB2113CFD719CA50ADA /* SettingsSheet.swift */,
-				6CACBB8D09A5A062FADCF1C5 /* Avatar.swift */,
-				283534674DD6E795DF3E7027 /* FixChipSheet.swift */,
-				CDB511071DCD7A323D2C068B /* SettleLines.swift */,
-				C871281119989179814B8A4A /* Tray.swift */,
-				3797AE66867ECCFD96511540 /* DuplicateCard.swift */,
-				B51827BC562FC38D546A26FF /* QRCode.swift */,
-				9AE74A3C0EE5AAADB3E2A294 /* CartRows.swift */,
-				94A849B98660B88DAA6E21B2 /* RemoveZone.swift */,
-				1F035FC26D49CCB9B5DE544F /* LiveView.swift */,
-				CF947A2B2B9E5D512AA48F8E /* UndoToast.swift */,
-				57A01B641BE914F544BC59CD /* HouseholdRows.swift */,
-				4FE024E95A744167458E1E19 /* QuantityStepper.swift */,
-				C74902C3DD740CB71AFA84EF /* OverCapSheet.swift */,
-				A98EBADB19F79CFE73641B2E /* NextRun.swift */,
-				3CE1BBA927F495A9BE5D5071 /* ShopperLogic.swift */,
-				CD4190A5C9DC62AD8FB20AF7 /* Protocol.swift */,
-				D713A7C899E358909F57FC03 /* SettleLogic.swift */,
-				8D98E028AB719452C46878C9 /* ClaimLogic.swift */,
-				628B47EBAECF1C8756E0D4E2 /* Money.swift */,
-				700EEB333620DF26BCD4714A /* WishLogic.swift */,
-				0BAF1E9272CA28A7FA0B45D4 /* RunText.swift */,
-				445DE7A84ADAF649C6A7FE26 /* Run.swift */,
-				E2B27579CA321B32BD31509F /* ShoppingView.swift */,
-				B7E3115E1A775A889460DB05 /* SuggestionService.swift */,
-				CD17D01287ED12A87BDC4FCC /* WatchModels.swift */,
-				63E0C5DB3B6868BBCA07B587 /* PushNotifications.swift */,
-				AF1F96F439F71309246984A3 /* WatchBrowserRunner.swift */,
-				695DBCEF245C056ED3FAAA6A /* ShoppingModels.swift */,
-				A24CC0606C38D5893D38A573 /* ShoppingStore.swift */,
-				16BC366B6A30B954E66D4796 /* WatchViews.swift */,
-				25BD910F61CC4CC4583BEA6A /* WatchStore.swift */,
-				7A80E66BFA0C45A99D45970F /* ShoppingTools.swift */,
-				CC2E27A87EEE0F76359D13EB /* CalendarOnboardingView.swift */,
-				6B88A667FC51CA03E3E1A6E0 /* CalendarConnection.swift */,
-				FF80B8107391A357C0C5CD54 /* GoogleCalendarAuthorization.swift */,
-				A5DCE75CF5F7694036A37556 /* CalendarTools.swift */,
-				DA58A17E86007F1DB2EF6EE9 /* InventoryView.swift */,
-				9DC25150D5B48B99BA3B4B64 /* SettingsView.swift */,
-				C3A761D2358C0445CCDEB4D4 /* BrowserChatApp.swift */,
-				1647E37C8776345AD2D05157 /* ChatView.swift */,
-				2BAEC626D254AF4000D3FCCB /* ConversationStore.swift */,
-				FFDAA08D7EBB307FC9D966FA /* ChatMessageView.swift */,
-				5F73180B6880E65EB9B43208 /* ChatComposer.swift */,
-				E5B888CFCEC36F18C25A4FCE /* ChatAttachments.swift */,
-				947A0EF5883783EDD4D612B1 /* ItemImages.swift */,
-				57FE29E34E48414745732BE0 /* AgentCoordinator.swift */,
-				9CECF1548EA94C8F8EA38F64 /* ModelProvider.swift */,
-				276CC4E01A673F78E704A36D /* LocalModelMedia.swift */,
-				1B06E8D8ACAADE8FC63FC8B6 /* OpenAICompatibleClient.swift */,
-				69BDC5A10388FEEC06D7E79B /* ModelConfiguration.swift */,
-				78B794CCFD523D69A97B3C0C /* ModelFeatureServices.swift */,
-				69B564DC6665A0B210E20107 /* ModelTypes.swift */,
-				D19EF9E6C3530581BFDF878B /* GeminiModelClient.swift */,
-				B7F0713A38D2FEC486FBFA04 /* ModelSettingsView.swift */,
-				8E4C29236A0133CD77A957B7 /* TaskRepository.swift */,
-				2BD79948F6CD91FA3AA6A366 /* AppLog.swift */,
-				EBDDE0CC2701B41924CD0497 /* SettingsStore.swift */,
-				2D02C54AF0E4CD1CEFA20016 /* BrowserPolicy.swift */,
-				3AA92193AD978AC6846ED3F0 /* BrowserScripts.js */,
-				F80A552902F8415E98E1B8E2 /* BrowserSession.swift */,
-				D9F3BD0C17DE9C7BCD90BA02 /* BrowserViewport.swift */,
-				C3DA4CAD10F51B895F6C4950 /* BrowserToolExecutor.swift */,
-				128ECC980DD857A9B3806E05 /* RecognitionView.swift */,
-				F39E4B424E7FD3C32B2F20EA /* InventoryForms.swift */,
-				9AE7F1D1696BE30DE93EDD93 /* InventoryStore.swift */,
-				E9BD92E3E693A952C4FCE05C /* InventoryModels.swift */,
-				5262E37E3ADD1759B23159BC /* RecognitionModels.swift */,
-				045FB66BDC6FB7B7A6EE9B7C /* GeminiInventoryService.swift */,
-				0D6261853DAA37D046ABFC7A /* RecognitionController.swift */,
-				37F973E2DF6A4306D0C74C7B /* AgoraClient.swift */,
-				4A7B5BA2F08495C9AD4FADAC /* TripModels.swift */,
-				3129C3C817B658AF5DCE2AA3 /* TripsView.swift */,
-				06759E90F44145D80393B010 /* TripPlanner.swift */,
-				C23250D0267FA96FC6643CDF /* TripStore.swift */,
-				1ACD2543C6D3297CCF377AC7 /* DibsRunStoreTests.swift */,
-				72FCBD4D3100012920CAAEA7 /* DibsModelTests.swift */,
-				0BE554A177F02BE58CA7C920 /* DibsRoutingTests.swift */,
-				3A368D4B11ED5E648B15A1C5 /* DibsPriceWorkerTests.swift */,
-				72988BE821C064BC08728B1D /* ModelSettingsRenderTests.swift */,
-				417D3BC733386D1C166750D9 /* DibsFrameEncoderTests.swift */,
-				90B87D0B8D7472FA40437365 /* ItemImageTests.swift */,
-				4C3F94FE8B2251E8A0F68F1C /* LocalModelTests.swift */,
-				4384A84EC5B231C62186FEF2 /* DibsHouseholdTests.swift */,
-				0C538136B092984AB0B4223F /* GeminiModelTests.swift */,
-				F9C3031E82DF480705A3A847 /* DibsAPITests.swift */,
-				5532AB3C723C614E65B6CB31 /* CaptureTests.swift */,
-				D166B730126AC04E7F960CD1 /* TripLiveTests.swift */,
-				BDEB0D5E169C0A60271AD7FD /* AgoraClientTests.swift */,
-				F5B25EF0D048610BD7DAAE25 /* DibsWishLogicTests.swift */,
-				E8326B6B926968504332FE3A /* DibsCartWatcherTests.swift */,
-				90D01ACF414B36B3597A4AB6 /* CaptionTests.swift */,
-				2FF25FC9938A09CDEC2C9271 /* DibsQuantityTests.swift */,
-				93D576C1DA4906A8F230C0D4 /* DibsFixture.swift */,
-				5A6846ED1A827E0E3D4BA2A4 /* ChatInterfaceTests.swift */,
-				25353D42BC435FFCA7F380F9 /* WatchBrowserTests.swift */,
-				6F491D121855D616ED2F272B /* DibsRootTests.swift */,
-				EEE9B41E9091FCDB591F0C9F /* ItemImageLiveTests.swift */,
-				4AD1381849F7746600AA90F7 /* DibsAppModelTests.swift */,
-				D2C9C702724C3A3D9E60F37F /* DibsShopperLogicTests.swift */,
-				55A22BAD4E9DC303613EB8DB /* WatchTests.swift */,
-				672A5A3430921C08DC6BC663 /* DibsClaimLogicTests.swift */,
-				A3764C202ADDE563FCF845FF /* BrowserTests.swift */,
-				053D37021CD80E22AFB1567B /* ModelIntegrationTests.swift */,
-				322E84DC0A9E55DF6FD34371 /* ShoppingTests.swift */,
-				60EAEBFFBB64C816B5ADD35E /* TripTests.swift */,
-				AA83E1D4D12E04D16D0CA717 /* DibsScanGeometryTests.swift */,
-				6A55202CF20F8ADF99BADA63 /* DibsSettleLogicTests.swift */,
-				6EA54FE2A0DC4FDE9EDB571E /* InventoryTests.swift */,
-				E197162D182A046D893DB67F /* CalendarTests.swift */,
-				BD2F27D61A394DCC83BEE232 /* browser-fixture.html */,
-				8B36077254E5670440187142 /* dibs-run-partly.json */,
-				D2D134B42BC5E73C27015062 /* dibs-run-settled.json */,
-				FC3A6F8CBC1721D0C331D077 /* dibs-run.json */,
-				E3483C25A69257AAE7FB76BA /* dibs-run-receipt.json */,
-			);
-			sourceTree = "<group>";
-		};
-		41E0EF6682705FFF774EFCD0 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				3346CD9BF62AB6A2CC41D7AB /* Agora.app */,
-				981F40CE9E3BE6BAA028C457 /* AgoraTests.xctest */,
+				9F9ADE1C37BF64FCC771B0F9 /* Agora.app */,
+				59503CD356D69BAFBA39C893 /* AgoraTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		68D1FCEE25F32BD5D2F2FEDE /* Frameworks */ = {
+		03E37AE55190077EEC56E3A9 /* iOS */ = {
 			isa = PBXGroup;
 			children = (
-				A0374D8AB7ED5BC094A196E9 /* iOS */,
+				8A69AB066B7EC3DAA604B4E2 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		7711A81443C1927792986AB9 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				03E37AE55190077EEC56E3A9 /* iOS */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		A0374D8AB7ED5BC094A196E9 /* iOS */ = {
+		8286AB91ADF4EFA2F790D8A3 = {
 			isa = PBXGroup;
 			children = (
-				376BC58DF81418D8D75BE679 /* Foundation.framework */,
+				02B265B59A8B7E7089A4EF2E /* Products */,
+				7711A81443C1927792986AB9 /* Frameworks */,
+				9B5D98E0ADEA4BF94B6A28E2 /* Agora.xcconfig */,
+				90407A7CF101F73068A45155 /* Assets.xcassets */,
+				BBBA947062A99681A1C70956 /* SpendingView.swift */,
+				A22CC505AD7FC2D2F6FFB3F0 /* CommerceTools.swift */,
+				4FD35C1B8A80A205C2EE8D66 /* CommerceModels.swift */,
+				BA13549E82D3EA4FEB5072F3 /* CommerceStore.swift */,
+				56E44FFE8DDCE7855AFA3BFA /* CaptionController.swift */,
+				3346FEB954E2B43ED9B401C0 /* CaptionPanel.swift */,
+				39D6084906BF3E83612152E8 /* CaptionModels.swift */,
+				CD83389E2109ACB8747933DC /* GeminiCaptionService.swift */,
+				E028C26CA9AE6183E9ACCB3C /* CapturePickers.swift */,
+				06B41392D2A27085CA09A2A6 /* MediaLibrary.swift */,
+				E58003B5270B532F04FE400C /* CaptureView.swift */,
+				63AE592DED146048A6FD7D8F /* CaptionHTTPClient.swift */,
+				C84F83DA5BED2D7CE098ED6D /* Tokens.swift */,
+				F47730E5AA2F7167737F2203 /* PreviewData.swift */,
+				84813F49249B02E97730E5E6 /* Styles.swift */,
+				A615779231D15FF0040ADD6F /* DibsAPI.swift */,
+				E103AC17F53E2ADD344D1A02 /* ServerConfig.swift */,
+				8045B20E20EF572C827453B6 /* RunStore.swift */,
+				80C678F244F7BDBB554C57A1 /* DibsAPI+Wish.swift */,
+				0CB681D356E4D5C2BE51A8ED /* RunSocket.swift */,
+				E08A1351312FDDDA13FF2CFE /* AppModel.swift */,
+				D91810F0EB8A6A1465377D9A /* DibsRoot.swift */,
+				AA3058561F3518186F0C0D9F /* Routing.swift */,
+				0776A6B587599C4DA62B2A7A /* DebugLaunch.swift */,
+				5DBAA1FFFBD24528785C71E1 /* DibsLog.swift */,
+				B89FCE6077FD0C8A7F4134DC /* CartWatcher.swift */,
+				4FAD396D49C7149B6EBE3B5F /* CartCamera.swift */,
+				98C3A46FAFCA2E6F4472DA5C /* ScanGeometry.swift */,
+				6E6A3C5455747CA59CB39C85 /* ShopperCamera.swift */,
+				BC80B6A224E2DD2B14D07540 /* FrameEncoder.swift */,
+				354678CAE693C090705D9DFD /* PriceBrowserThumbnail.swift */,
+				D85C84CC957ECAE9852166D5 /* DibsBrowserTools.swift */,
+				CCB1AAD076728AF3E8DA95F1 /* StoreBrowser.swift */,
+				9E5872678FD5B5CA50A467BC /* DibsBrowserScripts.js */,
+				A04D4F55F23636DA4E88FA2D /* PriceWorker.swift */,
+				F36177E8DCA0782795FD3789 /* QFCTraffic.swift */,
+				E0464BB03DD04F8E0609941D /* StoreSetup.swift */,
+				E8BE18287FE6FF9AC730D9A3 /* StartView.swift */,
+				E96388A0F1A67198E05EF76C /* WishView.swift */,
+				90D757BB1D6E77D79845E779 /* JoinView.swift */,
+				9D0C7871F8983AC65741BA5A /* SettleView.swift */,
+				10ECD116F2A54EFE514CEE23 /* ClaimView.swift */,
+				253A1BF9307010B7C475DA68 /* ShopperView.swift */,
+				EFD9273EB50AE8B5BFAC4A8F /* ReceiptCheckView.swift */,
+				F0943DCB8A8AD3714C4D43E3 /* ReceiptView.swift */,
+				388EAA02CBA533C83C888023 /* DibsHomeView.swift */,
+				EBBAE522EFBC8F218518F981 /* UnclaimedList.swift */,
+				B66D24AA85187B58BB4706E2 /* ReceiptCamera.swift */,
+				415189BC1C7AF59EC6738E79 /* ChipCard.swift */,
+				36BBD507D5CCE394F77A9EDC /* HeldBadge.swift */,
+				D49051DB2398C6A706024F3F /* SettingsSheet.swift */,
+				EF8956DB1B93ABE402D36264 /* Avatar.swift */,
+				5418236442A747407B90B24B /* FixChipSheet.swift */,
+				93D38FAF7FF57A88911744C4 /* SettleLines.swift */,
+				8E3CFCF8FC17CF8886643BC9 /* Tray.swift */,
+				9BBA976B78EEAC0AA1B2E0F4 /* DuplicateCard.swift */,
+				F7F2B17BB0CD3EE1053764D0 /* QRCode.swift */,
+				6D67ACB0388CFDDC1DAF771C /* CartRows.swift */,
+				DBAC8477EFD4AA73ADC2CF59 /* RemoveZone.swift */,
+				EAC4F804898550B95AF7F9BF /* LiveView.swift */,
+				DA4D95C7DA6B19D11746AD69 /* UndoToast.swift */,
+				8B0DC321AAB920C638CC0489 /* HouseholdRows.swift */,
+				A04A1A370662891A5F31A494 /* QuantityStepper.swift */,
+				C6EBE797ADD2D526D2123C32 /* OverCapSheet.swift */,
+				39E9D4391C4475C8E0AB9997 /* NextRun.swift */,
+				F7A7ED20DE4212276D3725C7 /* ShopperLogic.swift */,
+				92811DB040DDFEA9C8410498 /* Protocol.swift */,
+				1C012B5641C625E1FEFA4E03 /* SettleLogic.swift */,
+				25E9B218FF6EBB96C381C49D /* ClaimLogic.swift */,
+				E1488FAD04443C37AAED641F /* Money.swift */,
+				A0D5208A0847BC9920114C54 /* WishLogic.swift */,
+				BE503BD513577F03ECAEFE02 /* RunText.swift */,
+				537721300265F01E9272C8A1 /* Run.swift */,
+				740BE917C660E11130BBD0B1 /* ShoppingView.swift */,
+				F1C77A7B99EC6D6C4D457DD4 /* SuggestionService.swift */,
+				548EEC373F57068DEE06EA4C /* WatchModels.swift */,
+				B8267A7472FC803CFE6BC8D8 /* PushNotifications.swift */,
+				2C69750C8F7DA816511C3B31 /* WatchBrowserRunner.swift */,
+				5DCACA69C11CACAE193229CF /* ShoppingModels.swift */,
+				21C2EEBD638287FAB13D0F26 /* ShoppingStore.swift */,
+				5D35AE56D9DFD1E4BF9DA8DB /* WatchViews.swift */,
+				C439516877BA44AC0096F225 /* WatchStore.swift */,
+				D6D5233935C5AA6F5828522F /* ShoppingTools.swift */,
+				35776208111C792CBC339941 /* CalendarOnboardingView.swift */,
+				B7158E4C60A218919A83ED7E /* CalendarConnection.swift */,
+				47E33E7DB9C00B72EFC34CB0 /* GoogleCalendarAuthorization.swift */,
+				3E85C50472967D6704A8B87B /* CalendarTools.swift */,
+				40910E05EE8D4A8D224FCB84 /* InventoryView.swift */,
+				2493E7612A98ACB045F4CAB3 /* SettingsView.swift */,
+				50444BFC83E97177502D8C33 /* BrowserChatApp.swift */,
+				41D716C0BC6AA98BAE662E9A /* ChatView.swift */,
+				5EBEE69A60ED6EDA3E3DC703 /* ConversationStore.swift */,
+				3E606B894C3163EF73725282 /* ChatMessageView.swift */,
+				92C0E8275934D51AEE0C0324 /* ChatComposer.swift */,
+				A8614AD2ED9E1E7EAA8CBAF2 /* ChatAttachments.swift */,
+				C026DFA121D8050D5315B316 /* ItemImages.swift */,
+				3447B4E3C6601D56BAEC61DA /* AgentCoordinator.swift */,
+				C3EFCB625D69779ACEEDD2E5 /* ModelProvider.swift */,
+				035795C1835A129E70BD7B83 /* LocalModelMedia.swift */,
+				973F1EFDB37BD12461C24A35 /* OpenAICompatibleClient.swift */,
+				0CCB300A38FA5D6171B1BD2F /* ModelConfiguration.swift */,
+				A1EBFAD75D80ADFAFD0AF36B /* ModelFeatureServices.swift */,
+				6AE667D0F221131797A0625B /* ModelTypes.swift */,
+				010D85D8AC5DB939A0419CE8 /* GeminiModelClient.swift */,
+				CC1BA6A0B864C0D564AAD9B8 /* ModelSettingsView.swift */,
+				00523FCB8C878FF4BAB6B667 /* TaskRepository.swift */,
+				1BE0C342B7D07484113C09D1 /* AppLog.swift */,
+				A835B04AE76B63B60964792F /* SettingsStore.swift */,
+				EFE2516382B49A6F2A27B88B /* BrowserPolicy.swift */,
+				5C496FB93AB758DE988DC478 /* BrowserScripts.js */,
+				A7284C643F36CE51F0B87637 /* BrowserSession.swift */,
+				A67406B1925676C12079295E /* BrowserViewport.swift */,
+				48615B04D5A465DE642A7545 /* BrowserToolExecutor.swift */,
+				FDE7B51E1456C1F038E55550 /* RecognitionView.swift */,
+				B67D6D78C70011ACDBE2A594 /* InventoryForms.swift */,
+				E22635F7D0351C7E941D9575 /* InventoryStore.swift */,
+				A0D34956FBF72326F2F54919 /* InventoryModels.swift */,
+				B9ABA8BC847CD05AEF746DFB /* RecognitionModels.swift */,
+				2089EFAAA74612861C5EFC40 /* GeminiInventoryService.swift */,
+				D231D9FDE9ACBB31998E6957 /* RecognitionController.swift */,
+				2C77A973748C94214BB8A11A /* AgoraClient.swift */,
+				C75FF94E295DC1652D594C87 /* TripModels.swift */,
+				97CCD477B8531F3E41487B94 /* TripsView.swift */,
+				AD6B42BD153F45B304F4EA3D /* TripPlanner.swift */,
+				49C12026F8784E892417B332 /* TripStore.swift */,
+				2AEAE37AD883A66847CD35EA /* DibsRunStoreTests.swift */,
+				F419E321BDD8BA0DCEAE8870 /* DibsModelTests.swift */,
+				053D1F6113B7A3CACB7DD5EE /* DibsRoutingTests.swift */,
+				58787650F9142051ED2CB456 /* DibsPriceWorkerTests.swift */,
+				72A68A3EA7A4B6D3E0A5F3BC /* ModelSettingsRenderTests.swift */,
+				1702140D20C020A36BC37B0D /* DibsFrameEncoderTests.swift */,
+				2A40221A7EC960F5C6CD8CCE /* ItemImageTests.swift */,
+				42EEBFD9E9007B77DA6A8717 /* LocalModelTests.swift */,
+				5F74BF0B922CD77F0DFED246 /* DibsHouseholdTests.swift */,
+				14EA818E51728C52B53A4DC4 /* GeminiModelTests.swift */,
+				A3C3FAFE3AD348BA015E1F15 /* DibsAPITests.swift */,
+				682A415FBAADC724172BDC55 /* CaptureTests.swift */,
+				C76CBD71ADE8EB8F2BDE1A1D /* TripLiveTests.swift */,
+				8E5F0AF34008C1A666F84867 /* AgoraClientTests.swift */,
+				7E8B752BD078D9FCB359B74E /* DibsWishLogicTests.swift */,
+				954D59B6A3BF0AF77244F0DB /* DibsCartWatcherTests.swift */,
+				B765F11A89E50539BBA0D860 /* CaptionTests.swift */,
+				496B6B8E7A120D1A53776345 /* CommerceTests.swift */,
+				0288C560C98BA311517339AB /* DibsQuantityTests.swift */,
+				4EC23D0882223CD8524EC6FB /* DibsFixture.swift */,
+				669A21CC8525C9357BB4EC16 /* ChatInterfaceTests.swift */,
+				41BDF99CFE1077ADDFF67202 /* WatchBrowserTests.swift */,
+				5E747DC570B68EF237631B12 /* DibsRootTests.swift */,
+				5E9C183247EC31160D87AB22 /* ItemImageLiveTests.swift */,
+				C8980A3366FC8916B5B11C3B /* DibsAppModelTests.swift */,
+				FBD2C087FA2287FCC5140E51 /* DibsShopperLogicTests.swift */,
+				5F9EC188C1E8B57D5E013761 /* WatchTests.swift */,
+				330623934C326C902405D515 /* DibsClaimLogicTests.swift */,
+				E8ACFB34FDBE441E5357F056 /* BrowserTests.swift */,
+				809C579B0A035B8CE19AC3F4 /* ModelIntegrationTests.swift */,
+				27986440A274C7900D564342 /* ShoppingTests.swift */,
+				4BB882568D26AF764F3C95BB /* TripTests.swift */,
+				D6E8CF72E9BAEA8B1D71A0F0 /* DibsScanGeometryTests.swift */,
+				18A51DF162EFF9B43CE492DD /* DibsSettleLogicTests.swift */,
+				2EE92221227E51124A28FA1A /* InventoryTests.swift */,
+				EEDA07A363852161A32CC543 /* CalendarTests.swift */,
+				142A45D90CA89AAB893E4ACD /* browser-fixture.html */,
+				3EC3BFF63DF6D5D1B199142E /* dibs-run-partly.json */,
+				F1B08B4321D1EA27BCB96B06 /* dibs-run-settled.json */,
+				209C411F863819D787711F52 /* dibs-run.json */,
+				38B91F93540D29B8E780A029 /* dibs-run-receipt.json */,
 			);
-			name = iOS;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		9D5C73A4E454140DDF39FE08 /* Agora */ = {
+		68C738ABA3ECE6959DE068E2 /* Agora */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 2E5D5C59ED92B14216EA9066 /* Build configuration list for PBXNativeTarget "Agora" */;
+			buildConfigurationList = 6ABD2EEC39A317817FFFF045 /* Build configuration list for PBXNativeTarget "Agora" */;
 			buildPhases = (
-				20A8E7AA9CA3F60991D305E7 /* Sources */,
-				2377641A65DC0113D86BD445 /* Frameworks */,
-				C2BA3D48E9D3954FAFCEC0AD /* Resources */,
+				6C672A4FF28D326FCE0F6767 /* Sources */,
+				833289F3A356ED52F57DE4E1 /* Frameworks */,
+				BD0F11AB647EE234A474D226 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -589,41 +604,41 @@
 			);
 			name = Agora;
 			packageProductDependencies = (
-				EF48E7CD39C622104829872B /* GoogleSignIn */,
-				4D7BAB1065059C1409674D09 /* GoogleSignInSwift */,
+				2057095550337F336FDCE4DF /* GoogleSignIn */,
+				CE1F9EC1BCAE48B47FA963FD /* GoogleSignInSwift */,
 			);
 			productName = Agora;
-			productReference = 3346CD9BF62AB6A2CC41D7AB /* Agora.app */;
+			productReference = 9F9ADE1C37BF64FCC771B0F9 /* Agora.app */;
 			productType = "com.apple.product-type.application";
 		};
-		AF5D9454780003C636C92366 /* AgoraTests */ = {
+		6FC99B1419CC889BE488BB0D /* AgoraTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 5F249C65CE003B9156CDFD89 /* Build configuration list for PBXNativeTarget "AgoraTests" */;
+			buildConfigurationList = 250C4A35DD675244CE528A78 /* Build configuration list for PBXNativeTarget "AgoraTests" */;
 			buildPhases = (
-				153836C134206A4144935547 /* Sources */,
-				0A126B88727603DEF42C8108 /* Frameworks */,
-				D5623B0ADBB72417A157B3DE /* Resources */,
+				483471123A179442281C8A1E /* Sources */,
+				0242F4ACF141B5FB172CC5B6 /* Frameworks */,
+				A2A7EC7177BA3D50894EAAD6 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				614DEAB1F9F484C50CAE83FB /* PBXTargetDependency */,
+				08940C4B7AEAC6BBD456837F /* PBXTargetDependency */,
 			);
 			name = AgoraTests;
 			productName = AgoraTests;
-			productReference = 981F40CE9E3BE6BAA028C457 /* AgoraTests.xctest */;
+			productReference = 59503CD356D69BAFBA39C893 /* AgoraTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		E1850D01AB90D22E12183E2C /* Project object */ = {
+		44B9C83B12FF68AD374BDD99 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				LastSwiftUpdateCheck = 1600;
 				LastUpgradeCheck = 1600;
 			};
-			buildConfigurationList = 8B5E05E7BA18E2DD995930BE /* Build configuration list for PBXProject "Agora" */;
+			buildConfigurationList = 0941F29B6A5BC36A52AD1B25 /* Build configuration list for PBXProject "Agora" */;
 			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -631,234 +646,256 @@
 				en,
 				Base,
 			);
-			mainGroup = 1034C1431DE771ACA7B3BD16;
+			mainGroup = 8286AB91ADF4EFA2F790D8A3;
 			minimizedProjectReferenceProxies = 0;
 			packageReferences = (
-				79249EC094542168991AE32A /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				322D18B25A1D6CD04994425E /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 			);
 			preferredProjectObjectVersion = 100;
-			productRefGroup = 41E0EF6682705FFF774EFCD0 /* Products */;
+			productRefGroup = 02B265B59A8B7E7089A4EF2E /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				9D5C73A4E454140DDF39FE08 /* Agora */,
-				AF5D9454780003C636C92366 /* AgoraTests */,
+				68C738ABA3ECE6959DE068E2 /* Agora */,
+				6FC99B1419CC889BE488BB0D /* AgoraTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		C2BA3D48E9D3954FAFCEC0AD /* Resources */ = {
+		A2A7EC7177BA3D50894EAAD6 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BFB1BC40981BCB9B4C082E15 /* Assets.xcassets in Resources */,
-				4E47C4EF1146DDAF0961771E /* DibsBrowserScripts.js in Resources */,
-				AD3FA7A8960804005F4929EC /* BrowserScripts.js in Resources */,
+				03F46C4E4D68E89F82C7B500 /* browser-fixture.html in Resources */,
+				2171BC6DDD2265A800D805FB /* dibs-run-partly.json in Resources */,
+				8C87503350BCBC50F53B9A64 /* dibs-run-settled.json in Resources */,
+				8507AF0AEC37BA78B40254ED /* dibs-run.json in Resources */,
+				79956FA8DF60F28182348A12 /* dibs-run-receipt.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		D5623B0ADBB72417A157B3DE /* Resources */ = {
+		BD0F11AB647EE234A474D226 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D1E5B441AD2B4CE486D6D489 /* browser-fixture.html in Resources */,
-				84696799830AE814DCB2565D /* dibs-run-partly.json in Resources */,
-				F51FC638CEA90D1F26F237A8 /* dibs-run-settled.json in Resources */,
-				0BF32E86B97A988D3AD59735 /* dibs-run.json in Resources */,
-				AEB268EE56FA40D96ACE69D6 /* dibs-run-receipt.json in Resources */,
+				2652AE6E0DA51D63CB8B112E /* Assets.xcassets in Resources */,
+				D15546F1BD0E705441545056 /* DibsBrowserScripts.js in Resources */,
+				E8821B713E790A75BAC2301B /* BrowserScripts.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		153836C134206A4144935547 /* Sources */ = {
+		483471123A179442281C8A1E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				22F11224186BAB46EDCAC21A /* DibsRunStoreTests.swift in Sources */,
-				26E19DF40188E0C7D3259D99 /* DibsModelTests.swift in Sources */,
-				5E8474209056B455622A3099 /* DibsRoutingTests.swift in Sources */,
-				E6C7C1D86C3DAA5B33E5EFD1 /* DibsPriceWorkerTests.swift in Sources */,
-				6AB56078AFF06500CBAECCDA /* ModelSettingsRenderTests.swift in Sources */,
-				33AD27E74C2A33FF6BE85150 /* DibsFrameEncoderTests.swift in Sources */,
-				94B6BED09142478F732726EE /* ItemImageTests.swift in Sources */,
-				1CC510111890BF0C18D841A6 /* LocalModelTests.swift in Sources */,
-				FD68B34F1D7A3AA5AA6A4446 /* DibsHouseholdTests.swift in Sources */,
-				3C60D0BF0C32E684FBA56981 /* GeminiModelTests.swift in Sources */,
-				1EF6135624DF8A00C6EE4CB7 /* DibsAPITests.swift in Sources */,
-				9772104E247E0E7358A01D53 /* CaptureTests.swift in Sources */,
-				D615C742E0F16A13B3B0E150 /* TripLiveTests.swift in Sources */,
-				6F1E01B6D7C7B53EB9E34222 /* AgoraClientTests.swift in Sources */,
-				9BDB99851E370E0B44C6BABE /* DibsWishLogicTests.swift in Sources */,
-				54C9BB2E9475BFC43C1623AB /* DibsCartWatcherTests.swift in Sources */,
-				EB62F5C4CDE183EB900CA22B /* CaptionTests.swift in Sources */,
-				B5F374EA7FF026747056D1B7 /* DibsQuantityTests.swift in Sources */,
-				82BEFA7CE1CBA7DEA9FE0342 /* DibsFixture.swift in Sources */,
-				C2A8F2D3B7710A502184C18F /* ChatInterfaceTests.swift in Sources */,
-				FCE7A200E9B668FC0255D0B0 /* WatchBrowserTests.swift in Sources */,
-				FA3C1F15AC98CBE822C303A6 /* DibsRootTests.swift in Sources */,
-				4F231D8B09B8C27E6920E3A3 /* ItemImageLiveTests.swift in Sources */,
-				83BC4E8F2E81D62B74782517 /* DibsAppModelTests.swift in Sources */,
-				FD49DD680325E49A906D6EED /* DibsShopperLogicTests.swift in Sources */,
-				E0243B4296921364819477F7 /* WatchTests.swift in Sources */,
-				729D56F58EA9DC1EDC56DBEE /* DibsClaimLogicTests.swift in Sources */,
-				7EF67C4874CC75A50828875C /* BrowserTests.swift in Sources */,
-				326D0BD807B595F1371B2826 /* ModelIntegrationTests.swift in Sources */,
-				4C433651503E5F174CD4B014 /* ShoppingTests.swift in Sources */,
-				C1A23A978E51D32A5378BA3F /* TripTests.swift in Sources */,
-				57ECA07C402E7A4724EC7127 /* DibsScanGeometryTests.swift in Sources */,
-				4BBBC017635236AC9C510325 /* DibsSettleLogicTests.swift in Sources */,
-				EB9F91362104A96E89B692E8 /* InventoryTests.swift in Sources */,
-				BC7E17548E5551853E0C1833 /* CalendarTests.swift in Sources */,
+				04F43544DB1C322CEDCD5EF8 /* DibsRunStoreTests.swift in Sources */,
+				388E670B5E1CA210DFDDA338 /* DibsModelTests.swift in Sources */,
+				35E8E0A207A3105A9BA3D408 /* DibsRoutingTests.swift in Sources */,
+				0E18FC135187C34C83118DEB /* DibsPriceWorkerTests.swift in Sources */,
+				35812E0D51759257100824AE /* ModelSettingsRenderTests.swift in Sources */,
+				48CBADF417CF662897EE4C90 /* DibsFrameEncoderTests.swift in Sources */,
+				7ACEE06D983AFE183E3FC7ED /* ItemImageTests.swift in Sources */,
+				7597B467CCAAC74F9B040464 /* LocalModelTests.swift in Sources */,
+				7A377D907F7517C5E0F5C79E /* DibsHouseholdTests.swift in Sources */,
+				B80BB6681559DA4C0EE23933 /* GeminiModelTests.swift in Sources */,
+				3F6DA4A17CCA85D2FC566F77 /* DibsAPITests.swift in Sources */,
+				A26F2C53996A2F11D075EF34 /* CaptureTests.swift in Sources */,
+				E47BA482DB93DE9F2095444D /* TripLiveTests.swift in Sources */,
+				D004D05915AE2B1C6C4B8EEE /* AgoraClientTests.swift in Sources */,
+				845FF583F8953028118AC8FF /* DibsWishLogicTests.swift in Sources */,
+				1C2D858E5DC5034939D19AFD /* DibsCartWatcherTests.swift in Sources */,
+				B2F64970C96C9DD4AF721CBE /* CaptionTests.swift in Sources */,
+				4783538F0E0274BF554CDC67 /* CommerceTests.swift in Sources */,
+				505E6B793B0F07451D3628FB /* DibsQuantityTests.swift in Sources */,
+				0FF53927D72086E497CAC930 /* DibsFixture.swift in Sources */,
+				B488D54CACB62543A7DE36C3 /* ChatInterfaceTests.swift in Sources */,
+				75413268A2EBA32A97E2C2A5 /* WatchBrowserTests.swift in Sources */,
+				03C20AADD671CE3A293980BC /* DibsRootTests.swift in Sources */,
+				B0DA63D9CCA4638B3BCA0CFB /* ItemImageLiveTests.swift in Sources */,
+				78429ED631BC5B1BF346E872 /* DibsAppModelTests.swift in Sources */,
+				19ABEEB7F83678D1267B73A6 /* DibsShopperLogicTests.swift in Sources */,
+				2B9A1E75A97DB8602BB129B3 /* WatchTests.swift in Sources */,
+				975382777386F8559DE99E50 /* DibsClaimLogicTests.swift in Sources */,
+				5AC7909C32DDE1A1A92266DF /* BrowserTests.swift in Sources */,
+				D8D079FF34C807C9308097C5 /* ModelIntegrationTests.swift in Sources */,
+				C3672949E24694F1B1D5BE9C /* ShoppingTests.swift in Sources */,
+				3DC6E93AAB04790E42C58772 /* TripTests.swift in Sources */,
+				5BCE5A7E15C68BF9DC5349D9 /* DibsScanGeometryTests.swift in Sources */,
+				453A2ED2E70EB057D6790314 /* DibsSettleLogicTests.swift in Sources */,
+				1A42E808B4EE25D02E87EB6D /* InventoryTests.swift in Sources */,
+				7D3AE6FAA2C4D6479619E4EB /* CalendarTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		20A8E7AA9CA3F60991D305E7 /* Sources */ = {
+		6C672A4FF28D326FCE0F6767 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				48F434664CDD34997B42EF1F /* CaptionController.swift in Sources */,
-				ADB8C83B1148ED5B106824B6 /* CaptionPanel.swift in Sources */,
-				D3BFBAAD48EFDFAC4248E8E4 /* CaptionModels.swift in Sources */,
-				0CFFC9E49D67BD4A2C4234A9 /* GeminiCaptionService.swift in Sources */,
-				8EF5A338E73CBC82E6898308 /* CapturePickers.swift in Sources */,
-				25EE73ACB59AD1EF149171D2 /* MediaLibrary.swift in Sources */,
-				38C49A789B2ED712ED0B435C /* CaptureView.swift in Sources */,
-				3CC9DCFBCC4F564ACCF71620 /* CaptionHTTPClient.swift in Sources */,
-				B79436845C52F70A7293FE36 /* Tokens.swift in Sources */,
-				5FE485F99B6F3D1561EE097A /* PreviewData.swift in Sources */,
-				AE44FC808D72FA02BA17EC51 /* Styles.swift in Sources */,
-				8EC55C4A472379046C5B2F21 /* DibsAPI.swift in Sources */,
-				5E91D8C5AEFD8F2E40F8B65D /* ServerConfig.swift in Sources */,
-				2CBA8E2CF8D85CEF68C5A4F1 /* RunStore.swift in Sources */,
-				A048058098CF8564E8E2766B /* DibsAPI+Wish.swift in Sources */,
-				0ABB63838C27726CE0391E4C /* RunSocket.swift in Sources */,
-				6E5331C474EF7A2578879CC4 /* AppModel.swift in Sources */,
-				9DCA88DF5DC8ACDA8D1C2A88 /* DibsRoot.swift in Sources */,
-				C63BB95F74F9C8E48D64E639 /* Routing.swift in Sources */,
-				25D209C6A4A1FACB216E3F8F /* DebugLaunch.swift in Sources */,
-				F62A9F831CD207B5C8C9FD19 /* DibsLog.swift in Sources */,
-				D688183E8C3D0A6413744040 /* CartWatcher.swift in Sources */,
-				0639E874343EB349B471D511 /* CartCamera.swift in Sources */,
-				B15101253F8C3B59EB7F6951 /* ScanGeometry.swift in Sources */,
-				790C8F739ADB1940A89092AB /* ShopperCamera.swift in Sources */,
-				0A000A92C20414FA95F1948A /* FrameEncoder.swift in Sources */,
-				CA3978FC02A47196CD7330EF /* PriceBrowserThumbnail.swift in Sources */,
-				C268A20A32760EFE6EE4B571 /* DibsBrowserTools.swift in Sources */,
-				348C9C251CE772F3834639D1 /* StoreBrowser.swift in Sources */,
-				60586139F9CD9F29E3375E3A /* PriceWorker.swift in Sources */,
-				4E6373E8DE8DD049F79FD306 /* QFCTraffic.swift in Sources */,
-				C22D0F73CAE57C6D0047D4B5 /* StoreSetup.swift in Sources */,
-				44F4206F9FE980F2347988E2 /* StartView.swift in Sources */,
-				14DC810B0FDF76745DC48AAC /* WishView.swift in Sources */,
-				17F5BA42E2304D3BD97EF882 /* JoinView.swift in Sources */,
-				BA8AF79B02AB9D985F433D6F /* SettleView.swift in Sources */,
-				04CA66464E5E07D35AF0092E /* ClaimView.swift in Sources */,
-				CADA86BD6F27BE45B32833B3 /* ShopperView.swift in Sources */,
-				8CE98FC5A99042D448A8E72A /* ReceiptCheckView.swift in Sources */,
-				1B7F317651EDF3EDD037B680 /* ReceiptView.swift in Sources */,
-				6766B7729A9744D8966F8453 /* DibsHomeView.swift in Sources */,
-				E3857AF73318AF0529F4D71A /* UnclaimedList.swift in Sources */,
-				8A20230DD6EEF26BE41327EC /* ReceiptCamera.swift in Sources */,
-				6DC86B56A9E0EE85EE36F0DD /* ChipCard.swift in Sources */,
-				2A17EFCE99177A65702803E9 /* HeldBadge.swift in Sources */,
-				C0738C4D5817BD7DCA293613 /* SettingsSheet.swift in Sources */,
-				61C19AF83EE0460B74E80F8E /* Avatar.swift in Sources */,
-				7F45FC90F95782337F10F248 /* FixChipSheet.swift in Sources */,
-				9B6FD18BF777384CD9F06D36 /* SettleLines.swift in Sources */,
-				67E77A967233A22C8796AB09 /* Tray.swift in Sources */,
-				DF232B2F30C5BF209F216EE9 /* DuplicateCard.swift in Sources */,
-				408082564B5D51260FE68CB6 /* QRCode.swift in Sources */,
-				BAFCE516F24D8E37BA4C87A9 /* CartRows.swift in Sources */,
-				730B9CAD6839C83DEFD326B1 /* RemoveZone.swift in Sources */,
-				50367E5E051EDFBF99764D09 /* LiveView.swift in Sources */,
-				25D1E948ACDB99D7650207CF /* UndoToast.swift in Sources */,
-				818AA5F8258B975971EF4D64 /* HouseholdRows.swift in Sources */,
-				5D1DF6487D5C341F889A93B5 /* QuantityStepper.swift in Sources */,
-				22DC1878D4D9F826BCF9E23E /* OverCapSheet.swift in Sources */,
-				E8FB7F636470C2ACFD51CF6B /* NextRun.swift in Sources */,
-				34904EE7981EF975FA51E11E /* ShopperLogic.swift in Sources */,
-				241AE8EEF650EBE52B9578A1 /* Protocol.swift in Sources */,
-				0DF49C0BA7147EF126E3BE6D /* SettleLogic.swift in Sources */,
-				31005B2D8104103370DEE488 /* ClaimLogic.swift in Sources */,
-				BB0EA6E90D25EDD73F060560 /* Money.swift in Sources */,
-				9333A3275363FE6BE3CA58D7 /* WishLogic.swift in Sources */,
-				357A0444EA8FED7A6FC78F36 /* RunText.swift in Sources */,
-				D91DB1BEDA1EECC75FA8F353 /* Run.swift in Sources */,
-				C7BEE96DD0FF0EDB1369F44C /* ShoppingView.swift in Sources */,
-				D32EA73AFD1DEF2E7398B779 /* SuggestionService.swift in Sources */,
-				97F31D56E7BD882E47699F34 /* WatchModels.swift in Sources */,
-				40E6CC1D4D2DC79BBE02E73F /* PushNotifications.swift in Sources */,
-				D68E542AA7A4405A03E7F30C /* WatchBrowserRunner.swift in Sources */,
-				E3DBA717CB9C2719985FF841 /* ShoppingModels.swift in Sources */,
-				2D94A26B9A19B7C4E8235119 /* ShoppingStore.swift in Sources */,
-				20F2B4B5D87916BCC2078921 /* WatchViews.swift in Sources */,
-				18E3903D9CDB00C08C8BA4E0 /* WatchStore.swift in Sources */,
-				8BFDD7EB4EEBA9A34F26CF6E /* ShoppingTools.swift in Sources */,
-				F5DB24AD2CC9F03344D79F0C /* CalendarOnboardingView.swift in Sources */,
-				1BDF0DE9C86FD32A0B6B430C /* CalendarConnection.swift in Sources */,
-				8279DB9CB5DC6031AE49EFE8 /* GoogleCalendarAuthorization.swift in Sources */,
-				F3212DF9A50323DC80F44DE6 /* CalendarTools.swift in Sources */,
-				3A9DBAAB9C4EDAB7D7260C5F /* InventoryView.swift in Sources */,
-				32CC25A4696D1E52CAF5F1D8 /* SettingsView.swift in Sources */,
-				1F9447C413A92E025EC3E2C2 /* BrowserChatApp.swift in Sources */,
-				5FFF396C29A6860F33809BD2 /* ChatView.swift in Sources */,
-				60936E479DA93CFB72D79093 /* ConversationStore.swift in Sources */,
-				A528BF85FA7E12157B767CDD /* ChatMessageView.swift in Sources */,
-				FC08C6A870504D2ED1A8AD35 /* ChatComposer.swift in Sources */,
-				B23070E1C63DC8968A9ADA26 /* ChatAttachments.swift in Sources */,
-				65E27BE3BC7597B5CD357B11 /* ItemImages.swift in Sources */,
-				C06FF6CB7C012A68F82CB985 /* AgentCoordinator.swift in Sources */,
-				846E804F728531B81C1A8FA2 /* ModelProvider.swift in Sources */,
-				B6E905206935AF495EE6B32F /* LocalModelMedia.swift in Sources */,
-				55B48CA70E6F5B52A979CA0F /* OpenAICompatibleClient.swift in Sources */,
-				8060F4DE6978671A11A2D546 /* ModelConfiguration.swift in Sources */,
-				F3585E2E48CBCC736CE0012E /* ModelFeatureServices.swift in Sources */,
-				1330F61867FB96F0EACC0676 /* ModelTypes.swift in Sources */,
-				91B22AB74E841B6DEF278166 /* GeminiModelClient.swift in Sources */,
-				FAA23A92868D737C3D24D881 /* ModelSettingsView.swift in Sources */,
-				46714C5CAFF597A9B37962E7 /* TaskRepository.swift in Sources */,
-				3E7FDBC82A8C5D1E059483D2 /* AppLog.swift in Sources */,
-				5C1D03F12F51CB46498E1512 /* SettingsStore.swift in Sources */,
-				183A8F5946FFA275F4393AD4 /* BrowserPolicy.swift in Sources */,
-				1F8ADF47375C9C5FF6EF275F /* BrowserSession.swift in Sources */,
-				053204B9438F78EB0E41DFCD /* BrowserViewport.swift in Sources */,
-				5E5B101D94C9502695BE7F0C /* BrowserToolExecutor.swift in Sources */,
-				9341919883A5A424E6444427 /* RecognitionView.swift in Sources */,
-				28B06E7C6B10DD9CCB518354 /* InventoryForms.swift in Sources */,
-				785A972C800D37CA1E0BCD83 /* InventoryStore.swift in Sources */,
-				78576BE5A3DE216D57D566B3 /* InventoryModels.swift in Sources */,
-				FB301E2271D09E7740831270 /* RecognitionModels.swift in Sources */,
-				2A97DBE1BFA7094795E04CDE /* GeminiInventoryService.swift in Sources */,
-				C6B734CA1C17CBFE34BC84C5 /* RecognitionController.swift in Sources */,
-				966EBEED8CD89394057BEB29 /* AgoraClient.swift in Sources */,
-				F2CE1CD3A6C2148D513C7C2F /* TripModels.swift in Sources */,
-				6C9361FEC2D3C031D2ACA4B1 /* TripsView.swift in Sources */,
-				BB9ED4E4F001A1647D04B5DE /* TripPlanner.swift in Sources */,
-				F4CDF88B7C29D9BC547343C8 /* TripStore.swift in Sources */,
+				70E7CCEF18497986A7626662 /* SpendingView.swift in Sources */,
+				DCE3A6D4D047B064BE2045E4 /* CommerceTools.swift in Sources */,
+				58D9013168A66F5B94878B76 /* CommerceModels.swift in Sources */,
+				665815B0513D4972FBE5247A /* CommerceStore.swift in Sources */,
+				770B26F03BEFAC3FC08D0293 /* CaptionController.swift in Sources */,
+				DC78F5853162BE56E745A42F /* CaptionPanel.swift in Sources */,
+				3F4167F57CD5E14655F30192 /* CaptionModels.swift in Sources */,
+				014C73188DC19F92FBD5C890 /* GeminiCaptionService.swift in Sources */,
+				D5526BF2B4E8925C026A2254 /* CapturePickers.swift in Sources */,
+				5CBE5466BBB39E62B2E736D2 /* MediaLibrary.swift in Sources */,
+				F88014C29B4EE9B7B888DF07 /* CaptureView.swift in Sources */,
+				1A03DDD3BA82F66FBBB41ECF /* CaptionHTTPClient.swift in Sources */,
+				B6B8C5A21D7A0AC65BA58DE1 /* Tokens.swift in Sources */,
+				67381B4FAEBEA559D484443F /* PreviewData.swift in Sources */,
+				6420631A89FE6BDF9CE349D3 /* Styles.swift in Sources */,
+				06A760191104D49295E94E41 /* DibsAPI.swift in Sources */,
+				099DA638D31B345D7330D2B4 /* ServerConfig.swift in Sources */,
+				43A7C69285B240A5A8C3BE0E /* RunStore.swift in Sources */,
+				D291A70528CA8B381C245A2D /* DibsAPI+Wish.swift in Sources */,
+				314C6D13E807AAF97BC526C7 /* RunSocket.swift in Sources */,
+				EFA829D90BFF9EE4F5EBC2CE /* AppModel.swift in Sources */,
+				35B1137F810A761DB52963AA /* DibsRoot.swift in Sources */,
+				592D3DEB4CA0FE913186165D /* Routing.swift in Sources */,
+				99AB3C8C83E37969D2DEAD56 /* DebugLaunch.swift in Sources */,
+				1297C052AC80D583EBD853DE /* DibsLog.swift in Sources */,
+				1410BC6B8CD635A21C36D939 /* CartWatcher.swift in Sources */,
+				B63D8F621E4774C331DF7211 /* CartCamera.swift in Sources */,
+				262A141D03D69474290DD8E7 /* ScanGeometry.swift in Sources */,
+				E0E3F6D3DD3610D348A415C7 /* ShopperCamera.swift in Sources */,
+				178850BC218194A7069C6C29 /* FrameEncoder.swift in Sources */,
+				C2A796DEE53B4E5CD0FCB9AF /* PriceBrowserThumbnail.swift in Sources */,
+				241E4AA1FBA9D127E3619E2A /* DibsBrowserTools.swift in Sources */,
+				93B32D9C974834C6F99BA52D /* StoreBrowser.swift in Sources */,
+				3250F58A2890120FC464114B /* PriceWorker.swift in Sources */,
+				07D4397C6EA2F319798415A6 /* QFCTraffic.swift in Sources */,
+				E824499D9E94C767DD0FB521 /* StoreSetup.swift in Sources */,
+				4E4B356442032913AF98E776 /* StartView.swift in Sources */,
+				840A738C02F81FC27A704D24 /* WishView.swift in Sources */,
+				E8E78178E39A05D64BA24B0F /* JoinView.swift in Sources */,
+				9B492BD230A571820210B4EF /* SettleView.swift in Sources */,
+				9172436272410780B6EC5838 /* ClaimView.swift in Sources */,
+				6A074770487A08B8FF63EAC9 /* ShopperView.swift in Sources */,
+				19E5D2EC81AFF056CACDC368 /* ReceiptCheckView.swift in Sources */,
+				EA9D70A1B54507D022D104D3 /* ReceiptView.swift in Sources */,
+				D557CD95363DB2B1D169C264 /* DibsHomeView.swift in Sources */,
+				FBF71C2A6AF9CD16AF6ABB2C /* UnclaimedList.swift in Sources */,
+				99793720988529C7438F4215 /* ReceiptCamera.swift in Sources */,
+				5FD19EC4F7C1657C714B6A10 /* ChipCard.swift in Sources */,
+				300119468CD8FB9E745B00D6 /* HeldBadge.swift in Sources */,
+				91E2895B03B9CAB0F5130D40 /* SettingsSheet.swift in Sources */,
+				64671A22B77CEEF309A47959 /* Avatar.swift in Sources */,
+				B77CCCB76695520B2D974E64 /* FixChipSheet.swift in Sources */,
+				AAB3ED8026F624F048CC2A01 /* SettleLines.swift in Sources */,
+				8B102F0CF49DFC7DD11F6DA2 /* Tray.swift in Sources */,
+				2CD86427D56621CC7E05AF01 /* DuplicateCard.swift in Sources */,
+				5A349A5A99715F6E762DD8F6 /* QRCode.swift in Sources */,
+				BC2EC191120DD63E3AD335E4 /* CartRows.swift in Sources */,
+				785B9E55943D87085EF9C728 /* RemoveZone.swift in Sources */,
+				C0A4288490C9294B2CFFCAE0 /* LiveView.swift in Sources */,
+				BA66A478841B85EC4772C44E /* UndoToast.swift in Sources */,
+				DBFCBEBFA468DAE4997EEF4D /* HouseholdRows.swift in Sources */,
+				CFE9F2A6C4E1F151A7C6C472 /* QuantityStepper.swift in Sources */,
+				7A93B24A54DB18DC837F87CE /* OverCapSheet.swift in Sources */,
+				A7A15E1AD4B62B3895A693AF /* NextRun.swift in Sources */,
+				80A30657BB54B694BD15AE52 /* ShopperLogic.swift in Sources */,
+				3AA4726D9242764EE57C05E4 /* Protocol.swift in Sources */,
+				B5E35ED0D2518796AF8103AC /* SettleLogic.swift in Sources */,
+				C7AD35D1947EF94AD05BC72A /* ClaimLogic.swift in Sources */,
+				D7790DEDCE6EEBBD5A4FEE3D /* Money.swift in Sources */,
+				9C740F46E4D390AD612142EB /* WishLogic.swift in Sources */,
+				60E15D32D3EEE82F717D5EAE /* RunText.swift in Sources */,
+				244598BC9165F7AACE0EC676 /* Run.swift in Sources */,
+				2468C784098D37FEC17A84DE /* ShoppingView.swift in Sources */,
+				FE1D33D647620F95437A2EA9 /* SuggestionService.swift in Sources */,
+				C61325EFCDB30AC5042C9AED /* WatchModels.swift in Sources */,
+				5A495DF6EEC00FE9A496EC09 /* PushNotifications.swift in Sources */,
+				E31400D5BC5D4E2E68247805 /* WatchBrowserRunner.swift in Sources */,
+				86EA87D867D9062388F728D8 /* ShoppingModels.swift in Sources */,
+				A0458A0AB45E55052725D181 /* ShoppingStore.swift in Sources */,
+				7EE5D706D75803BE7F1458B6 /* WatchViews.swift in Sources */,
+				390A78D681ACEDA9B8655B27 /* WatchStore.swift in Sources */,
+				373841C921F8F561B8506520 /* ShoppingTools.swift in Sources */,
+				89D8FFDC83A6E4193001885E /* CalendarOnboardingView.swift in Sources */,
+				AE765A368D2CD0695C183097 /* CalendarConnection.swift in Sources */,
+				1B9EA3290AAF282344CC710B /* GoogleCalendarAuthorization.swift in Sources */,
+				EEF3EFF12D3BEF2DFACB6107 /* CalendarTools.swift in Sources */,
+				3C2B3E94D03F647248B0119E /* InventoryView.swift in Sources */,
+				FCF9F2383A96472124C8D1D6 /* SettingsView.swift in Sources */,
+				F1EDCE63B6DA6C43B8D306F2 /* BrowserChatApp.swift in Sources */,
+				52DACDF06C91C2948317C398 /* ChatView.swift in Sources */,
+				B19D16F18D38DF00434D9A6C /* ConversationStore.swift in Sources */,
+				1B00DE2D73C15DDCB9CE1C64 /* ChatMessageView.swift in Sources */,
+				D4C7CA4A04AF049879453DDC /* ChatComposer.swift in Sources */,
+				343E3392522E919FBA2689BC /* ChatAttachments.swift in Sources */,
+				4677AC15AF926CA3EB92DB6A /* ItemImages.swift in Sources */,
+				8D3554CC84D376F920F7443A /* AgentCoordinator.swift in Sources */,
+				E920D7C53F34199FD9EF58CE /* ModelProvider.swift in Sources */,
+				714B536C43DB02E1549548C2 /* LocalModelMedia.swift in Sources */,
+				43ED28F31D2FBC3C3B30A621 /* OpenAICompatibleClient.swift in Sources */,
+				8C2C5540ECD20A8C70F191D6 /* ModelConfiguration.swift in Sources */,
+				64D20937DEDCC0B6FB56099B /* ModelFeatureServices.swift in Sources */,
+				D781F554AEDDEF681582A133 /* ModelTypes.swift in Sources */,
+				A5B7B4711ADBDB85B3E58873 /* GeminiModelClient.swift in Sources */,
+				B4377DCD4761F5B97C99C784 /* ModelSettingsView.swift in Sources */,
+				A3655F1E6025230FD2CD8CE6 /* TaskRepository.swift in Sources */,
+				0770FBACCC05BBB29756993D /* AppLog.swift in Sources */,
+				D393AC4CCCB6FF7CB6C2F2E6 /* SettingsStore.swift in Sources */,
+				1B3F182187B66F235B03161F /* BrowserPolicy.swift in Sources */,
+				3C91778AD719774D37C98277 /* BrowserSession.swift in Sources */,
+				14DDFADBD798288C5BF69EA6 /* BrowserViewport.swift in Sources */,
+				96C3571ECEC6C8E3B3AE1C12 /* BrowserToolExecutor.swift in Sources */,
+				9FE66F30BFC27F790C2DA27D /* RecognitionView.swift in Sources */,
+				C5AF606ADF1EF4DFD891EC7E /* InventoryForms.swift in Sources */,
+				D9C264D859CBBC8CD7164C82 /* InventoryStore.swift in Sources */,
+				6C53CE5A8731B410FB780EB7 /* InventoryModels.swift in Sources */,
+				0B101E90A6F5B91C3169EF82 /* RecognitionModels.swift in Sources */,
+				E82C7F7EFE2D7C93EBC1B5AE /* GeminiInventoryService.swift in Sources */,
+				7A50E7BF70B8B1295B4FEBCB /* RecognitionController.swift in Sources */,
+				06D97BA95B0C09E10837DE7F /* AgoraClient.swift in Sources */,
+				E46F0FC126C3FBFDC16FF5DA /* TripModels.swift in Sources */,
+				C0FF464538103B3DCAA2CD24 /* TripsView.swift in Sources */,
+				66F58BDEED777D88B4F24962 /* TripPlanner.swift in Sources */,
+				6F94D489409CF99F9AAF4AF9 /* TripStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		614DEAB1F9F484C50CAE83FB /* PBXTargetDependency */ = {
+		08940C4B7AEAC6BBD456837F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = Agora;
-			target = 9D5C73A4E454140DDF39FE08 /* Agora */;
-			targetProxy = F314D5EC951B487C27D372D0 /* PBXContainerItemProxy */;
+			target = 68C738ABA3ECE6959DE068E2 /* Agora */;
+			targetProxy = 6C873A6742CDA9AA1FA4152A /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		0472523E6BBBA4952C22F8F3 /* Release */ = {
+		45BE9BA86A85750BB33F33BB /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 075675C0C4AF1D40B5D96613 /* Agora.xcconfig */;
+			baseConfigurationReference = 9B5D98E0ADEA4BF94B6A28E2 /* Agora.xcconfig */;
 			buildSettings = {
-				AGORA_APNS_ENVIRONMENT = production;
-				AGORA_PUSH_ENVIRONMENT = production;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(AGORA_BUNDLE_ID).tests";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Agora.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Agora";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		8D83145A4B5FCBEE2A7FD783 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9B5D98E0ADEA4BF94B6A28E2 /* Agora.xcconfig */;
+			buildSettings = {
+				AGORA_APNS_ENVIRONMENT = development;
+				AGORA_PUSH_ENVIRONMENT = sandbox;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_OBJC_WEAK = NO;
@@ -881,65 +918,10 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				VALIDATE_PRODUCT = YES;
 			};
-			name = Release;
+			name = Debug;
 		};
-		2160DCB0384346E6595EAC2A /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu11;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				MTL_FAST_MATH = YES;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_OPTIMIZATION_LEVEL = "-O";
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
-		5172FCC54295FAE1DC544A60 /* Debug */ = {
+		A0A2B5831A83E52087277996 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -1000,9 +982,9 @@
 			};
 			name = Debug;
 		};
-		60E4E459B42E38E81D72999A /* Debug */ = {
+		B651A1B605561643667C5CF4 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 075675C0C4AF1D40B5D96613 /* Agora.xcconfig */;
+			baseConfigurationReference = 9B5D98E0ADEA4BF94B6A28E2 /* Agora.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CLANG_ENABLE_OBJC_WEAK = NO;
@@ -1016,29 +998,12 @@
 			};
 			name = Debug;
 		};
-		8A903E2BBE6BF7B8BBCDDA98 /* Release */ = {
+		EC4EA77E1404FD42851B29E6 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 075675C0C4AF1D40B5D96613 /* Agora.xcconfig */;
+			baseConfigurationReference = 9B5D98E0ADEA4BF94B6A28E2 /* Agora.xcconfig */;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "$(AGORA_BUNDLE_ID).tests";
-				SDKROOT = iphoneos;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Agora.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Agora";
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
-		AD67C86082AA106C7774DFE5 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 075675C0C4AF1D40B5D96613 /* Agora.xcconfig */;
-			buildSettings = {
-				AGORA_APNS_ENVIRONMENT = development;
-				AGORA_PUSH_ENVIRONMENT = sandbox;
+				AGORA_APNS_ENVIRONMENT = production;
+				AGORA_PUSH_ENVIRONMENT = production;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_OBJC_WEAK = NO;
@@ -1061,35 +1026,90 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
 			};
-			name = Debug;
+			name = Release;
+		};
+		F389F0E025B04F06E3003268 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		2E5D5C59ED92B14216EA9066 /* Build configuration list for PBXNativeTarget "Agora" */ = {
+		0941F29B6A5BC36A52AD1B25 /* Build configuration list for PBXProject "Agora" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				0472523E6BBBA4952C22F8F3 /* Release */,
-				AD67C86082AA106C7774DFE5 /* Debug */,
+				A0A2B5831A83E52087277996 /* Debug */,
+				F389F0E025B04F06E3003268 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		5F249C65CE003B9156CDFD89 /* Build configuration list for PBXNativeTarget "AgoraTests" */ = {
+		250C4A35DD675244CE528A78 /* Build configuration list for PBXNativeTarget "AgoraTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				8A903E2BBE6BF7B8BBCDDA98 /* Release */,
-				60E4E459B42E38E81D72999A /* Debug */,
+				45BE9BA86A85750BB33F33BB /* Release */,
+				B651A1B605561643667C5CF4 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		8B5E05E7BA18E2DD995930BE /* Build configuration list for PBXProject "Agora" */ = {
+		6ABD2EEC39A317817FFFF045 /* Build configuration list for PBXNativeTarget "Agora" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				5172FCC54295FAE1DC544A60 /* Debug */,
-				2160DCB0384346E6595EAC2A /* Release */,
+				EC4EA77E1404FD42851B29E6 /* Release */,
+				8D83145A4B5FCBEE2A7FD783 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -1097,7 +1117,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		79249EC094542168991AE32A /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+		322D18B25A1D6CD04994425E /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
 			requirement = {
@@ -1108,17 +1128,17 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		4D7BAB1065059C1409674D09 /* GoogleSignInSwift */ = {
+		2057095550337F336FDCE4DF /* GoogleSignIn */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 79249EC094542168991AE32A /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
-			productName = GoogleSignInSwift;
-		};
-		EF48E7CD39C622104829872B /* GoogleSignIn */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 79249EC094542168991AE32A /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			package = 322D18B25A1D6CD04994425E /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignIn;
+		};
+		CE1F9EC1BCAE48B47FA963FD /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 322D18B25A1D6CD04994425E /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = E1850D01AB90D22E12183E2C /* Project object */;
+	rootObject = 44B9C83B12FF68AD374BDD99 /* Project object */;
 }

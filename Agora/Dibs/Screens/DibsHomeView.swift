@@ -41,7 +41,7 @@ struct DibsHomeView: View {
                 .padding(.top, Metrics.space2)
                 .padding(.bottom, Metrics.space1)
 
-                HouseholdCards(calendar: workspace.calendar, inventory: workspace.inventory, shopping: workspace.shopping)
+                HouseholdCards(calendar: workspace.calendar, inventory: workspace.inventory, shopping: workspace.shopping, commerce: workspace.commerce)
 
                 joinCard
             }
@@ -164,10 +164,11 @@ enum HouseholdRowAction: Equatable {
 
 /// "For your next run" (signed in, when the household has something) and "Your household", whose rows show
 /// signed in or not, so the household side of the app is always visible from the home.
-private struct HouseholdCards: View {
+struct HouseholdCards: View {
     @ObservedObject var calendar: CalendarConnection
     @ObservedObject var inventory: InventoryStore
     @ObservedObject var shopping: ShoppingStore
+    @ObservedObject var commerce: CommerceStore
     @Environment(AppModel.self) private var model
     @State private var signingIn = false
     /// The page a signed-out tap asked for; opened once sign-in succeeds.
@@ -206,7 +207,8 @@ private struct HouseholdCards: View {
                 switch HouseholdRowAction.forRow(connected: calendar.connected) {
                 case .open:
                     NavigationLink(value: Route.household(entry.page)) {
-                        DibsLinkRow(title: entry.title, detail: entry.detail, symbol: entry.symbol, tint: entry.tint)
+                        DibsLinkRow(title: entry.title, detail: entry.detail, symbol: entry.symbol, tint: entry.tint,
+                                    badge: entry.page == .spending ? Self.approvalBadge(commerce.pendingApprovals) : nil)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("home.household.\(entry.id)")
@@ -239,6 +241,9 @@ private struct HouseholdCards: View {
             }
         }
         .dibsCard()
+        .task(id: calendar.connected && commerce.canUse) {
+            if calendar.connected { await commerce.refreshState() }
+        }
         // First launch signed out: offer sign-in once, so the household side is one tap away (Cancel keeps plain Dibs).
         .onChange(of: calendar.checking, initial: true) { _, checking in
             let key = "dibs.signInOffered"
@@ -255,7 +260,12 @@ private struct HouseholdCards: View {
         }
     }
 
-    private struct Entry {
+    /// The Spending row's pill: the approvals waiting, hidden at zero.
+    static func approvalBadge(_ count: Int) -> String? {
+        count > 0 ? (count > 99 ? "99+" : String(count)) : nil
+    }
+
+    struct Entry {
         let id: String
         let page: HouseholdPage
         let title: String
@@ -264,11 +274,12 @@ private struct HouseholdCards: View {
         let tint: UInt32
     }
 
-    private static let entries: [Entry] = [
+    static let entries: [Entry] = [
         Entry(id: "lists", page: .lists, title: "Lists", detail: "Shopping lists and trips", symbol: "checklist", tint: 0xD8E2FA),
         Entry(id: "pantry", page: .pantry, title: "Pantry", detail: "What you have at home", symbol: "shippingbox", tint: 0xF2E3B5),
         Entry(id: "wishlist", page: .wishlist, title: "Wishlist", detail: "Watch prices, get suggestions", symbol: "heart", tint: 0xF6D9CC),
         Entry(id: "assistant", page: .assistant, title: "Assistant", detail: "Ask, plan, compare", symbol: "bubble.left.and.bubble.right", tint: 0xE5DDF7),
+        Entry(id: "spending", page: .spending, title: "Spending", detail: "Approvals, limits and budget", symbol: "creditcard", tint: 0xD3EDE8),
     ]
 }
 
