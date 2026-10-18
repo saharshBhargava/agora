@@ -61,8 +61,7 @@ struct RootView: View {
         case .join(let runId, let decline):
             JoinView(runId: runId, decline: decline)
         case .claim(let ref):
-            // Task 5 replaces this with ClaimView.
-            RunPendingView(ref: ref)
+            ClaimView(ref: ref, onSettle: { model.path.append(.settle(ref)) })
         case .shopper(let ref):
             ShopperView(store: model.store, api: model.api, runId: ref.runId, personId: ref.personId)
         case .settle(let ref):
