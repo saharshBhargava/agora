@@ -23,11 +23,16 @@ export function createStore(dataDir: string) {
     }
   }
 
+  /** A failed write is logged and never thrown: memory stays authoritative and clients still get the broadcast. */
   function snapshot(): void {
-    mkdirSync(dataDir, { recursive: true });
-    const tmp = `${file}.tmp`;
-    writeFileSync(tmp, JSON.stringify(Object.fromEntries(runs)));
-    renameSync(tmp, file);
+    try {
+      mkdirSync(dataDir, { recursive: true });
+      const tmp = `${file}.tmp`;
+      writeFileSync(tmp, JSON.stringify(Object.fromEntries(runs)));
+      renameSync(tmp, file);
+    } catch (e) {
+      console.error('snapshot failed', e);
+    }
   }
 
   function send(ws: WebSocket, msg: ServerMsg): void {

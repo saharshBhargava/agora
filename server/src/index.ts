@@ -113,6 +113,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
       if (process.env.RAISE_CAP === 'off') return reply.code(403).send({ error: 'raise off' });
       const run = guard(reply, req.params.id);
       if (!run) return;
+      if (run.state !== 'open' && run.state !== 'lastCall') return fail(reply, 'cart closed');
       const { personId, capCents } = req.body;
       const p = run.people.find((x) => x.id === personId);
       if (!p || p.isShopper || p.authId === null || p.authorizedCents === null) return fail(reply, 'unknown person');
@@ -145,7 +146,13 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
       );
       if ('error' in added) return fail(reply, added.error);
       if (!added.run.chips.some((c) => c.id === id)) return fail(reply, 'cart closed');
-      const found = await vision.identify(req.body.imageBase64 ?? '', req.body.hint);
+      let found;
+      try {
+        found = await vision.identify(req.body.imageBase64 ?? '', req.body.hint);
+      } catch {
+        store.update(run.id, (r) => ({ ...r, chips: r.chips.filter((c) => c.id !== id) }));
+        return reply.code(502).send({ error: 'identify failed' });
+      }
       const source = found.priceCents === null ? 'none' : 'sticker';
       const live = store.update(run.id, (r) => {
         const next = setChipLive(r, id, found.name, found.priceCents, source, now());
@@ -158,7 +165,14 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         void price
           .lookup(found.name, run.store)
           .then((hit) => {
-            if (hit) store.update(run.id, (r) => setChipPrice(r, id, hit.cents, 'web'));
+            if (!hit) return;
+            // Discard a late price unless the chip is still unpriced and the run still takes changes.
+            store.update(run.id, (r) => {
+              const c = r.chips.find((x) => x.id === id);
+              const open = r.state === 'open' || r.state === 'lastCall';
+              if (!c || !open || c.priceSource !== 'none' || c.state === 'removed' || c.dropped) return r;
+              return setChipPrice(r, id, hit.cents, 'web');
+            });
           })
           .catch(() => undefined);
       }
@@ -212,8 +226,12 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         run.id,
         setTimeout(() => {
           timers.delete(run.id);
-          const locked = store.update(run.id, (r) => lock(r, Math.max(now(), endsAt)));
-          if (!('error' in locked) && locked.run.state === 'locked') store.broadcast(run.id, { t: 'locked' });
+          try {
+            const locked = store.update(run.id, (r) => lock(r, Math.max(now(), endsAt)));
+            if (!('error' in locked) && locked.run.state === 'locked') store.broadcast(run.id, { t: 'locked' });
+          } catch (e) {
+            console.error('lock failed', e);
+          }
         }, Math.max(0, endsAt - now())),
       );
     }
@@ -233,8 +251,17 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     const run = guard(reply, req.params.id);
     if (!run) return;
     if (run.state !== 'locked' && run.state !== 'receipt') return fail(reply, 'not locked');
-    const lines = parseReceiptLines(await vision.readReceipt(req.body.imageBase64 ?? ''));
-    const res = store.update(run.id, (r) => applyReceipt(r, matchReceipt(r, lines)));
+    if (settling.has(run.id)) return fail(reply, 'settling');
+    let lines;
+    try {
+      lines = parseReceiptLines(await vision.readReceipt(req.body.imageBase64 ?? ''));
+    } catch {
+      return reply.code(502).send({ error: 'receipt read failed' });
+    }
+    if (settling.has(run.id)) return fail(reply, 'settling');
+    const res = store.update(run.id, (r) =>
+      r.state === 'locked' || r.state === 'receipt' ? applyReceipt(r, matchReceipt(r, lines)) : { error: 'not locked' },
+    );
     return 'error' in res ? fail(reply, res.error) : res.run.receipt;
   });
 
@@ -243,7 +270,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     async (req, reply) => {
       const run = guard(reply, req.params.id);
       if (!run) return;
-      if (run.state !== 'receipt') return fail(reply, 'no receipt');
+      if (run.state !== 'receipt' || settling.has(run.id)) return fail(reply, 'no receipt');
       const res = store.update(run.id, (r) => fixReceiptLine(r, req.body.lineIndex, req.body.target));
       return 'error' in res ? fail(reply, res.error) : res.run.receipt;
     },
@@ -294,15 +321,20 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         if ((msg.t === 'remove' || msg.t === 'undoRemove') && !shopper) {
           return store.send(ws, { t: 'error', reason: 'shopper only' });
         }
-        const res = store.update(runId, (r) => {
-          switch (msg.t) {
-            case 'claim': return claim(r, msg.chipId, personId, now());
-            case 'leave': return leave(r, msg.chipId, personId);
-            case 'remove': return removeChip(r, msg.chipId, now());
-            case 'undoRemove': return undoRemove(r, msg.chipId, now());
-          }
-        });
-        if ('error' in res) store.send(ws, { t: 'error', reason: res.error });
+        try {
+          const res = store.update(runId, (r) => {
+            switch (msg.t) {
+              case 'claim': return claim(r, msg.chipId, personId, now());
+              case 'leave': return leave(r, msg.chipId, personId);
+              case 'remove': return removeChip(r, msg.chipId, now());
+              case 'undoRemove': return undoRemove(r, msg.chipId, now());
+            }
+          });
+          if ('error' in res) store.send(ws, { t: 'error', reason: res.error });
+        } catch (e) {
+          console.error('ws message failed', e);
+          store.send(ws, { t: 'error', reason: 'server error' });
+        }
       });
     });
   });

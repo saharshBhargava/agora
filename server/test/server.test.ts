@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -10,6 +10,9 @@ import { SimPayments } from '../src/payments/sim.js';
 import { StubPrice } from '../src/price/stub.js';
 import { StubVision } from '../src/vision/stub.js';
 import type { Run } from '../src/types.js';
+import { sharesFor } from '../src/run.js';
+import type { Identified } from '../src/vision/provider.js';
+import type { PriceProvider } from '../src/price/provider.js';
 
 const card = { number: '4111111111111111', expMonth: 12, expYear: 2030 };
 let app: FastifyInstance;
@@ -17,7 +20,7 @@ let payments: SimPayments;
 let port: number;
 const sockets: WebSocket[] = [];
 
-beforeEach(async () => {
+async function start(over: Partial<Parameters<typeof buildServer>[0]> = {}) {
   payments = new SimPayments();
   app = await buildServer({
     payments,
@@ -25,10 +28,13 @@ beforeEach(async () => {
     price: new StubPrice(),
     lastCallMs: 50,
     dataDir: mkdtempSync(join(tmpdir(), 'dibs-')),
+    ...over,
   });
   await app.listen({ port: 0, host: '127.0.0.1' });
   port = (app.server.address() as AddressInfo).port;
-});
+}
+
+beforeEach(() => start());
 
 afterEach(async () => {
   for (const s of sockets.splice(0)) s.terminate();
@@ -93,6 +99,10 @@ describe('dibs server', () => {
     };
     await act(wa, { t: 'claim', chipId: eggs.id });
     await act(wb, { t: 'claim', chipId: eggs.id });
+    // Shares are derived with the pure sharesFor over the GET payload: the eggs split evenly.
+    const early = sharesFor(await getRun(runId));
+    expect(early.get(A)).toBe(436);
+    expect(early.get(B)).toBe(436);
     await act(wb, { t: 'claim', chipId: towels.id });
     await act(wa, { t: 'claim', chipId: milk.id });
     await act(wa, { t: 'leave', chipId: milk.id });
@@ -142,6 +152,17 @@ describe('dibs server', () => {
     expect(done.body.settle[B].capturedCents).toBe(2835);
     expect(done.body.payout.simulated).toBe(true);
 
+    // The milk was put back: only the two shares were captured, and nothing for its 429.
+    const captures = payments.calls.filter((c) => c.method === 'capture').map((c) => c.args[1]);
+    expect(captures.sort()).toEqual([2835, 436].sort());
+    expect(done.body.chips.find((c: { id: string }) => c.id === milk.id).putBack).toBe(true);
+    expect(done.body.settle[shopperId]).toBeUndefined();
+
+    // A settled run takes no raise or receipt.
+    expect((await post(`/api/runs/${runId}/raise`, { personId: A, capCents: 9000 })).status).toBe(409);
+    expect((await post(`/api/runs/${runId}/receipt`, { imageBase64: '' })).status).toBe(409);
+    expect((await post(`/api/runs/${runId}/receipt/fix`, { lineIndex: 0, target: 'mine' })).status).toBe(409);
+
     const calls = payments.calls.length;
     const again = await post(`/api/runs/${runId}/confirm`, { personId: shopperId });
     expect(again.status).toBe(200);
@@ -163,5 +184,123 @@ describe('dibs server', () => {
     expect(r.headers['content-type']).toContain('image/png');
     expect(r.rawPayload.subarray(1, 4).toString()).toBe('PNG');
     expect((await app.inject({ url: '/api/runs/nope' })).statusCode).toBe(404);
+  });
+
+  const nullPriceVision = (fail = false) => {
+    const v = new StubVision();
+    v.identify = async (): Promise<Identified> => {
+      if (fail) throw new Error('boom');
+      return { name: 'Mystery Jar', priceCents: null, cropBase64: '', confidence: 1, barcode: null };
+    };
+    return v;
+  };
+  const deferredPrice = () => {
+    let resolve!: (v: { cents: number; sourceUrl: string } | null) => void;
+    const p = new Promise<{ cents: number; sourceUrl: string } | null>((r) => (resolve = r));
+    const price: PriceProvider = { lookup: () => p };
+    return { price, resolve };
+  };
+
+  it('discards a late web price once the chip has a price', async () => {
+    const d = deferredPrice();
+    await app.close();
+    await start({ vision: nullPriceVision(), price: d.price });
+    const { runId, shopperId } = await setup();
+    const chip = (await post(`/api/runs/${runId}/chips`, { imageBase64: '' })).body;
+    await post(`/api/runs/${runId}/chips/${chip.id}/fix`, { personId: shopperId, priceCents: 500 });
+    d.resolve({ cents: 999, sourceUrl: 'x' });
+    await sleep(30);
+    const c = (await getRun(runId)).chips[0];
+    expect(c.priceCents).toBe(500);
+    expect(c.priceSource).toBe('sticker');
+  });
+
+  it('discards a late web price after the run locks, and applies it while open', async () => {
+    const d = deferredPrice();
+    await app.close();
+    await start({ vision: nullPriceVision(), price: d.price });
+    const { runId, shopperId } = await setup();
+    await post(`/api/runs/${runId}/chips`, { imageBase64: '' });
+    await post(`/api/runs/${runId}/checkout`, { personId: shopperId });
+    await sleep(80);
+    d.resolve({ cents: 999, sourceUrl: 'x' });
+    await sleep(30);
+    expect((await getRun(runId)).chips[0].priceCents).toBeNull();
+
+    const d2 = deferredPrice();
+    await app.close();
+    await start({ vision: nullPriceVision(), price: d2.price });
+    const r2 = await setup();
+    await post(`/api/runs/${r2.runId}/chips`, { imageBase64: '' });
+    d2.resolve({ cents: 999, sourceUrl: 'x' });
+    await sleep(30);
+    const c = (await getRun(r2.runId)).chips[0];
+    expect(c.priceCents).toBe(999);
+    expect(c.priceSource).toBe('web');
+  });
+
+  it('survives a failing snapshot write', async () => {
+    const blocker = join(mkdtempSync(join(tmpdir(), 'dibs-')), 'file');
+    writeFileSync(blocker, 'x');
+    await app.close();
+    await start({ dataDir: join(blocker, 'sub') });
+    const { runId, A } = await setup();
+    const ws = connect(runId, A);
+    await ws.opened;
+    await ws.waitFor((m) => m.t === 'run');
+    const chip = (await post(`/api/runs/${runId}/chips`, { imageBase64: '', hint: 'eggs' })).body;
+    ws.send({ t: 'claim', chipId: chip.id });
+    await ws.waitFor((m) => m.t === 'run' && (m.run as Run).chips[0]?.claimers.length === 1);
+    expect((await getRun(runId)).chips[0].claimers).toEqual([A]);
+  });
+
+  it('drops the chip and returns 502 when identify throws', async () => {
+    await app.close();
+    await start({ vision: nullPriceVision(true) });
+    const { runId } = await setup();
+    const r = await post(`/api/runs/${runId}/chips`, { imageBase64: '' });
+    expect(r.status).toBe(502);
+    expect(r.body).toEqual({ error: 'identify failed' });
+    expect((await getRun(runId)).chips).toHaveLength(0);
+  });
+
+  it('returns 502 when readReceipt throws', async () => {
+    const v = new StubVision();
+    v.readReceipt = async () => {
+      throw new Error('boom');
+    };
+    await app.close();
+    await start({ vision: v });
+    const { runId, shopperId } = await setup();
+    await post(`/api/runs/${runId}/checkout`, { personId: shopperId });
+    await sleep(80);
+    const r = await post(`/api/runs/${runId}/receipt`, { imageBase64: '' });
+    expect(r.status).toBe(502);
+  });
+
+  it('refuses receipt while a settle is in flight', async () => {
+    class Slow extends SimPayments {
+      override async capture(ref: string, authId: string, cents: number) {
+        await sleep(150);
+        return super.capture(ref, authId, cents);
+      }
+    }
+    const slow = new Slow();
+    await app.close();
+    await start({ payments: slow });
+    const { runId, shopperId, A } = await setup();
+    const chip = (await post(`/api/runs/${runId}/chips`, { imageBase64: '', hint: 'eggs' })).body;
+    const ws = connect(runId, A);
+    await ws.opened;
+    ws.send({ t: 'claim', chipId: chip.id });
+    await ws.waitFor((m) => m.t === 'run' && (m.run as Run).chips[0]?.claimers.length === 1);
+    await post(`/api/runs/${runId}/checkout`, { personId: shopperId });
+    await sleep(80);
+    await post(`/api/runs/${runId}/receipt`, { imageBase64: '' });
+    const confirm = post(`/api/runs/${runId}/confirm`, { personId: shopperId });
+    await sleep(40);
+    expect((await post(`/api/runs/${runId}/receipt`, { imageBase64: '' })).status).toBe(409);
+    expect((await post(`/api/runs/${runId}/receipt/fix`, { lineIndex: 0, target: 'mine' })).status).toBe(409);
+    expect((await confirm).status).toBe(200);
   });
 });
