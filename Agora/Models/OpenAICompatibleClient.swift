@@ -307,11 +307,11 @@ final class OpenAICompatibleClient: ModelClient {
         guard pending.isEmpty, !messages.isEmpty else { throw Self.invalid() }
         var body: [String: Any] = ["model": identity.model, "messages": messages, "max_tokens": request.maxOutputTokens, "stream": stream]
         if !request.tools.isEmpty {
-            body["tools"] = request.tools.map { ["type": "function", "function": ["name": $0.name, "description": $0.description, "parameters": Self.standardSchema($0.parameters).foundation]] }
+            body["tools"] = request.tools.map { ["type": "function", "function": ["name": $0.name, "description": $0.description, "parameters": ModelJSON.standardSchema($0.parameters).foundation]] }
         }
         if let schema = request.outputSchema {
             guard schema.object != nil else { throw Self.invalid() }
-            body["response_format"] = ["type": "json_schema", "json_schema": ["name": "response", "strict": true, "schema": Self.standardSchema(schema).foundation]]
+            body["response_format"] = ["type": "json_schema", "json_schema": ["name": "response", "strict": true, "schema": ModelJSON.standardSchema(schema).foundation]]
         }
         var wire = try Self.networkRequest(url: base.appendingPathComponent("chat/completions"), key: key)
         wire.httpMethod = "POST"
@@ -353,25 +353,6 @@ final class OpenAICompatibleClient: ModelClient {
         guard reason != "tool_calls" || !calls.isEmpty, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !calls.isEmpty else { throw Self.invalid() }
         // No tool call can leave this method until every call and the completion reason are validated.
         return ModelResponse(message: ModelMessage(role: .assistant, content: text.isEmpty ? [] : [.text(text)], toolCalls: calls))
-    }
-
-    /// Gemini declarations use uppercase primitive names; preserve property names and enum values.
-    static func standardSchema(_ schema: ModelJSON) -> ModelJSON {
-        switch schema {
-        case .array(let values): return .array(values.map(standardSchema))
-        case .object(let values):
-            var result: [String: ModelJSON] = [:]
-            for (key, value) in values {
-                if key == "type", case .string(let type) = value { result[key] = .string(type.lowercased()) }
-                else if key == "properties", case .object(let properties) = value { result[key] = .object(properties.mapValues(standardSchema)) }
-                else if ["$defs", "definitions", "patternProperties", "dependentSchemas"].contains(key), case .object(let schemas) = value { result[key] = .object(schemas.mapValues(standardSchema)) }
-                else if key == "type", case .array(let types) = value { result[key] = .array(types.map { if case .string(let name) = $0 { return .string(name.lowercased()) }; return $0 }) }
-                else if ["items", "additionalProperties", "anyOf", "allOf", "oneOf", "not", "prefixItems", "if", "then", "else", "contains", "propertyNames", "unevaluatedProperties"].contains(key) { result[key] = standardSchema(value) }
-                else { result[key] = value }
-            }
-            return .object(result)
-        default: return schema
-        }
     }
 
     private static func networkRequest(url: URL, key: String?) throws -> URLRequest {

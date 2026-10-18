@@ -9,6 +9,24 @@ private struct ModelWireReply {
     static func json(_ value: Any, status: Int = 200) throws -> Self {
         .init(status: status, data: try JSONSerialization.data(withJSONObject: value))
     }
+    /// Agent requests stream now. Emit the equivalent provider SSE envelope.
+    static func streamed(_ value: [String: Any]) throws -> Self {
+        var event = value
+        if let choices = value["choices"] as? [[String: Any]] {
+            event["choices"] = choices.map { choice in
+                var choice = choice
+                if var delta = choice.removeValue(forKey: "message") as? [String: Any] {
+                    if let calls = delta["tool_calls"] as? [[String: Any]] {
+                        delta["tool_calls"] = calls.enumerated().map { index, call in call.merging(["index": index]) { _, new in new } }
+                    }
+                    choice["delta"] = delta
+                }
+                return choice
+            }
+        }
+        let data = try JSONSerialization.data(withJSONObject: event)
+        return .init(headers: ["Content-Type": "text/event-stream"], data: Data("data: ".utf8) + data + Data("\n\ndata: [DONE]\n\n".utf8))
+    }
 }
 
 /// Real URLSession transport plus deterministic responses; model and credential data never leave this protocol.
@@ -253,6 +271,48 @@ final class ModelIntegrationTests: XCTestCase {
         }
     }
 
+    func testChatToolSchemasUseGeminiJSONSchemaAndPreserveLocalConstraints() async throws {
+        let tools = try (BrowserCall.schemas + CalendarCall.schemas + ShoppingCall.schemas).map(ModelToolDefinition.init(legacy:))
+        let input = ModelRequest(instructions: "Reply briefly", messages: [.init(role: .user, content: [.text("Hello")])], tools: tools)
+        for provider in networkProviders {
+            for streaming in [false, true] {
+                ModelWireProtocol.handler = { request in
+                    let body = try modelWireBody(request)
+                    let wireTools = try XCTUnwrap(body["tools"] as? [[String: Any]])
+                    let declarations: [[String: Any]]
+                    let field: String
+                    if provider == .gemini {
+                        declarations = try XCTUnwrap(wireTools.first?["functionDeclarations"] as? [[String: Any]])
+                        field = "parametersJsonSchema"
+                        XCTAssertTrue(declarations.allSatisfy { $0["parameters"] == nil }, "Gemini's legacy Schema rejects additionalProperties")
+                    } else {
+                        declarations = try wireTools.map { try XCTUnwrap($0["function"] as? [String: Any]) }
+                        field = "parameters"
+                    }
+                    XCTAssertEqual(declarations.count, tools.count)
+                    for declaration in declarations {
+                        let schema = try XCTUnwrap(declaration[field] as? [String: Any])
+                        XCTAssertEqual(schema["type"] as? String, "object")
+                        let properties = try XCTUnwrap(schema["properties"] as? [String: [String: Any]])
+                        XCTAssertTrue(properties.values.allSatisfy { ($0["type"] as? String).map { $0 == $0.lowercased() } == true })
+                        if declaration["name"] as? String == "shopping_suggest" {
+                            XCTAssertEqual(schema["additionalProperties"] as? Bool, false)
+                            XCTAssertEqual(schema["required"] as? [String], ["title", "category", "quantity", "rationale", "confidence", "evidenceItemIds"])
+                            XCTAssertEqual((properties["evidenceItemIds"]?["items"] as? [String: Any])?["type"] as? String, "string")
+                        }
+                        if declaration["name"] as? String == "shopping_context" {
+                            XCTAssertTrue(properties.isEmpty)
+                            XCTAssertEqual(schema["additionalProperties"] as? Bool, false)
+                        }
+                    }
+                    return try streaming ? self.streamingResponse(provider, text: "Hello") : .json(self.response(provider, text: "Hello"))
+                }
+                let result = try await (streaming ? client(provider).stream(input, onEvent: { _ in }) : client(provider).generate(input, onEvent: { _ in }))
+                XCTAssertEqual(result.text, "Hello")
+            }
+        }
+    }
+
     func testBothProvidersStreamThroughRealURLSessionTransport() async throws {
         for provider in networkProviders {
             ModelWireProtocol.handler = { _ in try self.streamingResponse(provider, text: "A blue square.") }
@@ -414,10 +474,10 @@ extension ModelIntegrationTests {
                 let body = try modelWireBody(request)
                 if turns == 1 {
                     if provider == .gemini {
-                        return try .json(["candidates": [["finishReason": "STOP", "content": ["role": "model", "parts": [[
+                        return try .streamed(["candidates": [["finishReason": "STOP", "content": ["role": "model", "parts": [[
                             "thoughtSignature": "retain-this-signature", "functionCall": ["id": "observe-1", "name": "browser_observe", "args": [:]]]]]]]])
                     }
-                    return try .json(["choices": [["index": 0, "finish_reason": "tool_calls", "message": [
+                    return try .streamed(["choices": [["index": 0, "finish_reason": "tool_calls", "message": [
                         "role": "assistant", "content": NSNull(), "tool_calls": [["id": "observe-1", "type": "function",
                         "function": ["name": "browser_observe", "arguments": "{}"]]]]]]])
                 }
@@ -437,7 +497,7 @@ extension ModelIntegrationTests {
                     XCTAssertEqual(result["tool_call_id"] as? String, "observe-1")
                     XCTAssertTrue((result["content"] as? String)?.contains("error") == true)
                 }
-                return try .json(self.response(provider, text: "Please open a page first."))
+                return try .streamed(self.response(provider, text: "Please open a page first."))
             }
             agent.send("Read the page")
             try await waitUntil { !agent.running }
@@ -456,7 +516,7 @@ extension ModelIntegrationTests {
         var requests = 0
         ModelWireProtocol.handler = { _ in
             requests += 1
-            return try .json(["choices": [["index": 0, "finish_reason": "tool_calls", "message": [
+            return try .streamed(["choices": [["index": 0, "finish_reason": "tool_calls", "message": [
                 "role": "assistant", "content": NSNull(), "tool_calls": [
                     ["id": "first", "type": "function", "function": ["name": "browser_observe", "arguments": "{}"]],
                     ["id": "bad", "type": "function", "function": ["name": "browser_open", "arguments": "{invalid"]]
@@ -480,7 +540,7 @@ extension ModelIntegrationTests {
             requests += 1
             if requests == 1 { try await Task.sleep(for: .seconds(30)) }
             else { nextBody = try modelWireBody(request) }
-            return try .json(self.response(.openAICompatible, text: "Fresh model conversation."))
+            return try .streamed(self.response(.openAICompatible, text: "Fresh model conversation."))
         }
         agent.send("Private previous task")
         try await waitUntil { requests == 1 }

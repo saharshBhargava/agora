@@ -133,3 +133,51 @@ no additional teammate cloud invitations were configured in this setup. See [dep
 Do not distribute database credentials, JWT signing secrets or backend provider keys to make the app connect.
 The full wishlist/forecast/list/commerce screens and six-hour refresh remain separate work where marked in
 [frontend requests](frontend-requests.md); the existence of populated API data is not proof of a finished UI.
+
+## Native chat workspace — October 18, 2026
+
+The chat screen uses `Agora/Chat/` for conversation state, row rendering, attachments, dictation and
+navigation; `AgentCoordinator` owns execution and `BrowserSession` continues to own the single `WKWebView`.
+Messages publish text independently, so streaming does not replace the transcript. Both network adapters
+stream visible text; tool calls execute only after the complete response passes validation. Gemini thought
+parts and signatures remain inside the adapter's continuation data and are never rendered as progress.
+
+The history sheet searches titles and messages, supports rename/archive/delete, and keeps each chat's draft,
+attachments and model context. This history is **in memory for the signed-in session**, not synchronized to
+Agora or restored after relaunch. Sign-out/account changes clear all chats. The existing durable task journal
+still detects interrupted execution without storing prompts, page contents, credentials or attachments.
+
+Attach up to four photos, PDFs or UTF-8 text files. Photos are resized; PDFs send extracted text, not page
+images. The composer previews/removes individual attachments and retains a draft when a request cannot
+start. Demo accounts retain their built-in sample/media disclosures. The microphone uses native Speech
+recognition and requests microphone/speech permission; transcription is editable and never sends itself.
+
+Browser presentation and dragging are user-owned. One mounted viewport moves between thumbnail, hidden,
+full workspace and wide-screen side pane. Hiding retains the page; **Chat menu → Show Browser** restores it.
+Touching the expanded page pauses conflicting execution; Continue refreshes browser ownership before the
+next turn. Approval cards retain pending/approved/rejected/expired state. Stop immediately invalidates the
+run; late model events cannot append content or dispatch tools. Uncertain Calendar writes still require
+checking the Calendar before retrying.
+
+`ChatFixtures` is used only by render tests; it never populates an ordinary account. `ChatInterfaceTests`
+covers message identity, cancellation, draft/context restoration, attachments, approval expiry, Markdown,
+scroll following, and browser identity/input/scroll/cookie preservation across the actual SwiftUI layouts.
+Physical-device dictation and live credentialed provider requests require separate device verification.
+
+### Gemini chat request correction — October 18, 2026
+
+Simulator logs at 01:40:33 PDT show `gemini-flash-latest:streamGenerateContent` returning HTTP 400.
+A credential-free request with the app's shopping-tool schema reproduced Google's rejection of
+`additionalProperties` in `functionDeclarations[].parameters`. The Gemini adapter now uses
+`parametersJsonSchema`, with the same schema normalization as the OpenAI-compatible adapter, so JSON
+Schema constraints are retained and legacy uppercase types become lowercase. See Google's
+[function declaration contract](https://ai.google.dev/api/generate-content#FunctionDeclaration).
+The corrected credential-free request reaches the authentication gate (403); this verifies removal of
+that wire-format rejection, not successful authenticated inference. Existing logs intentionally omit
+provider response bodies, prompts and credentials.
+
+The chat welcome artwork/text and suggestion cards are removed. The composer uses one compact row that
+expands for multiline text, with 16 points of bottom padding to separate it from the tabs.
+
+Validation: four focused provider/schema simulator tests passed in the isolated chat checkout; the
+shared working checkout built successfully. Live authenticated inference remains unverified.

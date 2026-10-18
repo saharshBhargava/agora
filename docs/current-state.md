@@ -176,3 +176,38 @@ client navigation change with no new stored data, API, or migration.
 Validation: 73 selected iOS simulator tests passed, including inventory, shopping, watches, trips and
 authentication checks. The Lists overview simulator capture was inspected. No production deployment or
 new distributed iOS build is claimed.
+
+## Native chat workspace — October 18, 2026
+
+The native chat now has a model selector, independently streaming message rows, Markdown/tables/code,
+copy/link controls, image/document previews, dictation, tool disclosures, inline approval states, immediate
+Stop, and a searchable conversation sheet with rename/archive/delete. Drafts, attachments and provider
+context are retained per chat **for the signed-in session**; sign-out/account changes clear this in-memory
+history. The task journal remains metadata-only. No backend schema or stored server account data changed.
+
+The same mounted `WKWebView` remains live across draggable thumbnail, hidden, expanded and wide-screen
+side-pane presentations. User presentation changes do not cancel agent work; actual page interaction
+revokes conflicting work. Tests verify identity, input text, scroll position, navigation history and session
+cookies across these layouts. Gemini now streams visible text on tool turns while preserving signed
+continuations and validating completed tool batches before execution. Private thought text is not rendered.
+
+Validation: 71 selected simulator tests passed in an isolated checkout based on `524967d`, including the
+chat, browser, auth/Calendar boundaries and both provider adapters. The real loopback streaming/tool flow
+ran without skipping. The isolated checkout also included the already-existing local OpenAI-compatible
+noncanonical-IP validation fix; without that unrelated fix, the existing `010.0.0.1` test fails on main.
+The shared working checkout built successfully. Light/dark, large-text, empty/history, attachment/approval
+and browser layouts were captured and inspected. Broader exploratory tests encountered an unsigned-build
+Keychain limitation and a video-cancellation test process exit; no full-suite pass is claimed. Live provider
+credentials, microphone hardware, real Google consent and a distributed iOS release are not verified here.
+See [frontend handoff](frontend-handoff.md#native-chat-workspace--october-18-2026) for client behavior/limits.
+
+Final layout follow-up: 11 focused chat/browser tests passed, followed by a successful render regression
+check after resetting lazy row height estimates on Dynamic Type changes. This fixes an iOS 18 transcript
+that could remain beyond its content after reducing text size. The final thumbnail/minimized capture was
+inspected with the conversation visible and browser state retained. Local captures and logs are under
+`build/chat-interface/` (ignored build artifacts). No production deployment was performed.
+
+Publication validation: the exact chat-only changes on current main (`8292694`) passed all 42 selected
+simulator tests, including chat rendering/browser state, authentication/Calendar boundaries and both
+provider transports. This final run excludes the unrelated local IP-validation change mentioned above.
+The Gemini schema correction and compact composer/tab spacing are included.

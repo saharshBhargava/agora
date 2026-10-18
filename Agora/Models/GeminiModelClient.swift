@@ -76,8 +76,8 @@ final class GeminiModelClient: ModelClient {
         try await perform(request, streaming: false, onEvent: onEvent)
     }
     func stream(_ request: ModelRequest, onEvent: @escaping @MainActor (ModelEvent) -> Void) async throws -> ModelResponse {
-        // Tool turns are returned atomically, so no partial tool call can execute.
-        try await perform(request, streaming: capabilities.streaming && request.tools.isEmpty, onEvent: onEvent)
+        // Visible text streams; tool calls remain buffered until the complete response validates.
+        try await perform(request, streaming: capabilities.streaming, onEvent: onEvent)
     }
     private func perform(_ input: ModelRequest, streaming: Bool, onEvent: @escaping @MainActor (ModelEvent) -> Void) async throws -> ModelResponse {
         try validateModelRequest(input, capabilities: capabilities)
@@ -98,16 +98,28 @@ final class GeminiModelClient: ModelClient {
                 var body: [String: Any] = ["systemInstruction": ["parts": [["text": input.instructions]]],
                     "contents": try input.messages.map { try GeminiConversationCodec.encode($0, media: prepared) }, "generationConfig": config]
                 if !input.tools.isEmpty {
-                    body["tools"] = [["functionDeclarations": input.tools.map { ["name": $0.name, "description": $0.description, "parameters": $0.parameters.foundation] }]]
+                    // Full JSON Schema (including additionalProperties) belongs in parametersJsonSchema,
+                    // not Gemini's narrower OpenAPI parameters field.
+                    body["tools"] = [["functionDeclarations": input.tools.map { ["name": $0.name, "description": $0.description, "parametersJsonSchema": ModelJSON.standardSchema($0.parameters).foundation] }]]
                 }
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 // Preserve caption retry behavior; agent/tool turns are never replayed here.
-                let attempts = streaming ? 3 : 1
+                let attempts = streaming && input.tools.isEmpty ? 3 : 1
                 for attempt in 0..<attempts {
                     do {
                         try Task.checkCancellation(); onEvent(.progress(.generating))
                         if streaming {
                             onEvent(.text(""))
+                            if !input.tools.isEmpty {
+                                var accumulator = GeminiChatStream()
+                                try await self.http.stream(request) { chunk in
+                                    try accumulator.consume(chunk); onEvent(.text(accumulator.text))
+                                }
+                                try Task.checkCancellation()
+                                let message = try accumulator.result()
+                                try validateModelResponse(message, request: input)
+                                return ModelResponse(message: message)
+                            }
                             var accumulator = CaptionResponseAccumulator()
                             try await self.http.stream(request) { chunk in
                                 try accumulator.consume(chunk); onEvent(.text(accumulator.text))
@@ -212,5 +224,49 @@ final class LegacyModelClient: ModelClient {
         let response = try await provider.nextTurn(contents: request.messages.map { try GeminiConversationCodec.encode($0) },
             tools: request.tools.map { ["name": $0.name, "description": $0.description, "parameters": $0.parameters.foundation] })
         return ModelResponse(message: try GeminiConversationCodec.decode(response))
+    }
+}
+
+/// Preserve signed parts verbatim and never expose thoughts or dispatch an incomplete tool batch.
+struct GeminiChatStream {
+    private var parts: [[String: Any]] = []
+    private var bytes = 0
+    private var finished = false
+    private(set) var text = ""
+    mutating func consume(_ data: Data) throws {
+        bytes += data.count
+        guard bytes <= 8_000_000,
+              let root = try JSONSerialization.jsonObject(with: data) as? [String: Any], root["error"] == nil,
+              (root["promptFeedback"] as? [String: Any])?["blockReason"] == nil,
+              let candidates = root["candidates"] as? [[String: Any]], candidates.count <= 1 else {
+            throw BrowserError("incomplete_model_response")
+        }
+        guard let candidate = candidates.first else { return }
+        guard !finished, (candidate["index"] as? Int ?? 0) == 0 else { throw BrowserError("incomplete_model_response") }
+        if let content = candidate["content"] as? [String: Any] {
+            guard content["role"] == nil || content["role"] as? String == "model",
+                  let incoming = content["parts"] as? [[String: Any]] else { throw BrowserError("incomplete_model_response") }
+            for part in incoming {
+                if let thought = part["thought"], !(thought is Bool) { throw BrowserError("incomplete_model_response") }
+                if let value = part["text"] {
+                    guard let value = value as? String else { throw BrowserError("incomplete_model_response") }
+                    if part["thought"] as? Bool != true { text += value }
+                }
+                // Only coalesce unsigned plain text; signature boundaries must survive the next turn.
+                if part.count == 1, let value = part["text"] as? String,
+                   let last = parts.last, last.count == 1, let previous = last["text"] as? String {
+                    parts[parts.count - 1] = ["text": previous + value]
+                } else { parts.append(part) }
+                guard parts.count <= 256, text.utf8.count <= 128_000 else { throw BrowserError("incomplete_model_response") }
+            }
+        }
+        if let reason = candidate["finishReason"] as? String {
+            guard reason == "STOP" else { throw BrowserError("incomplete_model_response", "The response was interrupted. No incomplete tools were executed.") }
+            finished = true
+        }
+    }
+    func result() throws -> ModelMessage {
+        guard finished else { throw BrowserError("incomplete_model_response", "The connection ended before the response completed. Please retry.") }
+        return try GeminiConversationCodec.decode(["role": "model", "parts": parts])
     }
 }
