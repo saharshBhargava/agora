@@ -1,4 +1,5 @@
 import hashlib
+import re
 import time
 from dataclasses import dataclass
 from uuid import UUID
@@ -13,6 +14,10 @@ from app.errors import Problem
 
 DEV_ISSUER = "agora-dev"
 DEV_AUDIENCE = "agora-api"
+# Must match app.demo_account.DEMO_SUBJECT and the handle pattern on DevLoginIn.
+# Kept here (not imported) because demo_account imports this module.
+_DEMO_TOKEN_SUBJECT = "demo:primary"  # noqa: S105 - auth subject namespace, not a password
+_DEV_HANDLE = re.compile(r"^[a-z0-9_]{3,32}$")
 
 
 @dataclass(frozen=True)
@@ -22,7 +27,16 @@ class Principal:
     handle: str
 
 
+def is_dev_token_subject(subject: str) -> bool:
+    """True only for subjects ``/v1/dev/login`` is allowed to mint (``demo:primary`` or ``dev:<handle>``)."""
+    return subject == _DEMO_TOKEN_SUBJECT or (
+        subject.startswith("dev:") and _DEV_HANDLE.fullmatch(subject.removeprefix("dev:")) is not None
+    )
+
+
 def mint_dev_token(settings: Settings, subject: str) -> tuple[str, int]:
+    if not is_dev_token_subject(subject):
+        raise ValueError(f"refusing to mint HS256 token for non-dev subject: {subject!r}")
     now = int(time.time())
     exp = now + settings.dev_token_ttl_s
     token = jwt.encode(
@@ -48,11 +62,12 @@ class TokenVerifier:
         """(subject, verified email or None)."""
         try:
             if self.settings.dev_login_enabled and jwt.get_unverified_header(token).get("alg") == "HS256":
-                # Demo dev tokens next to Google ones. Only the server can mint these (pinned HS256 + secret).
+                # Demo/dev tokens next to Google ones. Signature proves the secret holder minted the JWT;
+                # the subject allowlist below stops a stolen secret from impersonating Google accounts.
                 claims = jwt.decode(token, self.settings.dev_jwt_secret.get_secret_value(), algorithms=["HS256"],
                                     audience=DEV_AUDIENCE, issuer=DEV_ISSUER,
                                     options={"require": ["exp", "sub", "iss", "aud"]})
-                return self._subject(claims, namespace=""), None
+                return self._dev_token_subject(claims), None
             if self._native_google:
                 key = self._jwks.get_signing_key_from_jwt(token).key
                 claims = jwt.decode(
@@ -70,11 +85,19 @@ class TokenVerifier:
                 claims = jwt.decode(token, self.settings.dev_jwt_secret.get_secret_value(), algorithms=["HS256"],
                                     audience=DEV_AUDIENCE, issuer=DEV_ISSUER,
                                     options={"require": ["exp", "sub", "iss", "aud"]})
+                return self._dev_token_subject(claims), None
         except jwt.PyJWTError as error:
             raise Problem(401, "invalid_token", "Sign in again.") from error
         email = claims.get("email") if claims.get("email_verified") in (True, "true") else None
         return self._subject(claims, namespace="google:" if self._native_google else ""), (
             email.strip().lower() if isinstance(email, str) else None)
+
+    @classmethod
+    def _dev_token_subject(cls, claims: dict) -> str:
+        subject = cls._subject(claims, namespace="")
+        if not is_dev_token_subject(subject):
+            raise Problem(401, "invalid_token", "Sign in again.")
+        return subject
 
     @staticmethod
     def _subject(claims: dict, namespace: str) -> str:

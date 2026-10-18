@@ -39,7 +39,11 @@ async def require_household(conn: asyncpg.Connection, household_id: UUID | None,
 
 @router.post("/dev/login", response_model=TokenOut, tags=["dev"])
 async def dev_login(body: DevLoginIn, request: Request) -> TokenOut:
-    """Development and demo sign-in. Disabled entirely when a real identity provider is configured."""
+    """Development and demo sign-in.
+
+    Available when AGORA_AUTH_MODE=dev, or on hosted demo when AGORA_DEMO_PASSWORD is set
+    (even with AGORA_AUTH_MODE=google).
+    """
     settings = request.app.state.settings
     if not settings.dev_login_enabled:
         raise not_found()
