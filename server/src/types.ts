@@ -53,6 +53,8 @@ export type ReceiptState = {
   lines: ReceiptLine[];
   matches: { chipId: string; lineIndex: number; confidence: number }[];
   unmatchedLines: number[];
+  /** Lines the shopper claimed as their own. */
+  mine?: number[];
 };
 
 export type SettleStep = 'joined' | 'settling' | 'incremented' | 'reversed' | 'captured' | 'failed';
