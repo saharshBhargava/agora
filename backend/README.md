@@ -1,5 +1,7 @@
 # Agora backend
 
+> **Deploying for the demo?** Follow [SETUP.md](../SETUP.md): every account and key, in order, all free.
+
 FastAPI + Postgres (TimescaleDB when available). Design and rationale: [docs/backend-spec.md](../docs/backend-spec.md).
 
 This is the **P0 spine**: dev auth, households, scan upload → vision → review → inventory time series, live sync,
@@ -118,7 +120,7 @@ container and any Postgres 14+ will work. Moving hosts means moving env vars; no
 | Vision | Gemini API key from AI Studio | No | Free tier. Perceptron is used instead if the sponsor gives us a key |
 | Auth | Built-in dev tokens (`AGORA_ENV=demo`) | n/a | No identity-provider account needed for the demo |
 
-Steps:
+Steps (the full walkthrough, including Google sign-in, is in [SETUP.md](../SETUP.md)):
 
 1. Tiger Cloud: create a **Free** service and copy the connection string (`postgres://tsdbadmin:...?sslmode=require`).
 2. Render: **New > Blueprint**, pick this repo. Render reads `render.yaml`. Paste the Tiger URL into
@@ -158,7 +160,10 @@ no credentials or deployed API URL are included in the repository.
    the Google Sign-In SDK or a separate iOS OAuth client.
 3. Request these scopes: `openid`, `email`, `https://www.googleapis.com/auth/calendar.events`, and
    `https://www.googleapis.com/auth/calendar.freebusy`. Users must grant both Calendar permissions.
-4. Set backend secrets/configuration:
+4. Set backend secrets/configuration. On Render, only the client ID and secret are needed: `render.yaml`
+   generates the token key, and the redirect URI defaults to `$RENDER_EXTERNAL_URL/v1/integrations/google/callback`
+   (set `AGORA_PUBLIC_URL` on other hosts). `AGORA_AUTH_MODE` can stay `dev` in demo mode: Google sessions work
+   alongside the seeded dev logins.
 
    ```dotenv
    AGORA_AUTH_MODE=google

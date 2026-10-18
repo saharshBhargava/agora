@@ -14,7 +14,7 @@ Set it in Xcode as the user-defined build setting `AGORA_API_BASE_URL` (read via
 | Shared dev deploy | The Render URL once deployed from `render.yaml`, e.g. `https://agora-api.onrender.com` (first request after idle can take ~1 min) |
 | Backend on your Mac (simulator or device) | `cloudflared tunnel --url http://localhost:8000` → `https://<random>.trycloudflare.com` (free, no account; the URL changes each run) |
 
-Run the backend locally with `backend/README.md` → "Run locally". If you'd rather skip Docker, point
+To stand up the shared deploy, see [SETUP.md](../../SETUP.md). Run the backend locally with `backend/README.md` → "Run locally". If you'd rather skip Docker, point
 `AGORA_DATABASE_URL` at a free Tiger Cloud service.
 
 Auth for dev and demo: exchange a handle for a bearer token. Seeded handles are `kedar` and `saharsh`. On a demo

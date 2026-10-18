@@ -33,3 +33,11 @@ services:
         value: "true"
       - key: AGORA_SEED_ON_BOOT          # idempotent: creates demo accounts once, never overwrites
         value: "true"
+      # Google sign-in + Calendar (the iOS app requires it). Leave the first two empty for the first deploy;
+      # the redirect URI defaults to this service's own URL, and the token-encryption key is generated once.
+      - key: AGORA_GOOGLE_CLIENT_ID
+        sync: false
+      - key: AGORA_GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: AGORA_GOOGLE_TOKEN_KEY      # never change it after users connect, or they must reconnect
+        generateValue: true
