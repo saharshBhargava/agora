@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getPrice } from '../src/price/provider.js';
 import { GeminiPrice } from '../src/price/gemini.js';
 import { firstJSONObject } from '../src/gemini/json.js';
+import { generate, geminiModels } from '../src/gemini/client.js';
 import { getVision } from '../src/vision/provider.js';
 import { GeminiVision } from '../src/vision/gemini.js';
 
@@ -114,5 +115,38 @@ describe('json + wiring', () => {
       expect(getVision()).toBeInstanceOf(GeminiVision);
       expect(getPrice()).toBeInstanceOf(GeminiPrice);
     });
+  });
+});
+
+describe('generate model fallback', () => {
+  const ok = { candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'ok' }] } }] };
+  const reply = (status: number, body: unknown = {}) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+  it('moves to the next model on 503 and 404, in order', async () => {
+    process.env.GEMINI_MODEL = 'a,b,c';
+    const seen: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      seen.push(String(url).split('/models/')[1].split(':')[0]);
+      return seen.length === 1 ? reply(503) : seen.length === 2 ? reply(404) : reply(200, ok);
+    }) as unknown as typeof fetch;
+    const r = await generate({}, { fetchImpl, apiKey: 'k' });
+    expect(seen).toEqual(['a', 'b', 'c']);
+    expect(r.candidates?.[0]?.finishReason).toBe('STOP');
+    delete process.env.GEMINI_MODEL;
+  });
+
+  it('stops on a 400 instead of trying other models', async () => {
+    process.env.GEMINI_MODEL = 'a,b';
+    let calls = 0;
+    const fetchImpl = (async () => { calls++; return reply(400); }) as unknown as typeof fetch;
+    await expect(generate({}, { fetchImpl, apiKey: 'k' })).rejects.toThrow('Gemini HTTP 400 (a)');
+    expect(calls).toBe(1);
+    delete process.env.GEMINI_MODEL;
+  });
+
+  it('defaults to models new keys can use', () => {
+    delete process.env.GEMINI_MODEL;
+    expect(geminiModels()[0]).toBe('gemini-3.6-flash');
   });
 });
