@@ -177,9 +177,9 @@ def forecast(levels: list[DailyLevel], *, latest: tuple[datetime, float] | None,
             lo, hi = min(lo, rate - spread), max(hi, rate + spread)
         method: Method = "theil_sen"
         if prior is not None and informative < FULL_HISTORY:
-            rate, lo, hi = (blend(observed, prior_rate, informative, prior.weight) for observed, prior_rate in
-                            ((rate, prior.rate_per_day), (lo, prior.rate_per_day * 0.5),
-                             (hi, prior.rate_per_day * 1.5)))
+            p = prior.rate_per_day
+            rate, lo, hi = (blend(rate, p, informative, prior.weight), blend(lo, p * 0.5, informative, prior.weight),
+                            blend(hi, p * 1.5, informative, prior.weight))
             method = "blended"
     elif prior is not None and latest is not None:
         rate, lo, hi, method = prior.rate_per_day, prior.rate_per_day * 0.5, prior.rate_per_day * 1.5, "prior"
