@@ -1,0 +1,7 @@
+// Shared defaults. Per-machine values (server URL, signing team, bundle id) go in ios/Local.xcconfig,
+// which is optional and gitignored. Copy ios/Local.xcconfig.example to start.
+// `//` starts a comment in an xcconfig, so URLs are written as http:/$()/host.
+DIBS_SERVER_URL = http:/$()/localhost:3000
+DIBS_BUNDLE_ID = dev.dibs.app
+
+#include? "../Local.xcconfig"

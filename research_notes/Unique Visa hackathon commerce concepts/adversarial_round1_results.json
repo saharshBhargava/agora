@@ -1,0 +1,445 @@
+{
+  "summary": "Generators pitch consumer food/grocery hackathon ideas for college students; hostile judges try to kill each; survivors get rebuilt and face a final executioner",
+  "agentCount": 10,
+  "logs": [
+    "12 ideas generated",
+    "2 ideas survived with at most 1 kill vote; advancing 2"
+  ],
+  "result": {
+    "all_ideas_scored": [
+      {
+        "name": "Listcard (your grocery list is the card)",
+        "lens": "interaction",
+        "one_liner": "You write a grocery list on paper, snap it, and that piece of paper becomes a Visa card that can only buy what's written on it. Cross something out with a pen and the card stops buying it.",
+        "kills": 0,
+        "avg": 7,
+        "verdicts": [
+          "prior-art-hunter: live 7 - Turning a photo of a handwritten list into a cart already exists, so that part is not the idea. Nobody issues a card whose authority lives on the paper itself (write to grant, strike to revoke, tear to freeze), and no consumer card restricts spending to a person's own item list. The weak spot is that item-level enforcement is fully mocked, since Visa authorizes amounts, not items, and Visa judges will push on that.",
+          "cynical-student: live 6 - Tearing the paper to freeze the card is a real 'wait, what' moment, and it follows the Math Sandbox paper pattern that already won. The catch is that nobody under 25 writes grocery lists on paper, and item-level blocking at a real Safeway doesn't exist. It's a great expo demo and a weak 'would I use it' story. Keep it only if you lean on the physical spectacle and admit the item checks are mocked.",
+          "expo-judge: live 8 - Best table moment I'd see all day: I write the list, I cross out an item, I tear the card, and each pen mark is a spend control I can watch take effect. Like Math Sandbox, the paper is the control surface. Trust and control are the product itself, not a feature added on. You must say plainly that item-level enforcement is mocked, and you must make strike-through and tear detection reliable on cheap index cards before anything else."
+        ]
+      },
+      {
+        "name": "Reach-In",
+        "lens": "interaction",
+        "one_liner": "Your friend is at Trader Joe's with their camera on. You tap the Takis in their video and they're yours, charged to your card, and your friend never pays for you.",
+        "kills": 1,
+        "avg": 6,
+        "verdicts": [
+          "prior-art-hunter: KILL 4 - Tapping a product in a live stream to buy it is shipped (Facebook Live Shopping, TikTok Shop, Whatnot). Shopping with friends over live video, where they add to your cart, also shipped as Verishop Shop Party. Moving it into a physical store with a friend holding the camera is a reskin of those plus Instacart shopper photo chat.",
+          "cynical-student: live 7 - Tapping the Takis in my friend's live video and having them be mine is the only idea here I'd actually show my roommate tonight. Lurking on someone's TJ's run is funny on its own. The risk is the runner having to stream the whole trip, and that split tender at the register isn't real, so the runner pays and gets reimbursed. The tap interaction is new enough to carry it.",
+          "expo-judge: live 7 - 'Tap the Takis in your friend's video and they're yours' makes sense in two seconds and needs two phones, so it's two-sided by nature. Keep this one from the grocery-run trio and borrow Dibs Run's rule that the hold only becomes a charge once the camera sees the item in the basket. The weak point is the claim that the runner never fronts money: at a real POS the runner pays and gets reimbursed, so show that as push-to-card, not split tender. A live stream plus tap grounding is the hardest 36-hour build here, so lock the mock shelf early."
+        ]
+      },
+      {
+        "name": "Dinner Cap Table",
+        "lens": "game-conceit",
+        "one_liner": "Group dinner is a startup: what you bring buys you shares, what you eat burns them, and when the plate is empty everyone's card settles to the cent.",
+        "kills": 2,
+        "avg": 4.7,
+        "verdicts": [
+          "prior-art-hunter: live 5 - I found no product that treats food brought in kind as credit and food eaten as debit, then nets them in one settlement. Potluck apps track who brings what, and Cliq and PartyPot net cash, but nothing measures both sides. It inherits all of the shared-plate exposure (Just Walk Out, Splitwise shares) and adds a harder vision problem, pricing whatever someone drops on the table.",
+          "cynical-student: KILL 4 - The 'bringing food buys you equity' framing is the cleverest of the four pizza-split ideas. It's still the same petty camera-at-the-potluck setup with even more to explain. Nobody at a hot pot night wants a live red/green ticker on their dumpling intake.",
+          "expo-judge: KILL 5 - The framing is the most creative of the food-split ideas, but it doubles the vision risk (pricing what people bring plus attributing what they eat) for the same demo payoff. In 36 hours it ships two half-working mechanics. Use 'bring food, go green' as a stretch layer on Bites."
+        ]
+      },
+      {
+        "name": "Fridge Futures",
+        "lens": "game-conceit",
+        "one_liner": "Every item in your shared fridge trades like a stock that crashes as it goes bad, and your roommates can short your spinach.",
+        "kills": 2,
+        "avg": 4.7,
+        "verdicts": [
+          "prior-art-hunter: live 6 - Commitment bets against yourself (StickK, Beeminder) and informal housemate prediction markets on Manifold exist, and roommate fridge apps track expiry. I found no product or hackathon project that lets roommates stake against each other's specific groceries and settles from fridge or bin video. The 'short your roommate's spinach' line is new, but the gambling optics are a real risk with a Visa sponsor.",
+          "cynical-student: KILL 5 - 'Short your roommate's spinach' is a genuinely funny line I'd repeat. But it needs a fridge video every day, which is exactly the effort that kills it. It's also literally gambling between roommates, which Visa judges will flinch at. Great meme, zero retention.",
+          "expo-judge: KILL 3 - Roommates betting money against each other reads as gambling to a Visa judge. The payoff takes days, so the demo depends on a fake 'fast-forward', and tracking an item across days can't be shown at the table."
+        ]
+      },
+      {
+        "name": "Fridge Court",
+        "lens": "game-conceit",
+        "one_liner": "Your roommate ate your leftovers, and the fridge has already charged them with the clip as evidence.",
+        "kills": 2,
+        "avg": 4.7,
+        "verdicts": [
+          "prior-art-hunter: KILL 3 - Craven, a Devpost project, already built 'camera catches the roommate raiding my food': a Nest cam in the snack cupboard plus face recognition to identify the thief. A UW course proposal (RoomEase) already specified payments for using roommates' food. Adding a chargeback-style vote on top of existing snitch-cam projects does not change the core interaction.",
+          "cynical-student: KILL 5 - 'Who ate my leftovers' is the best meme hook on this list, and the chargeback-as-dorm-court bit is clever. In practice it needs a camera mounted in the fridge watching your roommates all the time, which is creepy and impossible with a phone. I'd laugh at the demo and never install it.",
+          "expo-judge: live 6 - 'The fridge already charged your roommate, with the clip' gets a laugh and a 'that's sick' in ten seconds. The judge grabbing the wrong container and getting a case notice is touchable, and turning chargebacks into a house jury is a native Visa trust story. It survives only if you identify people with a phone-proximity token, not face recognition, and pitch opt-in caps and forgive-by-default. Otherwise it's a surveillance camera that charges people."
+        ]
+      },
+      {
+        "name": "Per Slice",
+        "lens": "interaction",
+        "one_liner": "Order a pizza for the floor and everyone pays for the slices they actually took. A phone above the box watches who grabs what.",
+        "kills": 2,
+        "avg": 4.3,
+        "verdicts": [
+          "prior-art-hunter: live 5 - I found no consumer product or Devpost project that charges people for what they physically take from a shared plate. The closest is a 2019 academic paper on per-person intake estimation that uses hand tracking at shared meals, with no billing. It is still vulnerable: Splitwise's 'split by shares' already gives the 5-slices-vs-1 result if someone types the counts, and Amazon Just Walk Out already does camera-tracked, grab-to-charge billing, so a judge can fairly call it 'Just Walk Out for a pizza box'. This is the best of the three shared-plate duplicates (#2, #3, #6).",
+          "cynical-student: KILL 3 - Charging your floor-mates per donut is how you stop getting invited to things. No broke student is setting up a gooseneck phone mount and handing out wristbands at a pizza party. It's funny at an expo table and dead in real life. It's also the same idea as #3, #6 and #9.",
+          "expo-judge: KILL 5 - Duplicate of the pay-for-what-you-ate concept. Bites does the same thing with a sturdier way to tell who grabbed what (wristbands), and cook mode adds scope without adding a better demo moment."
+        ]
+      },
+      {
+        "name": "Bites (pay for what you actually ate)",
+        "lens": "college-life",
+        "one_liner": "Put the pizza in front of the camera, everyone taps their card, and each person is charged for the slices they actually took, not a quarter of the box.",
+        "kills": 2,
+        "avg": 4.3,
+        "verdicts": [
+          "prior-art-hunter: KILL 4 - This is the third copy of the shared-plate idea (#2/#3), adding only wristbands and a Costco-dumpling metering mode. It has the same Just Walk Out plus Splitwise-shares exposure, and it adds nothing that would survive a judge asking 'how is this different from the slice one?'",
+          "cynical-student: KILL 3 - The third copy of the pizza-split idea. Adding 'Costco dumplings metered over two weeks' makes it worse, because now there's a camera on the freezer judging your roommate. It's an expo gimmick with no second use.",
+          "expo-judge: live 6 - Judges grabbing cookies and watching their own tab tick up is guaranteed engagement, and the payment mechanics are real Visa ones: a group pre-auth with each person's hold captured at a different amount. Keep it as the single shared-food entry with wristband attribution. Add Slice's per-grab clips and, as an optional extra, Cap Table's 'bring food, go green' credit. The risk is a 'nobody would do this to their friends' reaction, and grab attribution failing live."
+        ]
+      },
+      {
+        "name": "Tag Witness",
+        "lens": "ambitious-agents",
+        "one_liner": "Your phone records the shelf price of everything you grab, and if the register charges more, it files a dispute with video evidence before you've left the parking lot.",
+        "kills": 2,
+        "avg": 4,
+        "verdicts": [
+          "prior-art-hunter: live 5 - Shoppers already photograph shelf tags by hand to argue overcharges, and Earny and Paribus already auto-file refund claims to the card, though for price drops. I found nothing that binds a specific item to its shelf tag on video and auto-files against the receipt line, so it survives on mechanism. The excitement is low (it is righteous, not fun), and it is 'manual practice plus AI', which is close to the kill line.",
+          "cynical-student: KILL 3 - Filming my entire grocery trip to maybe recover 80 cents is homework. The generator admits it runs on righteousness, not delight. I would never open it a second time.",
+          "expo-judge: KILL 4 - The overcharge has to be staged, so the 'catch' is theater. The idea runs on righteousness, not delight, and an $0.80 real-time chargeback isn't how disputes work. It also needs a store-side dashboard, which pulls the core toward merchant-facing."
+        ]
+      },
+      {
+        "name": "Dibs Run",
+        "lens": "ambitious-agents",
+        "one_liner": "When your friend texts 'I'm at Trader Joe's, anyone want anything?', you put a hold on your card for what you want. You only get charged once their phone camera sees your exact item go into the basket.",
+        "kills": 3,
+        "avg": 4.7,
+        "verdicts": [
+          "prior-art-hunter: KILL 4 - The core interaction already exists as apps: NeedAnything pings contacts with 'do you need anything?' when you are at a store, and Runerra lets neighbors post items onto your run. A camera-confirmed hold is a payment add-on to an existing product, and the idea's own writeup admits judges will call it peer-to-peer Instacart.",
+          "cynical-student: KILL 4 - This is Reach-In with the one fun part taken out. Without tapping the feed, it's a group-chat list plus a card hold, which is the 'peer-to-peer Instacart' the generator already admits it looks like. If you build the runner idea, build #1.",
+          "expo-judge: KILL 6 - The cleanest Visa story in the run trio, since a scoped hold becomes a charge on a physical event, but the opening line is weaker than Reach-In's and a judge will call it peer-to-peer Instacart. Fold the camera-confirmed settlement and out-of-stock auto-release into Reach-In instead of shipping it separately."
+        ]
+      },
+      {
+        "name": "Slice",
+        "lens": "ambitious-agents",
+        "one_liner": "Order a pizza with your friends and the bill splits itself by how many slices each person actually ate. The camera counts them, and whoever ate four pays for four.",
+        "kills": 3,
+        "avg": 4,
+        "verdicts": [
+          "prior-art-hunter: KILL 4 - This is the same idea as #2 (Per Slice) under a different name, with no new mechanic, so keep one of them. It carries the same prior-art exposure: Splitwise share-weighted splits plus Just Walk Out grab attribution, and its own writeup admits it is 'Splitwise with a camera'.",
+          "cynical-student: KILL 3 - Same idea as Per Slice, with the same 'I'm the petty friend' problem. The pitch itself admits judges will call it Splitwise with a camera, and they will. Settling who had the extra slice over Visa costs more friendship than the $3 it recovers.",
+          "expo-judge: KILL 5 - The same mechanic as Bites, and it admits it's 'Splitwise with a camera'. Seat zones on a real pizza box with judges' arms crossing each other will mis-assign grabs live. Merge its per-grab evidence clip into Bites and drop the rest."
+        ]
+      },
+      {
+        "name": "Tagalong (hitch a ride on your roommate's grocery run)",
+        "lens": "college-life",
+        "one_liner": "When your roommate says 'going to Trader Joe's, need anything?', you drop a capped card mandate on their trip, their camera points out your item on the shelf, and your card pays for it at checkout so they never front you money.",
+        "kills": 3,
+        "avg": 4,
+        "verdicts": [
+          "prior-art-hunter: KILL 3 - This is Dibs Run (#4) with mandate wording. Friends attaching requests to a roommate's trip already exists (NeedAnything, Runerra, shared lists like Split Basket/ListX), and itemized per-person splitting after a grocery run already exists (Checkify, Split Basket). A friend acting as the shopper does not make it a new interaction.",
+          "cynical-student: KILL 4 - The third copy of the grocery-run idea. 'Something for dinner under $12, no mushrooms' becomes the runner's problem, and the overlay is a weaker version of Reach-In's tap. Splitting one checkout across several cards also isn't something a real register will do for you.",
+          "expo-judge: KILL 5 - A third version of the grocery run, and the worst one: a mandate like 'something for dinner, no mushrooms' means the camera or agent decides which product fits, the exact core pattern I kill. It also leans on multi-card split tender at checkout, which you'd have to fake."
+        ]
+      },
+      {
+        "name": "Over/Under (worst guess pays)",
+        "lens": "college-life",
+        "one_liner": "At the end of a group grocery run everyone secretly guesses the cart total, the camera tallies the real number, and whoever guessed worst pays the most.",
+        "kills": 3,
+        "avg": 3.3,
+        "verdicts": [
+          "prior-art-hunter: KILL 3 - Gamified bill splitting is already a category (SplitSpat, SplitRoulette, credit card roulette), and guess-the-total is The Price Is Right. The camera only produces a total that the receipt already gives you, so it is a novelty skin on existing game-split apps.",
+          "cynical-student: KILL 4 - It's a one-joke idea, and the camera isn't needed because the register already prints the total. Credit card roulette already exists as a habit with no app. Funny once at Costco, then never again.",
+          "expo-judge: KILL 3 - A one-joke gimmick. The camera just adds up prices the register already totals, and Visa does nothing beyond charging different amounts. Nobody would remember it by the next table."
+        ]
+      }
+    ],
+    "rebuilt": [
+      {
+        "name": "Slip (the note you hand your roommate is the card)",
+        "pitch_10s": "Write \"oat milk, Takis, $10 max\" on a sticky note and hand it to your roommate. That note is now a card that can only buy what's written on it. Cross something out and it stops buying that item. Rip the note and the card is dead. Anyone can take power away from the note, but only the person who wrote it can add any.",
+        "the_new_thing": "Handwriting on a paper slip is the live control panel for a payment credential, and the rules about who may change it are built into the paper:\n(1) Granting: the writer's phone scans the slip, and the writer signs with a passkey. That turns the ink into a mandate with three parts: the item allowlist, the written cap ($10 max), and the expiry (\"tonight\" becomes 11:59pm).\n(2) Shrinking is open to anyone. The runner, or anyone holding the slip, can strike out a line or tear the slip. The camera sees it and the mandate shrinks or freezes right away. Taking power away is always safe, so it needs no permission.\n(3) Growing requires the writer. If the runner writes \"almond milk?\" because they're out of oat milk and scans it, nothing is added. The writer's phone buzzes with a crop of that handwritten line. The writer taps approve (passkey step-up) and only then does the card grow.\nThe rule \"anyone can reduce authority, only the writer can grant it\" is the core design. It's a two-person trust protocol you can hold in your hand. Nobody has made pen marks and tearing the control surface for a card. Math Sandbox let paper drive graphs. Slip lets paper drive payment authority.",
+        "core_loop": "The trigger is the most common college food moment: \"yo, you going to TJ's? grab me something.\" Today that turns into texting a list, the runner fronting the money, a Venmo request two days later, the wrong brand, and a Red Bull quietly added on your dime.\nWith Slip, the requester writes the slip (sticky note, index card, receipt back, napkin) and scans it. The card appears on both phones, and they hand over the paper. At the store the runner pays with the slip's scoped virtual card, which holds the requester's money, so nobody fronts anything. Swaps happen through the \"?\" line approval. Done items get crossed out. When the runner snaps the receipt, the lines that match the slip settle to the writer and anything off the slip goes to the runner's own card. Nobody fronted money and no Venmo request is needed.\nWhy they come back: it fits a moment that happens weekly in every dorm and shared house. Second surface: the shared fridge whiteboard that already exists in a lot of college houses (\"WE NEED: eggs, dish soap\"). Scanning it creates a house-run slip, and whoever goes shopping carries it.",
+        "demo_script_90s": "0:00 Teammate: \"You're the roommate who wants stuff. Write what you want, with a max.\" The judge writes \"Takis / oat milk / max $10\" on an index card with a Sharpie and holds it to the writer phone. About 2s later a card flips up on screen with 2 items, a $10 cap and a 'tonight' expiry. The judge confirms with a passkey tap (Face ID).\n0:15 The judge hands the card to Teammate B, the runner, at a mocked \"Ave Market\" checkout built on the Visa TAP sample merchant. B scans Takis: APPROVED, $3.49, and the judge's phone shows the cap dropping to $6.51. B adds a Red Bull: DECLINED, \"not on slip.\"\n0:30 B: \"They're out of oat milk.\" B writes \"almond milk?\" on the card and scans it. The judge's phone buzzes with a crop of B's handwriting: \"Jake wants to add almond milk. Approve?\" The judge taps approve. B buys it: APPROVED.\n0:50 The judge takes the card back and crosses out Takis. B tries a second Takis: DECLINED, \"struck out.\"\n1:00 In-store version: B holds a printed Safeway receipt for Takis, almond milk and a Red Bull up to the camera. The settlement screen shows Takis and almond milk going to the judge's slip and the Red Bull going to B's own card. \"Your roommate's snack is never on your money.\"\n1:15 The judge tears the card in half. The camera sees two pieces and the card goes red: FROZEN, token suspended. B tries anything: DECLINED.\n1:25 Line to the Visa judge: \"The cap and freeze are real authorization controls. Item rules run at signed checkout and at receipt settlement. Taking power away is open to anyone, and adding power always goes back to the writer.\"",
+        "camera_role": "The camera is how you edit the card, not a list scanner. Perceptron Mk1 does four jobs:\n(1) Parse dense handwriting into constrained JSON: lines with a box around each, a state for each line (active / struck / question-mark pending / new), the cap, the payee name and the expiry phrase.\n(2) Recognize the same physical slip again later from its handwriting crop plus a doodle or initials the writer adds in the corner, matched against the reference image from the first scan. A slip edit applies only to the mandate it belongs to.\n(3) Detect changes between scans: new strike-through, a new line, and tearing (the card in two or more pieces, or a missing region).\n(4) Read the receipt: OCR the line items and match each to a slip line (\"OATLY OAT 64OZ\" to \"oat milk\", \"ALMNDBRZ\" to \"almond milk?\") so settlement can split them.\nReliability plan: edits are explicit snap events, not continuous tracking. Sharpie on white index cards. A line counts as struck only when both the model and a simple pixel-density check agree. Any ambiguous state fails closed: the line becomes pending and doesn't get approved. Tested on 200 or more cards before the expo.",
+        "visa_role": "Visa is the product, not just the checkout. Each slip is a mandate object built in the same shape as Cybersource Intelligent Commerce Payment Instructions (POST /acp/v1/instructions): decline threshold = the handwritten cap, expiry = the written deadline, description = the item list. It is bound to a tokenized credential that is scoped per slip.\n- Real in the demo: the cap is a real amount-limited authorization on the Cybersource sandbox. Tearing the slip is a token suspend lifecycle event, and striking a line is an instruction update (PUT /instructions/{id}). The \"almond milk?\" approval is the real-time approval prompt and step-up from Visa's Payment Instructions.\n- Item enforcement, part 1 (online or agent checkout): the TAP sample stack carries an RFC 9421 signed cart, and our merchant backend checks it line by line against the slip before it asks for credentials. That's a real decline in the demo.\n- Item enforcement, part 2 (in store): authorize up to the cap, then settle by item. Receipt OCR splits each line between the writer's slip and the runner's own card. This works today with no L3 data.\nHonest line at the table: VisaNet authorizes amounts, not SKUs. Network-level item allowlists would come through Intelligent Commerce Payment Instructions plus merchant L3 / IIAS-style item data, which already restricts FSA and SNAP cards at the register.\nTwo sides: the writer funds and controls, and the runner spends against it, carries it and can only shrink it.",
+        "trust_story": "Trust is the product, so the rules are explicit:\n- One-way authority: anyone can reduce it (strike a line, tear the slip, let it expire), and only the writer can increase it (new item, higher cap), with a passkey. A runner who writes \"Red Bull\" on the slip and scans it gets nothing until the writer approves a crop of that exact handwriting.\n- The paper is not a bearer instrument. A photo of the slip, or a forged copy, can't spend anything. Spending happens on the runner's provisioned virtual card. The paper only changes the rules, and a scan that grants authority only counts from the writer's signed device.\n- Scope limits damage: each slip has its own token, its own cap and a short default expiry. The worst case is the written cap.\n- Fails closed: unclear ink, an unrecognized slip or an unmatched receipt line all mean decline or pending, never approve.\n- Audit: each change shows the before/after crop from the camera next to the matching mandate event, so the writer can see exactly which pen mark did what.",
+        "build_36h": "Four people:\n- A (vision): Mk1 slip parser with a JSON schema, line state diffing between scans, tear detection, slip re-ID from a corner doodle plus handwriting crop, receipt-to-slip line matching, and a pixel-density cross-check for strikes. Tests the 200-card reliability set.\n- B (mandate/payments): FastAPI policy engine with the mandate object (allowlist, cap, expiry, pending lines), event log, passkey approval with WebAuthn, and Cybersource sandbox auth with amount cap plus void and suspend calls.\n- C (merchant): forks the visa/trusted-agent-protocol sample. The merchant frontend becomes \"Ave Market.\" The backend verifies TAP signatures and checks the signed cart against the mandate. Also builds the receipt settlement screen that splits lines between two cards.\n- D (apps/demo): two mobile web apps (writer phone, runner phone) with a live card that animates as items are struck, declined or frozen. Also push approval, demo choreography and the backup demo video.\nMocked: Apple/Google Wallet push provisioning (shown as an in-app card), network or issuer item enforcement, the real Safeway POS (printed receipts stand in), and actual movement of funds between students.",
+        "objections_fixed": "1. \"Item enforcement is fully mocked; Visa authorizes amounts, not items\" (all three judges). Fixed by moving item enforcement onto rails that exist. Online: a TAP signed cart checked line by line, a real decline in the demo. In store: authorize up to the cap, then settle by item through receipt OCR, which splits lines between two cards and needs no L3. The cap, the freeze (token suspend) and the approval prompt are real Visa-shaped controls. The table pitch says plainly what sits at the network and what sits in the policy layer.\n2. \"Nobody under 25 writes paper grocery lists\" (cynical student). Reframed: this isn't a list-keeping habit. The paper is a handoff object, like a permission slip you give someone for a single errand. It only exists when one person sends another person shopping, which is when a physical token makes sense. Second surface is the shared fridge whiteboard that many college houses already use.\n3. \"Strike and tear detection must be reliable on cheap index cards\" (expo judge). Edits are explicit snaps, not continuous video. Sharpie and white cards, strikes confirmed by two checks, fail-closed pending state, a corner doodle for re-ID, and a 200-card test set. Tearing is the easiest of the three (count the pieces).\n4. Hidden objection: what stops the runner from writing in their own items? The one-way authority rule. Runners can shrink, writers grant, and additions go to the writer as a handwriting-crop approval. That becomes the best two-sided Visa moment in the demo.\n5. Prior art (Instacart photo-to-cart, Greenlight, Privacy.com): those turn a list into a cart or set caps in a settings screen. None keep authority live on a physical object, and none have an asymmetric shrink/grant protocol between two people.\nBorrowed mechanic: per-person receipt line matching from Reach-In, used for in-store item settlement.",
+        "fatal_flaw": "Not fatal for the hackathon, but real outside it: (a) in a physical store, item rules only take effect at settlement, after the runner has already paid. A runner can still buy a Red Bull at the register; it just ends up on their own card. A true decline at the register for a single item needs L3 / IIAS-style data that consumer cards don't have today. (b) For everyday use, \"text a list + Venmo\" is a weak but free substitute, so Slip's real advantage is the trust and no-fronting money, not convenience. Expect a judge to say \"cool demo, would I really carry paper,\" and answer with the handoff framing and the fridge whiteboard."
+      },
+      {
+        "name": "Reach-In",
+        "pitch_10s": "Your friend is at Trader Joe's. You tap the Takis in their camera feed, their phone shows them exactly where the bag is, and the card they pay with at the register is made from everyone's taps. Nobody fronts a cent and nobody chases anyone on Venmo.",
+        "the_new_thing": "Two things are new, and they need each other. (1) You can buy an object straight from someone else's camera, with no catalog behind it. You tap a pixel in a friend's camera frame. The model works out which product is there and reads the price off the shelf tag in that same frame. Then it finds the product again in the runner's live view, so a glowing pin says \"Takis, 2nd shelf, left\" with your name on it. No SKU list, no merchant feed: whatever shelf the friend points at becomes the store. (2) The runner's card is built from those taps. Starting a run issues a single-use virtual Visa \"run card\" to the runner, locked to one grocery store, grocery purchases only, and a 2-hour expiry. It begins at $0. Each tap puts a capped hold on the tapper's own card. When the runner's camera sees that item go into the basket, the hold is \"armed\" and the run card's limit goes up by that amount, and you can watch it climb on screen. At the register the runner pays with the run card, and it only approves totals that armed holds cover. The receipt then settles every hold to the exact line price. Live-shopping apps send you to a merchant's checkout. This gives a friend a card that exists only as the sum of what people asked for.",
+        "core_loop": "RUNNER: taps \"Run: TJ's on 45th.\" The group chat gets a push. In the store, they press \"Open window\" at an aisle and sweep the phone across it for 20 seconds. The frames stay tappable for 3 minutes, so friends can join late and nobody streams the whole trip. Pins appear on the runner's screen and stay attached to the products as they move. They grab each item and drop it in the basket. The camera sees it go in, the hold arms, and the pin turns green. Out of stock? The runner taps a substitute, and the requester approves the new price with one tap. At checkout they pay with the run card in their wallet and snap the receipt. REQUESTER: gets \"Maya opened snacks aisle (0:20),\" taps the Takis on the frozen or live frame, and sees a hold of \"$3.49 + tax, max $4.02.\" It turns to \"in basket ✓\" and then \"charged $3.71.\" If the runner never picks it up, the hold drops off. Your mandate is set once: up to $15 per run, groceries only, friends in this group only. WHY THEY COME BACK: it replaces the \"going to Safeway, anyone need anything?\" text that every dorm and apartment chat already sends every week. The runner never fronts money and never chases $4.29. Requesters get exactly the item they pointed at, not \"which hummus??\". There's an optional 25¢-per-item runner tip so running feels worth it. And watching a friend's 20-second aisle window is fun even when you don't buy anything.",
+        "demo_script_90s": "Setup: a small mock shelf of real snacks with printed shelf tags. Teammate A is the runner (phone 1). The judge holds phone 2 (requester). A laptop runs a mock contactless register, and a big \"Run Card\" panel on the laptop shows the limit.\n0-10s: \"Every group chat has the 'anyone need anything from TJ's?' text. Here's what replaces it.\" A presses \"Open window\" and sweeps the shelf. The judge's phone buzzes: \"Maya opened snacks (0:20).\"\n10-25s: The judge taps the Hot Cheetos on their screen. Within about 2 seconds, phone 2 shows \"Flamin' Hot Cheetos 8.5oz, $3.49 (read from tag), hold placed, max $4.02.\" This is a real Cybersource sandbox authorization. On phone 1, a glowing box locks onto the Cheetos labeled with the judge's name. A tilts the phone and the box stays on the bag.\n25-40s: A second teammate, also in the group, taps the mochi. A second pin appears. The Run Card panel still says $0.00 limit. \"Holds aren't money yet. Watch.\"\n40-55s: A picks up the Cheetos and drops them in a basket. The camera confirms it, the judge's pin turns green, and the Run Card limit goes from $0.00 to $4.02. A tries to sneak an extra candy bar into the basket. Nobody tapped it, so no limit is added and it shows \"unbacked.\"\n55-70s: A taps the phone on the mock register for the basket total. The register asks the Run Card issuer for approval and gets APPROVED for the covered amount. A rings the candy bar up again on its own and gets DECLINED: \"not covered by any friend's hold.\" That's the trust beat, live.\n70-90s: A holds a printed receipt up to the camera. OCR matches each line to a tapper. The judge's phone settles: \"Charged $3.71 (3.49 + tax). Released $0.31.\" The runner's screen shows \"You fronted: $0.00.\" The run card then expires on screen. Close: \"Every tap is an authorization. The basket is the proof, the receipt is the price, and the runner's card is built from friends' taps.\"",
+        "camera_role": "Five jobs, and each one replaces something a text list can't do. (1) Tap grounding: one frame plus the tap coordinate goes to Perceptron Mk1's pointing/grounding, which returns the product identity and bounding box. (2) Shelf-tag OCR in the same frame sets the hold amount from the real posted price, including \"2 for $5\" terms. (3) Re-localization: the model finds the requested product again in the runner's current frame, so the pin follows the bag and the runner never has to search. (4) Basket confirmation: a 3-second clip, checked with the question \"is <product> placed into the basket?\" This is what arms the hold. It's the oracle that turns a request into money. (5) Receipt OCR reads the dense receipt lines, and fuzzy matching ties each line to the tapper's product and the basket clip. Each matched line keeps its basket clip and tag frame as evidence, in case anyone disputes the charge later.",
+        "visa_role": "Visa is the core of the structure, not a checkout button. (a) Every tap is an authorization: a Cybersource sandbox auth on the tapper's tokenized card, at the tag price plus a 15% tax/buffer, and it must fit the tapper's mandate, which is shaped like Visa Payment Instructions (per-run cap, grocery merchant categories only, this group only, expires when the run ends). (b) The run card is a single-use virtual Visa card (mocked issuer with just-in-time funding, the same way issuing platforms approve each authorization in real time). Its limit is the sum of armed holds plus the runner's own self-hold. It's locked to the first merchant it's used at, grocery categories only, and dies after 2 hours. (c) Settlement is a partial capture of each hold at the exact receipt-line amount plus a proportional share of tax, and the rest of each hold is released (real sandbox capture/void calls). (d) Fallback, shown honestly: if a store's terminal won't take the run card, the runner pays with their own card and the armed holds settle to them instantly through a Visa Direct push-to-card (mocked). The demo has two sides plus a third (requesters, runner, register). It shows controls Visa judges care about (caps, category and merchant locks, a card that can't buy what nobody asked for) and a new payment moment: buying through a friend's camera.",
+        "trust_story": "For the requester: you can never be charged more than the tag price plus a capped buffer. You're charged only after the camera has seen your item go into the basket, only at the store the run is at, and only at the receipt's real line price. Holds that never arm drop off automatically. Substitutions need your one-tap approval at the new price. For the runner: you never front money, because the card you pay with is funded by friends' holds. If a friend's card declines at tap time, their pin never appears, so you never pick up an item that isn't paid for. For the group: the run card can't buy anything nobody asked for (an unbacked item is declined at the register), and it can't be reused after the run because it's single-store, groceries-only, and expires in 2 hours. Disputes: every charge carries its tag frame, its basket clip, and its receipt line, which together form a ready-made evidence packet (borrowed from Tag Witness). Privacy: there's no whole-trip livestream, just 20-second aisle windows sent only to the group you choose. Frames are processed for shelf contents and deleted when the run settles.",
+        "build_36h": "P1, runner client (mobile PWA): camera capture sends JPEG frames at about 3 fps over a WebSocket (no WebRTC). Draws pin overlays from server boxes. Has the \"Open window\" timer and the basket-confirm clip upload. P2, vision pipeline: Perceptron Mk1 prompts for tap grounding (frame + x,y gives product + box + tag price), re-localization every ~1s on the latest frame, the 3-second basket-confirm clip, and receipt OCR, plus an LLM matcher from receipt lines to requests. The mock shelf (8 real snacks, printed tags, fixed lighting) is locked in hour 1, and every prompt is tuned against it. P3, payments: per-user mandate objects; Cybersource sandbox auth on tap, partial capture and void on settle; a mock run-card issuer with a just-in-time approve/decline endpoint (limit = armed holds); a mock contactless register page on the laptop; a hold state machine (requested, armed, captured, released); Visa Direct fallback as a mocked ledger entry. P4, requester client, group feed, and the Run Card limit panel, plus demo choreography and a recorded backup run in case the venue wifi dies. REAL: the vision calls, sandbox auth/capture/void, the hold state machine, receipt matching. MOCKED: card issuing and push provisioning to a wallet, merchant-category enforcement (simulated in the issuer endpoint), the store terminal, Visa Direct, friend accounts (seeded).",
+        "objections_fixed": "1) Prior art (TikTok Shop, Whatnot, Facebook Live, Verishop Shop Party, Instacart photo chat). In all of those, the tap maps to a SKU a merchant has already listed, payment goes to that merchant's online checkout, and the item ships later. Shop Party friends add listed products to their own carts. Reach-In has no catalog: the model resolves a pixel on any physical shelf into a product and its posted price, a friend physically picks it within a minute, and payment happens through a card made from viewers' authorizations that the runner pays with in person. None of the prior art gives a person a card. The pitch now leads with the run card, not the tap. 2) \"The runner has to stream the whole trip.\" Replaced by 20-second aisle windows, with frames tappable for 3 minutes and a push to the group. Less battery, less awkwardness, and friends can join without watching live. 3) \"Split tender at the POS isn't real, so the runner fronts money.\" Split tender is dropped. The runner pays with a just-in-time-funded run card, so nothing is fronted. Issuing is honestly labeled as mocked, and the Visa Direct reimbursement is shown only as a fallback. 4) Expo-judge rule borrowed from Dibs Run: a hold only becomes chargeable once the camera sees the item go into the basket, and only armed holds raise the run card's limit, which is what lets the register decline unbacked items. 5) \"Hardest 36-hour build.\" There's no continuous video inference. Grounding uses one frame plus a coordinate, basket confirmation uses one 3-second clip, re-localization runs about once a second on the latest frame, frames go over a WebSocket instead of WebRTC, the mock shelf is locked in hour 1, and there's a recorded fallback run. 6) Runner usability (\"which hummus??\"): pins re-ground on the runner's live view, and substitutions are a one-tap approve with a new hold amount. 7) \"Why would the runner bother?\" They never front money, never chase debts, and there's an optional per-item tip.",
+        "fatal_flaw": "None fatal, but three risks remain. (1) The novelty depends on the run card. A judge who only sees \"tap a product in a video\" will still file this under live shopping, so the demo has to land the $0-to-$4.02 limit jump and the register decline for the unbacked candy bar. Without that beat it reads as a reskin. (2) The run card is mocked. A real version needs card-issuing partnerships with just-in-time funding, which a student team can't get. Visa judges will accept the mock, but the plan should say it plainly. (3) The real habit is weekly at best. \"Anyone need anything?\" is real but not daily, so outside the demo the retention claim is moderate. The fun of watching a friend's run helps, but it's unproven."
+      }
+    ],
+    "execution": {
+      "verdicts": [
+        {
+          "name": "Slip (the note you hand your roommate is the card)",
+          "alive": false,
+          "score": 4,
+          "killer_argument": "The paper ends up with the wrong person. In real use the requester writes the slip and hands it to the runner, so for the whole trip the paper sits in the runner's pocket. The runner is the one person with no reason to use its powers: they won't strike lines or tear it, since shrinking authority only costs them convenience. The writer is the one who wants to cross out Takis or kill the card, but they don't have the paper anymore, so they have to text the runner or open an app. That is a plain phone toggle like Privacy.com with a sticky note bolted on. The demo hides this by having the judge take the card back at 0:50, which never happens at a real Trader Joe's. In store the item rule isn't a control either. The runner pays, your money authorizes the Red Bull, and a receipt-OCR split pushes it back onto the runner afterwards. That is GrocerMate and Banana Split (both receipt-split Devpost projects) plus a Kando-style per-errand card. On top of that, it reads as Math Sandbox's 'paper drives the screen' trick reused one year later at the same hackathon. The cynical student's verdict: 'nobody hands their roommate a sticky note, they text 'takis pls'.'",
+          "prior_art": "Kando Errands (kando.it.com/errands): job-specific virtual card loaded by the customer for a shop run, 'no fronting money', which is Slip's core value prop. Privacy.com: per-card spend caps, pause/close, cards shared with friends and family. Buy4Me (Devpost): ask a nearby friend to pick something up, reimbursement by reading the transaction. GrocerMate and Banana Split (Devpost): receipt OCR matched to who requested what, then split. Ysplit: shared virtual card for housemates. Math Sandbox (DubHacks 2025 overall winner): paper as the live input surface. The asymmetric shrink/grant rule tied to a physical object has no direct prior art, but that rule is the only novel part and the paper doesn't serve it.",
+          "what_would_make_it_great": "Fix who holds the control surface. The one version that works is the second surface the team mentioned only in passing: the shared fridge whiteboard is the card. The board stays home with the people who want things. The runner carries only the phone card. Someone at home erases 'eggs' and the runner's card stops buying eggs at that moment. Someone adds 'dish soap?' and the funders get an approval crop. Now the physical object belongs to the people with authority, everyone in the house can see it and edit it, and 'anyone can erase, only funders can add' becomes a house rule enforced by the camera. Lead with a live cross-out from home that flips a decline on the runner's phone in the store. Drop the sticky-note-handoff framing entirely, and don't claim item-level declines in store."
+        },
+        {
+          "name": "Reach-In",
+          "alive": true,
+          "score": 6,
+          "killer_argument": "Without the run card, this is Instacart's shopper-photo-and-approve-replacement flow done by an unpaid friend, filed by every judge under 'live shopping, but worse'. And the run card, the one part that's new, is entirely mocked issuing. The 10-second hook ('tap the Takis in your friend's camera') is genuinely sick. But the thing that makes it more than a novelty, a card that starts at $0 and climbs only as friends' items land in the basket, rests on a JIT issuer the team can't actually stand up. It also rests on five separate vision jobs (tap grounding, tag OCR, re-localization, basket confirmation, receipt OCR) that all have to work live, on expo wifi, inside 3 minutes. If the basket-confirm oracle or re-localization stutters even once, the judge sees a laggy livestream with boxes on it. Behaviorally, 'anyone need anything?' happens weekly at most, and most replies are 'takis pls'. Nobody needs to browse a friend's aisle to say that. The camera only earns its keep when the requester doesn't know what they want, which is the less common case.",
+          "prior_art": "Instacart customer-shopper chat with photo replacements and one-tap approve (company.instacart.com). TikTok Shop, Whatnot, Facebook Live Shopping and Shops in Groups, and Shopify shared carts: tap-to-buy from video, but catalog-backed and with merchant checkout. Kando Errands: per-job virtual card so the runner never fronts money. Buy4Me (Devpost): nearby-friend pickup requests. GrocerMate (Devpost): receipt lines matched to requesters in dorms. Privacy.com and Fluz: merchant-locked-on-first-use cards. JIT-funded issuing (Lithic, Marqeta) is the real pattern behind the mock. Nothing found combines catalog-free tap-to-request from a friend's camera with a card whose limit is the sum of camera-armed holds. That combination is the real white space.",
+          "what_would_make_it_great": "Make the demo about one beat: the run card limit climbing from $0.00 to $4.02 when the bag hits the basket, then the register DECLINING the candy bar nobody tapped. Put it on a giant laptop panel, because that is the Minty-style moment. Cut the vision scope to what's needed for that beat. A frozen 'aisle photo' you tap is enough; drop live re-localization pins, or make them a stretch goal. Keep basket confirmation (it's the oracle) and receipt OCR. Have the judge tap on their own phone within the first 10 seconds. Say plainly at the table that the issuer is mocked JIT funding, and show the real Cybersource auth/partial-capture/void calls on the tapper side. Then give the camera a reason to exist beyond 'takis pls'. Open with a sweep of the Asian-snack or seasonal aisle at TJ's where nobody knows what's there, so browsing through a friend becomes the fun part."
+        }
+      ],
+      "ranking": [
+        "Reach-In"
+      ],
+      "batch_diagnosis": "The batch collapsed onto a single moment: 'yo, you going to TJ's, grab me something.' Both finalists then solved it with the same stack: a scoped per-errand card plus receipt-OCR settlement. That exact niche already has a shipped product (Kando Errands, 'no fronting money') and at least four Devpost projects (Buy4Me, GrocerMate, Banana Split, EasySplit), so both ideas have to win entirely on interaction gimmicks layered over a solved problem. Both also lean on Visa capabilities that don't exist for consumers: item-level declines in Slip and JIT-issued friend cards in Reach-In. So the most interesting part of each demo is the most mocked. And both are utility and friction-removal pitches ('nobody fronts money, nobody Venmo-requests'). Last year's winners weren't like that. Minty and Math Sandbox were whimsical conceits with a physical object and a visible, theatrical payoff, where the payment or graph was the punchline rather than the plumbing. Next round, aim differently: (1) pick a food moment that isn't the errand run, since that well is dry; (2) build around a conceit where the camera seeing something in the physical world causes money to move as a visible, fun consequence (Minty's tooth-stock pattern), not as reconciliation after the fact; (3) keep the Visa side to controls that run in the sandbox for real (amount caps, holds, partial capture, void, token suspend, Payment Instructions approval prompts) rather than SKU enforcement or card issuing; (4) make the judge the actor in the first 10 seconds with a physical prop; (5) apply the cynical-student test literally: would a 20-year-old do this unprompted on a Friday night, or only because an app asked them to? If one of these finalists is kept, Reach-In is the only one that survives. Slip is resurrectable only as the fridge-whiteboard version, where the people with authority keep custody of the paper."
+    }
+  },
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Generate"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 2,
+      "title": "Kill"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 3,
+      "title": "Rebuild"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 4,
+      "title": "Execute"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "gen:interaction",
+      "phaseIndex": 1,
+      "phaseTitle": "Generate",
+      "agentId": "ad68301a02d1e51c5",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1792273881324,
+      "queuedAt": 1792273881274,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXT (read carefully, this is the whole brief):\nA 4-person student team is entering DubHacks (University of Washington, Oct 2026), aiming at the Visa-sponsored track and overall prizes. Expo-table judging: judges walk up, spend ~3 minutes, touch the demo. Published DubHacks rubric: Functionality 30%, Creativity 20%, Track applicability 20%, Design 10%. Visa judges care about trust/controls, new…",
+      "promptFramed": true,
+      "lastProgressAt": 1792274055629,
+      "tokens": 67646,
+      "toolCalls": 3,
+      "durationMs": 174301,
+      "resultPreview": "{\"ideas\":[{\"name\":\"Listcard (your grocery list is the card)\",\"one_liner\":\"You write a grocery list on paper, snap it, and that piece of paper becomes a Visa card that can only buy what's written on it. Cross something out with a pen and the card stops buying it.\",\"the_new_thing\":\"Handwriting on paper becomes the live controls for a payment card. The camera reads a handwritten list (items, an optio…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "gen:ambitious-agents",
+      "phaseIndex": 1,
+      "phaseTitle": "Generate",
+      "agentId": "a794a441a3c4275df",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1792273881324,
+      "queuedAt": 1792273881274,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXT (read carefully, this is the whole brief):\nA 4-person student team is entering DubHacks (University of Washington, Oct 2026), aiming at the Visa-sponsored track and overall prizes. Expo-table judging: judges walk up, spend ~3 minutes, touch the demo. Published DubHacks rubric: Functionality 30%, Creativity 20%, Track applicability 20%, Design 10%. Visa judges care about trust/controls, new…",
+      "promptFramed": true,
+      "lastProgressAt": 1792274013026,
+      "tokens": 51940,
+      "toolCalls": 1,
+      "durationMs": 128655,
+      "resultPreview": "{\"ideas\":[{\"name\":\"Slice\",\"one_liner\":\"Order a pizza with your friends and the bill splits itself by how many slices each person actually ate. The camera counts them, and whoever ate four pays for four.\",\"the_new_thing\":\"Paying for what you actually ate from a shared plate. Before eating, everyone taps in and puts a hold on their card for a capped amount, say up to $15. A phone propped at the end …"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 3,
+      "label": "gen:college-life",
+      "phaseIndex": 1,
+      "phaseTitle": "Generate",
+      "agentId": "ab7c20fce839f9604",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1792273881324,
+      "queuedAt": 1792273881274,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXT (read carefully, this is the whole brief):\nA 4-person student team is entering DubHacks (University of Washington, Oct 2026), aiming at the Visa-sponsored track and overall prizes. Expo-table judging: judges walk up, spend ~3 minutes, touch the demo. Published DubHacks rubric: Functionality 30%, Creativity 20%, Track applicability 20%, Design 10%. Visa judges care about trust/controls, new…",
+      "promptFramed": true,
+      "lastProgressAt": 1792273984927,
+      "tokens": 60138,
+      "toolCalls": 2,
+      "durationMs": 100555,
+      "resultPreview": "{\"ideas\":[{\"name\":\"Bites (pay for what you actually ate)\",\"one_liner\":\"Put the pizza in front of the camera, everyone taps their card, and each person is charged for the slices they actually took, not a quarter of the box.\",\"the_new_thing\":\"A shared plate that keeps the bill. A phone on a stand looks down at a shared pizza, bowl of wings, chip bag or Costco tray. Before anyone eats, each person ta…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 4,
+      "label": "gen:game-conceit",
+      "phaseIndex": 1,
+      "phaseTitle": "Generate",
+      "agentId": "ab0fd417d68c6a82e",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1792273881325,
+      "queuedAt": 1792273881274,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXT (read carefully, this is the whole brief):\nA 4-person student team is entering DubHacks (University of Washington, Oct 2026), aiming at the Visa-sponsored track and overall prizes. Expo-table judging: judges walk up, spend ~3 minutes, touch the demo. Published DubHacks rubric: Functionality 30%, Creativity 20%, Track applicability 20%, Design 10%. Visa judges care about trust/controls, new…",
+      "promptFramed": true,
+      "lastProgressAt": 1792273968513,
+      "tokens": 51959,
+      "toolCalls": 1,
+      "durationMs": 84139,
+      "resultPreview": "{\"ideas\":[{\"name\":\"Dinner Cap Table\",\"one_liner\":\"Group dinner is a startup: what you bring buys you shares, what you eat burns them, and when the plate is empty everyone's card settles to the cent.\",\"the_new_thing\":\"Bringing food and eating food go on one ledger, tracked live by a camera over the shared table. When someone sets down a bag of chips or a pack of dumplings, the camera reads the labe…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 5,
+      "label": "judge:prior-art-hunter",
+      "phaseIndex": 2,
+      "phaseTitle": "Kill",
+      "agentId": "a78d90722fafe509a",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1792274057087,
+      "queuedAt": 1792274057065,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXT (read carefully, this is the whole brief):\nA 4-person student team is entering DubHacks (University of Washington, Oct 2026), aiming at the Visa-sponsored track and overall prizes. Expo-table judging: judges walk up, spend ~3 minutes, touch the demo. Published DubHacks rubric: Functionality 30%, Creativity 20%, Track applicability 20%, Design 10%. Visa judges care about trust/controls, new…",
+      "promptFramed": true,
+      "lastProgressAt": 1792274191478,
+      "tokens": 89224,
+      "toolCalls": 20,
+      "durationMs": 134390,
+      "resultPreview": "{\"verdicts\":[{\"index\":0,\"name\":\"Listcard\",\"kill\":false,\"score\":7,\"reason\":\"Turning a photo of a handwritten list into a cart already exists, so that part is not the idea. Nobody issues a card whose authority lives on the paper itself (write to grant, strike to revoke, tear to freeze), and no consumer card restricts spending to a person's own item list. The weak spot is that item-level enforcement …"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 6,
+      "label": "judge:cynical-student",
+      "phaseIndex": 2,
+      "phaseTitle": "Kill",
+      "agentId": "a6708ddefb16e0fa8",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1792274057087,
+      "queuedAt": 1792274057065,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXT (read carefully, this is the whole brief):\nA 4-person student team is entering DubHacks (University of Washington, Oct 2026), aiming at the Visa-sponsored track and overall prizes. Expo-table judging: judges walk up, spend ~3 minutes, touch the demo. Published DubHacks rubric: Functionality 30%, Creativity 20%, Track applicability 20%, Design 10%. Visa judges care about trust/controls, new…",
+      "promptFramed": true,
+      "lastProgressAt": 1792274102153,
+      "tokens": 65490,
+      "toolCalls": 1,
+      "durationMs": 41838,
+      "resultPreview": "{\"verdicts\":[{\"index\":0,\"name\":\"Listcard\",\"kill\":false,\"score\":6,\"reason\":\"Tearing the paper to freeze the card is a real 'wait, what' moment, and it follows the Math Sandbox paper pattern that already won. The catch is that nobody under 25 writes grocery lists on paper, and item-level blocking at a real Safeway doesn't exist. It's a great expo demo and a weak 'would I use it' story. Keep it only …"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 7,
+      "label": "judge:expo-judge",
+      "phaseIndex": 2,
+      "phaseTitle": "Kill",
+      "agentId": "a6b733f806561ce23",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1792274057087,
+      "queuedAt": 1792274057065,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXT (read carefully, this is the whole brief):\nA 4-person student team is entering DubHacks (University of Washington, Oct 2026), aiming at the Visa-sponsored track and overall prizes. Expo-table judging: judges walk up, spend ~3 minutes, touch the demo. Published DubHacks rubric: Functionality 30%, Creativity 20%, Track applicability 20%, Design 10%. Visa judges care about trust/controls, new…",
+      "promptFramed": true,
+      "lastProgressAt": 1792274119464,
+      "tokens": 65521,
+      "toolCalls": 1,
+      "durationMs": 59148,
+      "resultPreview": "{\"verdicts\":[{\"index\":0,\"name\":\"Listcard\",\"kill\":false,\"score\":8,\"reason\":\"Best table moment I'd see all day: I write the list, I cross out an item, I tear the card, and each pen mark is a spend control I can watch take effect. Like Math Sandbox, the paper is the control surface. Trust and control are the product itself, not a feature added on. You must say plainly that item-level enforcement is m…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 8,
+      "label": "rebuild:Listcard (your grocery list is the card)",
+      "phaseIndex": 3,
+      "phaseTitle": "Rebuild",
+      "agentId": "a27256ab182007e04",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1792274192890,
+      "queuedAt": 1792274192861,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "Slip (the note you hand your roommate is the card)",
+      "promptPreview": "CONTEXT (read carefully, this is the whole brief):\nA 4-person student team is entering DubHacks (University of Washington, Oct 2026), aiming at the Visa-sponsored track and overall prizes. Expo-table judging: judges walk up, spend ~3 minutes, touch the demo. Published DubHacks rubric: Functionality 30%, Creativity 20%, Track applicability 20%, Design 10%. Visa judges care about trust/controls, new…",
+      "promptFramed": true,
+      "lastProgressAt": 1792274274670,
+      "tokens": 65626,
+      "toolCalls": 2,
+      "durationMs": 81780,
+      "resultPreview": "{\"name\":\"Slip (the note you hand your roommate is the card)\",\"pitch_10s\":\"Write \\\"oat milk, Takis, $10 max\\\" on a sticky note and hand it to your roommate. That note is now a card that can only buy what's written on it. Cross something out and it stops buying that item. Rip the note and the card is dead. Anyone can take power away from the note, but only the person who wrote it can add any.\",\"the_…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 9,
+      "label": "rebuild:Reach-In",
+      "phaseIndex": 3,
+      "phaseTitle": "Rebuild",
+      "agentId": "a52077e2cfbef421d",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1792274192890,
+      "queuedAt": 1792274192861,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "Reach-In",
+      "promptPreview": "CONTEXT (read carefully, this is the whole brief):\nA 4-person student team is entering DubHacks (University of Washington, Oct 2026), aiming at the Visa-sponsored track and overall prizes. Expo-table judging: judges walk up, spend ~3 minutes, touch the demo. Published DubHacks rubric: Functionality 30%, Creativity 20%, Track applicability 20%, Design 10%. Visa judges care about trust/controls, new…",
+      "promptFramed": true,
+      "lastProgressAt": 1792274299804,
+      "tokens": 62773,
+      "toolCalls": 2,
+      "durationMs": 103988,
+      "resultPreview": "{\"name\":\"Reach-In\",\"pitch_10s\":\"Your friend is at Trader Joe's. You tap the Takis in their camera feed, their phone shows them exactly where the bag is, and the card they pay with at the register is made from everyone's taps. Nobody fronts a cent and nobody chases anyone on Venmo.\",\"the_new_thing\":\"Two things are new, and they need each other. (1) You can buy an object straight from someone else's…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 10,
+      "label": "executioner",
+      "phaseIndex": 4,
+      "phaseTitle": "Execute",
+      "agentId": "a075fcee4fd79c4ec",
+      "model": "claude-opus-5-5",
+      "state": "done",
+      "startedAt": 1792274301333,
+      "queuedAt": 1792274301316,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "The batch collapsed onto a single moment: 'yo, you going to…",
+      "promptPreview": "CONTEXT (read carefully, this is the whole brief):\nA 4-person student team is entering DubHacks (University of Washington, Oct 2026), aiming at the Visa-sponsored track and overall prizes. Expo-table judging: judges walk up, spend ~3 minutes, touch the demo. Published DubHacks rubric: Functionality 30%, Creativity 20%, Track applicability 20%, Design 10%. Visa judges care about trust/controls, new…",
+      "promptFramed": true,
+      "lastProgressAt": 1792274389310,
+      "tokens": 68914,
+      "toolCalls": 8,
+      "durationMs": 87976,
+      "resultPreview": "{\"verdicts\":[{\"name\":\"Slip (the note you hand your roommate is the card)\",\"alive\":false,\"score\":4,\"killer_argument\":\"The paper ends up with the wrong person. In real use the requester writes the slip and hands it to the runner, so for the whole trip the paper sits in the runner's pocket. The runner is the one person with no reason to use its powers: they won't strike lines or tear it, since shrink…"
+    }
+  ],
+  "totalTokens": 649231,
+  "totalToolCalls": 41
+}
