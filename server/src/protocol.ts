@@ -3,7 +3,7 @@ import type { Box, Run } from './types.js';
 
 export type ClientMsg =
   | { t: 'claim' | 'leave' | 'remove' | 'undoRemove'; chipId: string }
-  | { t: 'frame'; jpegBase64: string; at: number }
+  | { t: 'frame'; jpegBase64: string; at: number; detect?: boolean }
   | { t: 'identifyAt'; x: number; y: number };
 
 export type ServerMsg =

@@ -316,7 +316,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   });
 
   // ---- live frames ----
-  async function onFrame(runId: string, frame: { jpegBase64: string; at: number }): Promise<void> {
+  async function onFrame(runId: string, frame: { jpegBase64: string; at: number }, detect = true): Promise<void> {
     try {
       if (!accepting(store.get(runId))) return;
       relay.set(runId, frame);
@@ -325,6 +325,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
           store.send(ws, { t: 'frame', jpegBase64: frame.jpegBase64, at: frame.at });
         }
       }
+      if (!detect) return;
       let st = live.get(runId);
       if (!st) live.set(runId, (st = { detector: makeDetector(), running: false, pending: null }));
       const mine = st;
@@ -412,11 +413,14 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         if (!msg) return store.send(ws, { t: 'error', reason: 'bad message' });
         const cur = store.get(runId);
         const shopper = cur?.shopperId === personId;
-        if ((msg.t === 'remove' || msg.t === 'undoRemove') && !shopper) {
+        const ownWish =
+          msg.t === 'remove' &&
+          cur?.chips.some((c) => c.id === msg.chipId && c.state === 'wish' && c.wishedBy === personId);
+        if ((msg.t === 'remove' || msg.t === 'undoRemove') && !shopper && !ownWish) {
           return store.send(ws, { t: 'error', reason: 'shopper only' });
         }
         if (msg.t === 'frame') {
-          if (shopper) void onFrame(runId, msg);
+          if (shopper) void onFrame(runId, msg, msg.detect !== false);
           return;
         }
         if (msg.t === 'identifyAt') {

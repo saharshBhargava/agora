@@ -376,6 +376,52 @@ describe('dibs server', () => {
       expect(wa.msgs.some((m) => m.t === 'identifying')).toBe(true);
     });
 
+    it('frame with detect false is relayed but not detected', async () => {
+      let pushes = 0;
+      await app.close();
+      await start({ detector: () => ({ push: async () => { pushes++; return []; } }) as never });
+      const { runId, shopperId, A } = await setup();
+      const shopper = connect(runId, shopperId);
+      const wa = connect(runId, A);
+      await Promise.all([shopper.opened, wa.opened]);
+      shopper.send({ t: 'frame', jpegBase64: fx('empty'), at: 0, detect: false });
+      await wa.waitFor((m) => m.t === 'frame');
+      await sleep(50);
+      expect(pushes).toBe(0);
+    });
+
+    it('frame without detect still detects', async () => {
+      let pushes = 0;
+      await app.close();
+      await start({ detector: () => ({ push: async () => { pushes++; return []; } }) as never });
+      const { runId, shopperId, A } = await setup();
+      const shopper = connect(runId, shopperId);
+      const wa = connect(runId, A);
+      await Promise.all([shopper.opened, wa.opened]);
+      shopper.send({ t: 'frame', jpegBase64: fx('empty'), at: 0 });
+      await wa.waitFor((m) => m.t === 'frame');
+      await sleep(50);
+      expect(pushes).toBe(1);
+    });
+
+    it('wisher can delete own wish; others cannot; non-wish chips stay shopper-only', async () => {
+      const { runId, shopperId, A, B } = await setup();
+      const wa = connect(runId, A);
+      const wb = connect(runId, B);
+      await Promise.all([wa.opened, wb.opened]);
+      const wish = (await post(`/api/runs/${runId}/chips/text`, { name: 'bagels', byPersonId: A })).body;
+      const wishId = (wish.chips as { id: string; state: string }[]).find((c) => c.state === 'wish')!.id;
+      wb.send({ t: 'remove', chipId: wishId });
+      await wb.waitFor((m) => m.t === 'error' && m.reason === 'shopper only');
+      expect((await getRun(runId)).chips.some((c) => c.id === wishId)).toBe(true);
+      const chip = (await post(`/api/runs/${runId}/chips`, { imageBase64: fx('eggs-still') })).body;
+      wa.send({ t: 'remove', chipId: chip.id });
+      await wa.waitFor((m) => m.t === 'error' && m.reason === 'shopper only');
+      wa.send({ t: 'remove', chipId: wishId });
+      for (let i = 0; i < 200 && (await getRun(runId)).chips.some((c) => c.id === wishId); i++) await sleep(10);
+      expect((await getRun(runId)).chips.some((c) => c.id === wishId)).toBe(false);
+    });
+
     it('ignores frames from a claimer and after lock', async () => {
       const { runId, shopperId, A } = await setup();
       const shopper = connect(runId, shopperId);
