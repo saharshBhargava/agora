@@ -22,9 +22,9 @@ export default function Home() {
 
   return (
     <>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 'var(--space-2)' }}>
-        <h1>Dibs</h1>
-        <p className="muted">Shop with your room watching. Claim what is yours, as it lands in the cart.</p>
+      <div className="landing-hero">
+        <h1 className="wordmark">dibs</h1>
+        <p className="join-hold-copy">Shop with your room watching. Claim what is yours, as it lands in the cart.</p>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
       <button className="btn" onClick={start} disabled={busy}>
