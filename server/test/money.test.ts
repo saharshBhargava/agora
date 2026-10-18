@@ -27,6 +27,10 @@ describe('roomFor and capAllows', () => {
     expect(roomFor([872], 4000, 0)).toBe(3128);
     expect(roomFor([872, 2399], 4000, 0)).toBe(729);
   });
+  it('does not drift a cent on float tax', () => {
+    expect(roomFor([1000], 2000, 0.1)).toBe(900);
+    expect(capAllows([], 1000, 1100, 0.1)).toBe(true);
+  });
   it('rejects a chip that would exceed the cap', () => {
     expect(capAllows([872, 2399], 2399, 4000, 0)).toBe(false);
     expect(capAllows([], 3999, 4000, 0.1)).toBe(false);

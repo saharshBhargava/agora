@@ -15,7 +15,7 @@ export function splitChip(priceCents: number, claimerIdsByClaimTime: string[]): 
 
 /** Cents of authorization left after the tray (with tax); may be negative. */
 export function roomFor(trayFullPricesCents: number[], authorizedCents: number, taxRate: number): number {
-  return authorizedCents - Math.ceil(sum(trayFullPricesCents) * (1 + taxRate));
+  return authorizedCents - Math.ceil((sum(trayFullPricesCents) * (10000 + Math.round(taxRate * 10000))) / 10000);
 }
 
 /** True if adding the candidate chip keeps the tray within the authorization. */
