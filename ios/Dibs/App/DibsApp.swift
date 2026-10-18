@@ -6,12 +6,17 @@ struct DibsApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environment(model)
-                .onOpenURL { model.open(url: $0) }
-                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
-                    if let url = activity.webpageURL { model.open(url: url) }
-                }
+            if DebugLaunch.autoShop {
+                // Unattended device testing: `-DibsAutoShop YES` skips Home and opens the shopper camera.
+                AutoShopRoot(base: ServerConfig.current())
+            } else {
+                RootView()
+                    .environment(model)
+                    .onOpenURL { model.open(url: $0) }
+                    .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                        if let url = activity.webpageURL { model.open(url: url) }
+                    }
+            }
         }
     }
 }
@@ -54,8 +59,7 @@ struct RootView: View {
             // Task 5 replaces this with ClaimView.
             RunPendingView(ref: ref)
         case .shopper(let ref):
-            // Task 6 replaces this with ShopperView.
-            RunPendingView(ref: ref)
+            ShopperView(store: model.store, api: model.api, runId: ref.runId, personId: ref.personId)
         case .settle(let ref):
             // Task 8 replaces this with SettleView.
             RunPendingView(ref: ref)

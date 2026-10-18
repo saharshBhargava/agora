@@ -10,6 +10,8 @@ struct ShopperView: View {
     let runId: String
     let personId: String
     @State private var camera: ShopperCamera
+    /// Finds QFC prices for unpriced chips with the in-app browser while this shopper is in the run.
+    @State private var priceWorker = PriceWorker()
 
     init(store: RunStore, api: DibsAPI, runId: String, personId: String) {
         self.store = store
@@ -31,9 +33,10 @@ struct ShopperView: View {
         .background(Color.paper.ignoresSafeArea())
         .task {
             store.connect(runId: runId, personId: personId)
+            priceWorker.start(api: api)
             await camera.start()
         }
-        .onDisappear { camera.stop() }
+        .onDisappear { camera.stop(); priceWorker.stop() }
         .onChange(of: store.run?.state, initial: true) { _, state in camera.runStateChanged(state) }
         .onChange(of: store.connection, initial: true) { _, c in DibsLog.event("socket \(c)") }
         .onChange(of: store.lastError) { _, e in if let e { DibsLog.event("store error: \(e)") } }
@@ -119,7 +122,7 @@ struct ShopperView: View {
                         Text(chip.state.rawValue).font(.system(size: 12)).foregroundStyle(Color.muted)
                     }
                     Spacer()
-                    Text(chip.priceCents.map { Money.format($0) } ?? "Finding price…")
+                    Text(chip.priceCents.map { Money.format($0) } ?? (priceWorker.currentName == chip.name && !priceWorker.phase.isEmpty ? priceWorker.phase : "Finding price…"))
                         .font(.display(16))
                         .foregroundStyle(chip.priceCents == nil ? Color.muted : Color.ink)
                 }
