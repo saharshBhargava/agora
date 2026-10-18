@@ -101,3 +101,67 @@ struct ErrorText: View {
             .accessibilityAddTraits(.isStaticText)
     }
 }
+
+// MARK: - Shared pieces for the household screens (lists, pantry, wishlist, assistant, settings pages)
+
+extension View {
+    /// A `List` or `Form` on paper: white rows, hairline separators, ink text and tint.
+    func dibsList() -> some View {
+        self.scrollContentBackground(.hidden)
+            .background(Color.paper.ignoresSafeArea())
+            .listRowBackground(Color.card)
+            .listRowSeparatorTint(Color.line)
+            .foregroundStyle(Color.ink)
+            .tint(Color.ink)
+    }
+
+    /// A page pushed from the Dibs home: paper behind everything, an inline ink title, the bar on paper.
+    func dibsPage(_ title: String) -> some View {
+        self.background(Color.paper.ignoresSafeArea())
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.paper, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .tint(Color.ink)
+    }
+}
+
+/// A section label above a card or list section: 13 pt semibold, muted, sentence case.
+struct DibsSectionHeader: View {
+    let title: String
+    init(_ title: String) { self.title = title }
+    var body: some View {
+        Text(title)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Color.muted)
+            .textCase(nil)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// What a screen shows when it has nothing yet: a muted symbol, an ink title and one line of help.
+struct DibsEmptyState: View {
+    let symbol: String
+    let title: String
+    let message: String
+    var body: some View {
+        VStack(spacing: Metrics.space1) {
+            Image(systemName: symbol)
+                .font(.system(size: 30, weight: .regular))
+                .foregroundStyle(Color.muted)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(Color.ink)
+            Text(message)
+                .font(.system(size: 15))
+                .foregroundStyle(Color.muted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Metrics.space4)
+        .padding(.horizontal, Metrics.space3)
+    }
+}
