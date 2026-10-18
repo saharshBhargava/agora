@@ -256,7 +256,7 @@ describe('fitting picks to a run', () => {
   it('caps each section at 12', () => {
     const many: HouseholdPicks = {
       lists: [{ name: 'Big', store: null, updatedAt: 1, items: Array.from({ length: 30 }, (_, i) => ({ name: `Item ${i}`, detail: '' })) }],
-      suggestions: Array.from({ length: 30 }, (_, i) => ({ name: `Idea ${i}`, reason: 'Picked for your home' })),
+      suggestions: Array.from({ length: 30 }, (_, i) => ({ name: `Idea ${String.fromCharCode(97 + (i % 26)).repeat(2)}${i >= 26 ? 'z' : ''}`, reason: 'Picked for your home' })),
     };
     const picks = composePicks(run('r', 'QFC', []), many, []);
     expect(picks.list?.items).toHaveLength(12);
@@ -277,6 +277,35 @@ describe('fitting picks to a run', () => {
     ]);
     const atCostco = run('now2', 'costco', []);
     expect(historyPicks(past, atCostco)).toEqual([{ name: 'Rotisserie chicken', reason: 'In your last run' }]);
+  });
+
+  it('history: names of one product fold into one pick, and a product in the cart is left out', () => {
+    const past = [
+      run('a', 'QFC', [chip('Clorox Disinfecting Wipes Fresh Scent 75 Count', { addedAt: NOW - 3 * DAY }), chip('Peach', { addedAt: NOW - 3 * DAY })]),
+      run('b', 'QFC', [chip('Clorox Disinfecting Wipes Fresh Scent 75 ct', { addedAt: NOW - 2 * DAY }), chip('Cosmic Crisp Apple', { addedAt: NOW - 2 * DAY })]),
+      run('c', 'QFC', [chip('Clorox Disinfecting Wipes Fresh Scent', { addedAt: NOW - DAY })]),
+    ];
+    expect(historyPicks(past, run('empty', 'QFC', []))).toEqual([
+      { name: 'Clorox Disinfecting Wipes Fresh Scent', reason: 'Often in your QFC runs' },
+      { name: 'Cosmic Crisp Apple', reason: 'In a past QFC run' },
+      { name: 'Peach', reason: 'In a past QFC run' },
+    ]);
+    const withWipes = run('now', 'QFC', [chip('Clorox Disinfecting Wipes'), chip('Honeycrisp Apple')]);
+    expect(historyPicks(past, withWipes).map((p) => p.name)).toEqual(['Cosmic Crisp Apple', 'Peach']);
+  });
+
+  it('suggestions: a looser name for something in the cart or on the list is left out', () => {
+    const r = run('r', 'QFC', [chip('Honeycrisp Apple'), chip('Bounty Paper Towels 6 Rolls')]);
+    const household: HouseholdPicks = {
+      lists: [{ name: 'Weekly', store: 'QFC', updatedAt: NOW, items: [{ name: 'Oat milk', detail: '1 carton' }] }],
+      suggestions: [
+        { name: 'Apples', reason: 'Running low' }, { name: 'Paper towels', reason: 'Running low' },
+        { name: 'Oatly Oat Milk', reason: 'You buy these often' }, { name: 'Greek yogurt', reason: 'Running low' },
+      ],
+    };
+    const picks = composePicks(r, household, [{ name: 'Cosmic Crisp Apple', reason: 'In a past QFC run' }, { name: 'apple', reason: 'In your last run' }]);
+    expect(picks.suggestions.map((s) => s.name)).toEqual(['Greek yogurt', 'Cosmic Crisp Apple']);
+    expect(picks.list?.items.map((i) => i.name)).toEqual(['Oat milk']);
   });
 });
 
