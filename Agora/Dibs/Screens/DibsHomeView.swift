@@ -155,12 +155,23 @@ struct DibsHomeView: View {
     }
 }
 
-/// "For your next run" (signed in, when the household has something) and "Your household".
+/// What a household row does: open its page, or (signed out) ask to sign in and then open it.
+enum HouseholdRowAction: Equatable {
+    case open, signInFirst
+
+    static func forRow(connected: Bool) -> HouseholdRowAction { connected ? .open : .signInFirst }
+}
+
+/// "For your next run" (signed in, when the household has something) and "Your household", whose rows show
+/// signed in or not, so the household side of the app is always visible from the home.
 private struct HouseholdCards: View {
     @ObservedObject var calendar: CalendarConnection
     @ObservedObject var inventory: InventoryStore
     @ObservedObject var shopping: ShoppingStore
+    @Environment(AppModel.self) private var model
     @State private var signingIn = false
+    /// The page a signed-out tap asked for; opened once sign-in succeeds.
+    @State private var pendingPage: HouseholdPage?
 
     private var nextRun: [NextRunRow] {
         guard calendar.connected else { return [] }
@@ -185,43 +196,61 @@ private struct HouseholdCards: View {
             .dibsCard()
         }
 
-        if calendar.connected {
-            VStack(alignment: .leading, spacing: 4) {
-                CardTitle(title: "Your household", subtitle: nil)
-                    .padding(.bottom, 4)
-                ForEach(Array(Self.entries.enumerated()), id: \.element.id) { index, entry in
-                    if index > 0 { Hairline() }
+        VStack(alignment: .leading, spacing: 4) {
+            CardTitle(title: "Your household",
+                      subtitle: calendar.connected ? nil : "Sign in to open your household's lists, pantry, wishlist and assistant.")
+                .padding(.bottom, 4)
+            ForEach(Array(Self.entries.enumerated()), id: \.element.id) { index, entry in
+                if index > 0 { Hairline() }
+                switch HouseholdRowAction.forRow(connected: calendar.connected) {
+                case .open:
                     NavigationLink(value: Route.household(entry.page)) {
                         DibsLinkRow(title: entry.title, detail: entry.detail, symbol: entry.symbol, tint: entry.tint)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("home.household.\(entry.id)")
+                case .signInFirst:
+                    Button {
+                        pendingPage = entry.page
+                        signingIn = true
+                    } label: {
+                        DibsLinkRow(title: entry.title, detail: entry.detail, symbol: entry.symbol, tint: entry.tint)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("home.household.\(entry.id)")
+                    .accessibilityHint("Sign in first")
                 }
             }
-            .dibsCard()
-        } else {
-            VStack(alignment: .leading, spacing: 10) {
-                CardTitle(title: "Your household", subtitle: nil)
+            if !calendar.connected {
+                Hairline()
                 if calendar.checking {
                     HStack(spacing: Metrics.space1) {
                         ProgressView()
                         Text("Checking your account…").font(.system(size: 14)).foregroundStyle(Color.muted)
                     }
-                    .frame(minHeight: 32)
+                    .frame(minHeight: 44)
                 } else {
-                    Text("Sign in to bring your household's lists, pantry and wishlist into your runs.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button("Sign in") { signingIn = true }
+                    Button("Sign in") { pendingPage = nil; signingIn = true }
                         .buttonStyle(.dibs(.secondary))
+                        .padding(.top, Metrics.space1)
                         .accessibilityIdentifier("home.signIn")
                 }
             }
-            .dibsDashedBox()
-            .sheet(isPresented: $signingIn) {
-                CalendarOnboardingView(calendar: calendar)
-            }
+        }
+        .dibsCard()
+        // First launch signed out: offer sign-in once, so the household side is one tap away (Cancel keeps plain Dibs).
+        .onChange(of: calendar.checking, initial: true) { _, checking in
+            let key = "dibs.signInOffered"
+            guard !checking, !calendar.connected, !UserDefaults.standard.bool(forKey: key) else { return }
+            UserDefaults.standard.set(true, forKey: key)
+            signingIn = true
+        }
+        // Signed in from a row: carry on to the page that was tapped.
+        .sheet(isPresented: $signingIn, onDismiss: {
+            if calendar.connected, let page = pendingPage { model.openHousehold(page) }
+            pendingPage = nil
+        }) {
+            CalendarOnboardingView(calendar: calendar)
         }
     }
 

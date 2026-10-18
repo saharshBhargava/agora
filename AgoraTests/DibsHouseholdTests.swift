@@ -257,3 +257,11 @@ final class DibsHouseholdTokenTests: XCTestCase {
         XCTAssertFalse(ServerConfig.isSameServer(built, nil))
     }
 }
+
+/// The household rows are always on the home; signed out, a tap signs in first and then opens the page.
+final class DibsHouseholdRowActionTests: XCTestCase {
+    func testSignedInOpensAndSignedOutSignsInFirst() {
+        XCTAssertEqual(HouseholdRowAction.forRow(connected: true), .open)
+        XCTAssertEqual(HouseholdRowAction.forRow(connected: false), .signInFirst)
+    }
+}
