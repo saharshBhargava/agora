@@ -96,7 +96,7 @@ def canonical(text):
 
     text = re.sub(r"\b(\d+(?:\.\d+)?)\s*[- ]?(fl oz|ml|kg|oz|lb|cm|mm|in|g|l)\b", measure, text)
     # Ignore grammar only. Additional colors, flavors, generations and accessories must still reject.
-    return set(re.findall(r"[a-z0-9]+(?:\.[0-9]+)?", text)) - {"the", "a", "of", "and"}
+    return set(re.findall(r"[^\W_]+(?:\.[0-9]+)?", text, re.UNICODE)) - {"the", "a", "of", "and"}
 
 
 def scalar(value):

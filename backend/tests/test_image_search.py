@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from app.image_identity import ImageIdentity, assess_product
+from app.image_identity import ImageIdentity, assess_product, verify_product
 from app.image_research import discover, extract_images
 from app.item_images import ItemImageService
 from tests.test_item_images import Download, Provider, new_item, payload, select
@@ -26,6 +26,14 @@ async def test_search_router_does_not_require_a_reasoning_model():
     provider.router = type("Router", (), {"available": True})()
     await discover(provider, "Milk")
     assert provider.searches == 2
+
+
+def test_non_latin_identity_does_not_collapse_to_empty_words():
+    requested = ImageIdentity(name="青いマグカップ", brand="工房", model="青")
+    matching = {"name": "青いマグカップ", "brand": "工房", "model": "青"}
+    assert verify_product(requested, matching)
+    assert verify_product(requested, {**matching, "name": "赤いマグカップ"}) is None
+    assert verify_product(requested, {**matching, "brand": "別工房"}) is None
 
 
 @pytest.mark.parametrize(
