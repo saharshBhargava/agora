@@ -2,25 +2,77 @@ import SwiftUI
 
 @main
 struct DibsApp: App {
+    @State private var model = AppModel()
+
     var body: some Scene {
         WindowGroup {
             RootView()
+                .environment(model)
+                .onOpenURL { model.open(url: $0) }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    if let url = activity.webpageURL { model.open(url: url) }
+                }
         }
     }
 }
 
-/// Placeholder root. The start, join, shop and settle screens replace it in later tasks.
+/// Home at the root; every run screen is a `Route` pushed on top.
 struct RootView: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
-        VStack(spacing: Metrics.space1) {
-            Text("Dibs")
-                .font(.display(44))
-                .foregroundStyle(Color.ink)
-            Text(ServerConfig.current().host ?? "")
-                .font(.footnote)
-                .foregroundStyle(Color.muted)
+        @Bindable var model = model
+        NavigationStack(path: $model.path) {
+            HomeView()
+                .navigationDestination(for: Route.self) { route in
+                    destination(route)
+                }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.paper)
+        .tint(Color.ink)
+    }
+
+    @ViewBuilder
+    private func destination(_ route: Route) -> some View {
+        switch route {
+        case .start(let ref):
+            StartView(ref: ref)
+        case .join(let runId, let decline):
+            JoinView(runId: runId, decline: decline)
+        case .claim(let ref):
+            // Task 5 replaces this with ClaimView.
+            RunPendingView(ref: ref)
+        case .shopper(let ref):
+            // Task 6 replaces this with ShopperView.
+            RunPendingView(ref: ref)
+        }
+    }
+}
+
+/// Stand-in for the claim and shopper screens until they land: connects to the run and shows who is in.
+struct RunPendingView: View {
+    let ref: RunRef
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let run = model.store.run
+        VStack(alignment: .leading, spacing: Metrics.space2) {
+            Wordmark()
+            Text(run?.title ?? "Your run")
+                .font(.display(30))
+                .foregroundStyle(Color.ink)
+            if let run {
+                Text(RunText.whoLine(run: run, excluding: nil))
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.muted)
+            }
+            if let me = model.store.me, let cents = me.authorizedCents {
+                HeldBadge(cents: cents, approvalCode: me.approvalCode)
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .dibsScreen()
+        .task(id: ref) { model.enter(ref) }
     }
 }
