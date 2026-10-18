@@ -4,8 +4,11 @@ import { StubVision } from './stub.js';
 export type Identified = { name: string; priceCents: number | null; cropBase64: string; confidence: number; barcode: string | null };
 export type RawReceiptLine = { text: string; cents: number; quantity: number };
 
+export type IdentifyContext = { runId: string };
+
 export interface VisionProvider {
-  identify(imageBase64: string, hint?: string, region?: Box): Promise<Identified>;
+  /** `context` lets a provider keep per-run state (the stub's drop order). */
+  identify(imageBase64: string, hint?: string, region?: Box, context?: IdentifyContext): Promise<Identified>;
   readReceipt(imageBase64: string): Promise<RawReceiptLine[]>;
 }
 

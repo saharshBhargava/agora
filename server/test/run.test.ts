@@ -206,6 +206,15 @@ describe('setChipPrice / fixChip', () => {
     expect(get(r, 'milk').priceCents).toBe(450);
     expect(sharesFor(r).get('a')).toBe(450);
   });
+  it('refuses once the run is past locked (receipt and later)', () => {
+    for (const state of ['receipt', 'settled', 'partlySettled'] as const) {
+      const r = { ...ok(claim(seeded(), 'milk', 'a', 1)), state };
+      expect(fixChip(r, 'milk', 'Butter', 450, 10)).toBe(r);
+      expect(setChipPrice(r, 'milk', 450, 'sticker')).toBe(r);
+    }
+    const locked = lock(checkout(seeded(), 1000, 50), 1050);
+    expect(get(fixChip(locked, 'milk', undefined, 450, 1100), 'milk').priceCents).toBe(450);
+  });
   it('a named identifying chip resolves a wish', () => {
     let r = wish(seeded(), 'a', 'butter', 1, 'w1');
     r = addChip(r, chip('m', '', null), 2);

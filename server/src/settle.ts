@@ -91,7 +91,7 @@ export function fixReceiptLine(run: Run, lineIndex: number, target: { chipId: st
     const unmatchedLines = receipt.unmatchedLines.filter((i) => i !== lineIndex);
     return priceFromReceipt(run, { ...receipt, matches, unmatchedLines, mine });
   }
-  if (!run.chips.some((c) => c.id === target.chipId)) return run;
+  if (!run.chips.some((c) => c.id === target.chipId && isLive(c))) return run;
   // The chip and the line each move from any earlier pairing; a freed line becomes unmatched again.
   const freed = receipt.matches.filter((m) => m.chipId === target.chipId || m.lineIndex === lineIndex).map((m) => m.lineIndex);
   const kept = receipt.matches.filter((m) => m.chipId !== target.chipId && m.lineIndex !== lineIndex);

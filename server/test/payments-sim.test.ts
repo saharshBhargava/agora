@@ -1,3 +1,6 @@
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SimPayments } from '../src/payments/sim.js';
 import { getPayments } from '../src/payments/provider.js';
@@ -60,6 +63,36 @@ describe('SimPayments', () => {
     const a = await p.authorize('r1', card, 4000);
     await p.reverse('r2', a.authId, 10);
     expect(p.calls.map((c) => [c.method, c.ref])).toEqual([['authorize', 'r1'], ['reverse', 'r2']]);
+  });
+
+  it('persists auths so a reloaded simulator can reverse and capture them', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dibs-sim-'));
+    const before = new SimPayments(dir);
+    const a = await before.authorize('r', card, 4000);
+    const b = await before.authorize('r', card, 4000);
+    await before.incremental('r', b.authId, 500);
+    expect(existsSync(join(dir, 'sim-payments.json'))).toBe(true);
+    const stored = JSON.parse(readFileSync(join(dir, 'sim-payments.json'), 'utf8'));
+    expect(stored.auths[a.authId]).toEqual({ authorized: 4000, reversed: 0, captured: 0, preAuth: true });
+
+    const after = new SimPayments(dir);
+    expect(await after.reverse('r', a.authId, 3564)).toEqual({ status: 'REVERSED', reversedCents: 3564 });
+    expect((await after.capture('r', a.authId, 436)).status).toBe('PENDING');
+    expect((await after.capture('r', b.authId, 4500)).status).toBe('PENDING');
+    // Captured amounts survive another reload.
+    await expect(new SimPayments(dir).capture('r', a.authId, 1)).rejects.toThrow('capture exceeds authorized');
+    // New ids never collide with ids issued before the restart.
+    const c = await after.authorize('r', card, 100);
+    expect(c.authId).toMatch(/^\d{22}$/);
+    expect([a.authId, b.authId]).not.toContain(c.authId);
+  });
+
+  it('ids from two fresh simulators do not collide', async () => {
+    const x = await new SimPayments().authorize('r', card, 100);
+    await new Promise((r) => setTimeout(r, 5));
+    const y = await new SimPayments().authorize('r', card, 100);
+    expect(x.authId).not.toBe(y.authId);
+    expect(y.authId).toMatch(/^\d{22}$/);
   });
 
   it('getPayments defaults to sim', () => {

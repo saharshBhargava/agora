@@ -5,7 +5,9 @@ import type { AddressInfo } from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import WebSocket from 'ws';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildServer } from '../src/index.js';
+import { buildServer, qrJoinUrl } from '../src/index.js';
+import { checkout } from '../src/run.js';
+import { seedRun } from '../src/seed.js';
 import { SimPayments } from '../src/payments/sim.js';
 import { StubPrice } from '../src/price/stub.js';
 import { StubVision } from '../src/vision/stub.js';
@@ -162,6 +164,8 @@ describe('dibs server', () => {
     expect((await post(`/api/runs/${runId}/raise`, { personId: A, capCents: 9000 })).status).toBe(409);
     expect((await post(`/api/runs/${runId}/receipt`, { imageBase64: '' })).status).toBe(409);
     expect((await post(`/api/runs/${runId}/receipt/fix`, { lineIndex: 0, target: 'mine' })).status).toBe(409);
+    const late = await post(`/api/runs/${runId}/chips/${milk.id}/fix`, { personId: shopperId, priceCents: 1 });
+    expect(late).toEqual({ status: 409, body: { error: 'cart closed' } });
 
     const calls = payments.calls.length;
     const again = await post(`/api/runs/${runId}/confirm`, { personId: shopperId });
@@ -184,6 +188,51 @@ describe('dibs server', () => {
     expect(r.headers['content-type']).toContain('image/png');
     expect(r.rawPayload.subarray(1, 4).toString()).toBe('PNG');
     expect((await app.inject({ url: '/api/runs/nope' })).statusCode).toBe(404);
+  });
+
+  it('builds the join url from PUBLIC_URL, else the forwarded proto and host', () => {
+    expect(qrJoinUrl('r1', { 'x-forwarded-proto': 'https', host: 'dibs.up.railway.app' }, undefined)).toBe('https://dibs.up.railway.app/join?run=r1');
+    expect(qrJoinUrl('r1', { host: '192.168.1.5:3000' }, undefined)).toBe('http://192.168.1.5:3000/join?run=r1');
+    expect(qrJoinUrl('r1', { 'x-forwarded-proto': 'https,http', host: 'a.test' }, undefined)).toBe('https://a.test/join?run=r1');
+    expect(qrJoinUrl('r1', { host: 'ignored' }, 'https://demo.example/')).toBe('https://demo.example/join?run=r1');
+  });
+
+  it('reschedules stored last-call runs on boot', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dibs-boot-'));
+    const t = Date.now();
+    const past = checkout(seedRun(t), t - 5000, 1000); // ended 4 s ago
+    const soon = checkout(seedRun(t), t, 60); // ends in 60 ms
+    const later = checkout(seedRun(t), t, 60000);
+    writeFileSync(join(dir, 'runs.json'), JSON.stringify({ [past.id]: past, [soon.id]: soon, [later.id]: later }));
+    await app.close();
+    await start({ dataDir: dir });
+    for (let i = 0; i < 50 && (await getRun(soon.id)).state !== 'locked'; i++) await sleep(10);
+    expect((await getRun(past.id)).state).toBe('locked');
+    expect((await getRun(soon.id)).state).toBe('locked');
+    expect((await getRun(later.id)).state).toBe('lastCall');
+  });
+
+  it('settles after a restart: the simulator and runs reload from the data dir', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dibs-restart-'));
+    await app.close();
+    await start({ dataDir: dir, payments: new SimPayments(dir) });
+    const { runId, shopperId, A } = await setup();
+    const eggs = (await post(`/api/runs/${runId}/chips`, { imageBase64: '', hint: 'eggs' })).body;
+    const wa = connect(runId, A);
+    await wa.opened;
+    wa.send({ t: 'claim', chipId: eggs.id });
+    for (let i = 0; i < 100 && (await getRun(runId)).chips[0].claimers.length === 0; i++) await sleep(10);
+    await post(`/api/runs/${runId}/checkout`, { personId: shopperId });
+    for (let i = 0; i < 100 && (await getRun(runId)).state !== 'locked'; i++) await sleep(10);
+    expect((await post(`/api/runs/${runId}/receipt`, { imageBase64: '' })).status).toBe(200);
+
+    for (const s of sockets.splice(0)) s.terminate();
+    await app.close();
+    await start({ dataDir: dir, payments: new SimPayments(dir) });
+    const done = await post(`/api/runs/${runId}/confirm`, { personId: shopperId });
+    expect(done.status).toBe(200);
+    expect(done.body.settle[A]).toMatchObject({ step: 'captured', error: null });
+    expect(['settled', 'partlySettled']).toContain(done.body.state);
   });
 
   const nullPriceVision = (fail = false) => {

@@ -22,8 +22,9 @@ export interface PaymentsProvider {
   payout(ref: string, recipientPan: string, amountCents: number): Promise<PayoutRecord>;
 }
 
-export function getPayments(): PaymentsProvider {
+/** `dataDir` lets the simulator keep its authorizations across a restart. */
+export function getPayments(dataDir?: string): PaymentsProvider {
   const mode = process.env.PAYMENTS ?? 'sim';
-  if (mode === 'sim') return new SimPayments();
+  if (mode === 'sim') return new SimPayments(dataDir);
   throw new Error(`PAYMENTS=${mode} is not wired yet`);
 }

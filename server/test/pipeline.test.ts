@@ -84,4 +84,37 @@ describe('identifyPipeline', () => {
     expect(chips[0].state).toBe('open');
     expect(chips[0].priceCents).toBe(872);
   });
+
+  it('passes the run id to vision as context', async () => {
+    const stub = new StubVision();
+    const seen: unknown[] = [];
+    const spy: VisionProvider = {
+      identify: async (...a) => {
+        seen.push(a[3]);
+        return stub.identify(...a);
+      },
+      readReceipt: (i) => stub.readReceipt(i),
+    };
+    const { run, deps } = setup(spy);
+    const ev = await eggs();
+    await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+    expect(seen).toEqual([{ runId: run.id }]);
+  });
+
+  it('marks a second identical identification within 5 s as a duplicate', async () => {
+    const { store, run, deps } = setup();
+    let t = 1000;
+    deps.now = () => t;
+    const ev = await eggs();
+    await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+    t = 4000;
+    await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+    t = 12000;
+    await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+    const [a, b, c] = store.get(run.id)!.chips;
+    expect(a.duplicateOf).toBeNull();
+    expect(b.name).toBe(a.name);
+    expect(b.duplicateOf).toBe(a.id);
+    expect(c.duplicateOf).toBeNull();
+  });
 });

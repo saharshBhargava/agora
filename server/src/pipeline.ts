@@ -94,7 +94,7 @@ async function identifyLive(
 
   let found;
   try {
-    found = await vision.identify(frameBase64, opts.hint, region ?? undefined);
+    found = await vision.identify(frameBase64, opts.hint, region ?? undefined, { runId });
   } catch {
     if (opts.removeOnFail) store.update(runId, (r) => ({ ...r, chips: r.chips.filter((c) => c.id !== id) }));
     return { chipId: id, error: 'identify failed' };

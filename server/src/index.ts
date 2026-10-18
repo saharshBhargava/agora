@@ -14,7 +14,7 @@ import { getPrice, type PriceProvider } from './price/provider.js';
 import { createFrameRelay, shouldSendFrame } from './relay.js';
 import { parseClientMsg } from './protocol.js';
 import {
-  backToCart, checkout, claim, fixChip, join as joinRun, leave, lock, putBack, removeChip,
+  backToCart, checkout, claim, fixable, fixChip, join as joinRun, leave, lock, putBack, removeChip,
   setAuthorization, undoRemove, wish,
 } from './run.js';
 import { seedRun } from './seed.js';
@@ -36,12 +36,22 @@ export type Deps = {
 };
 
 const here = dirname(fileURLToPath(import.meta.url));
+const defaultDataDir = (): string => process.env.DATA_DIR ?? pathJoin(here, '..', '.data');
+
+/** The QR's join link: PUBLIC_URL when set, else the request's (forwarded) proto and host. */
+export function qrJoinUrl(runId: string, headers: Record<string, string | string[] | undefined>, publicUrl: string | undefined): string {
+  const first = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v)?.split(',')[0]?.trim() || undefined;
+  const base = publicUrl
+    ? publicUrl.replace(/\/+$/, '')
+    : `${first(headers['x-forwarded-proto']) ?? 'http'}://${first(headers['x-forwarded-host']) ?? first(headers.host) ?? 'localhost:3000'}`;
+  return `${base}/join?run=${runId}`;
+}
 
 export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   const { payments, vision, price } = deps;
   const now = deps.now ?? Date.now;
   const lastCallMs = deps.lastCallMs ?? 10000;
-  const store = createStore(deps.dataDir ?? pathJoin(here, '..', '.data'));
+  const store = createStore(deps.dataDir ?? defaultDataDir());
   const app = Fastify();
   await app.register(cors, { origin: true });
 
@@ -67,6 +77,28 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   const timers = new Map<string, NodeJS.Timeout>();
   const settling = new Map<string, Promise<unknown>>();
   let raiseCounter = 0;
+
+  /** Locks the run at `endsAt` (immediately if that has passed). */
+  function scheduleLock(runId: string, endsAt: number): void {
+    clearTimeout(timers.get(runId));
+    timers.set(
+      runId,
+      setTimeout(() => {
+        timers.delete(runId);
+        try {
+          const locked = store.update(runId, (r) => lock(r, Math.max(now(), endsAt)));
+          if (!('error' in locked) && locked.run.state === 'locked') {
+            dropFrames(runId);
+            store.broadcast(runId, { t: 'locked' });
+          }
+        } catch (e) {
+          console.error('lock failed', e);
+        }
+      }, Math.max(0, endsAt - now())),
+    );
+  }
+  // A restart loses timers: every stored run in last call gets its lock rescheduled.
+  for (const r of store.all()) if (r.state === 'lastCall' && r.lastCallEndsAt !== null) scheduleLock(r.id, r.lastCallEndsAt);
 
   const fail = (reply: FastifyReply, error: string) =>
     reply.code(error === 'unknown run' ? 404 : 409).send({ error });
@@ -102,7 +134,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
 
   app.get<{ Params: { id: string } }>('/api/runs/:id/qr', async (req, reply) => {
     if (!store.get(req.params.id)) return reply.code(404).send({ error: 'unknown run' });
-    const url = `${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/join?run=${req.params.id}`;
+    const url = qrJoinUrl(req.params.id, req.headers, process.env.PUBLIC_URL);
     const png = await QRCode.toBuffer(url, { type: 'png' });
     return reply.type('image/png').send(png);
   });
@@ -195,7 +227,9 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     async (req, reply) => {
       if (!guard(reply, req.params.id, req.body.personId, true)) return;
       const { name, priceCents } = req.body;
-      const res = store.update(req.params.id, (r) => fixChip(r, req.params.chipId, name, priceCents, now()));
+      const res = store.update(req.params.id, (r) =>
+        fixable(r) ? fixChip(r, req.params.chipId, name, priceCents, now()) : { error: 'cart closed' },
+      );
       return 'error' in res ? fail(reply, res.error) : res.run;
     },
   );
@@ -219,21 +253,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     const endsAt = res.run.lastCallEndsAt;
     if (wasOpen && endsAt !== null) {
       store.broadcast(run.id, { t: 'lastCall', endsAt });
-      timers.set(
-        run.id,
-        setTimeout(() => {
-          timers.delete(run.id);
-          try {
-            const locked = store.update(run.id, (r) => lock(r, Math.max(now(), endsAt)));
-            if (!('error' in locked) && locked.run.state === 'locked') {
-              dropFrames(run.id);
-              store.broadcast(run.id, { t: 'locked' });
-            }
-          } catch (e) {
-            console.error('lock failed', e);
-          }
-        }, Math.max(0, endsAt - now())),
-      );
+      scheduleLock(run.id, endsAt);
     }
     return res.run;
   });
@@ -436,8 +456,10 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
 }
 
 async function main(): Promise<void> {
+  const dataDir = defaultDataDir();
   const app = await buildServer({
-    payments: getPayments(),
+    dataDir,
+    payments: getPayments(dataDir),
     vision: getVision(),
     price: getPrice(),
     lastCallMs: Number(process.env.LAST_CALL_MS ?? 10000),

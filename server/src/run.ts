@@ -10,6 +10,8 @@ const DUPLICATE_MS = 5000;
 
 const normalize = (name: string): string => name.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[^a-z0-9]/g, '');
 const accepting = (run: Run): boolean => run.state === 'open' || run.state === 'lastCall';
+/** The shopper can still fix a chip's name or price up to and including locked. */
+export const fixable = (run: Run): boolean => accepting(run) || run.state === 'locked';
 const person = (run: Run, id: string): Person | undefined => run.people.find((p) => p.id === id);
 const hasClaims = (c: Chip): boolean => c.state !== 'removed' && !c.putBack;
 
@@ -133,11 +135,17 @@ export function setChipLive(
   priceSource: Chip['priceSource'],
   now: number,
 ): Run {
-  void now;
   const chip = run.chips.find((c) => c.id === chipId);
   if (!chip || chip.dropped || !accepting(run)) return run;
+  // An identifying chip that gets a name is checked against live chips seen in the last 5 s.
+  const key = normalize(name);
+  const dup = chip.state !== 'identifying' || chip.duplicateOf || key === '' ? undefined : run.chips.find(
+    (c) => c.id !== chipId && !c.dropped && c.state !== 'wish' && c.state !== 'removed' && c.state !== 'identifying' &&
+      normalize(c.name) === key && now - c.addedAt <= DUPLICATE_MS,
+  );
   const live: Chip = {
     ...chip,
+    duplicateOf: dup ? dup.id : chip.duplicateOf,
     name,
     priceCents,
     priceSource,
@@ -146,7 +154,9 @@ export function setChipLive(
   return resolveWish({ ...run, chips: run.chips.map((c) => (c.id === chipId ? live : c)) }, live);
 }
 
+/** Returns the run unchanged unless it is open, in last call or locked. */
 export function setChipPrice(run: Run, chipId: string, priceCents: number | null, priceSource: Chip['priceSource']): Run {
+  if (!fixable(run)) return run;
   return refreshOverCap(mapChip(run, chipId, (c) => ({ ...c, priceCents, priceSource })), chipId);
 }
 
@@ -231,10 +241,10 @@ export function wish(run: Run, personId: string, name: string, now: number, id: 
   return { ...run, chips: [...run.chips, chip] };
 }
 
-/** Shopper only (enforced by the server). */
+/** Shopper only (enforced by the server). Returns the run unchanged unless it is open, in last call or locked. */
 export function fixChip(run: Run, chipId: string, name: string | undefined, priceCents: number | undefined, now: number): Run {
   const chip = run.chips.find((c) => c.id === chipId);
-  if (!chip) return run;
+  if (!chip || !fixable(run)) return run;
   const source: Chip['priceSource'] = priceCents === undefined ? chip.priceSource : 'sticker';
   const price = priceCents === undefined ? chip.priceCents : priceCents;
   if (name !== undefined && chip.state === 'identifying') return setChipLive(run, chipId, name, price, price === null ? 'none' : source, now);

@@ -111,6 +111,12 @@ describe('fixReceiptLine', () => {
     expect(out.receipt!.matches.find((m) => m.lineIndex === 2)!.chipId).toBe('milk');
     expect(get(out, 'milk')).toMatchObject({ state: 'matched', priceCents: 199, priceSource: 'receipt' });
   });
+  it('refuses to pair a line to a put-back chip', () => {
+    const run = putBack(lockedRun(), 'milk');
+    const out = applyReceipt(run, matchReceipt(run, parseReceiptLines(rawLines)));
+    const line = out.receipt!.unmatchedLines[0];
+    expect(fixReceiptLine(out, line, { chipId: 'milk' })).toBe(out);
+  });
   it("'mine' removes the line from unmatched", () => {
     const run = lockedRun();
     let out = applyReceipt(run, matchReceipt(run, parseReceiptLines(rawLines)));

@@ -7,6 +7,8 @@ const TW = 64;
 const TH = 48;
 const PIXEL_DELTA = 30;
 const STILL_PX = 2;
+/** A settled change whose bounding box covers more of the frame than this is a lighting / exposure shift. */
+const MAX_ITEM_FRACTION = 0.6;
 
 type Bounds = { x0: number; y0: number; x1: number; y1: number };
 
@@ -57,6 +59,7 @@ export class DiffDetector implements Detector {
     if (frame.at - prev.stillSince < this.opts.settleMs) return [];
     this.baseline = thumb;
     this.pending = null;
+    if (((b.x1 + 1 - b.x0) * (b.y1 + 1 - b.y0)) / (TW * TH) > MAX_ITEM_FRACTION) return [];
     const sx = (meta.width ?? TW) / TW;
     const sy = (meta.height ?? TH) / TH;
     const region: Box = {

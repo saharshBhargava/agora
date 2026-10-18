@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import type { Box } from '../types.js';
 import { PROPS } from '../price/stub.js';
-import type { Identified, RawReceiptLine, VisionProvider } from './provider.js';
+import type { IdentifyContext, Identified, RawReceiptLine, VisionProvider } from './provider.js';
 
 const assets = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets');
 const SIZE = 32;
@@ -18,6 +18,8 @@ const mad = (a: Buffer, b: Buffer): number => {
 };
 
 export class StubVision implements VisionProvider {
+  /** Index into PROPS (the drop order eggs, towels, milk) of the last prop returned per run. */
+  private readonly lastByRun = new Map<string, number>();
   private props: Promise<{ prop: (typeof PROPS)[number]; jpeg: Buffer; thumb: Buffer }[]> | null = null;
 
   private load() {
@@ -30,7 +32,7 @@ export class StubVision implements VisionProvider {
     return this.props;
   }
 
-  async identify(imageBase64: string, hint?: string, region?: Box): Promise<Identified> {
+  async identify(imageBase64: string, hint?: string, region?: Box, context?: IdentifyContext): Promise<Identified> {
     const props = await this.load();
     const h = hint?.toLowerCase().trim();
     const hinted = h ? props.find((p) => h.includes(p.prop.key) || p.prop.words.some((w) => h.includes(w))) : undefined;
@@ -50,7 +52,10 @@ export class StubVision implements VisionProvider {
       }
       crop = await img.jpeg({ quality: 85 }).toBuffer();
     }
-    let chosen = hinted ?? props[0];
+    // Inconclusive without a hint: the next prop in drop order for this run, cycling.
+    const runKey = context?.runId ?? '';
+    const last = this.lastByRun.get(runKey);
+    let chosen = hinted ?? props[last === undefined ? 0 : (last + 1) % props.length];
     let confidence = hinted ? 1 : 0.5;
     if (!hinted && crop) {
       const t = await thumb(crop);
@@ -60,6 +65,7 @@ export class StubVision implements VisionProvider {
         confidence = Math.min(0.99, 1 - scored[0].d / 255);
       }
     }
+    this.lastByRun.set(runKey, props.indexOf(chosen));
     return {
       name: chosen.prop.name,
       priceCents: chosen.prop.cents,

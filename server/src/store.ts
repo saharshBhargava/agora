@@ -64,6 +64,7 @@ export function createStore(dataDir: string) {
 
   return {
     get: (id: string): Run | undefined => runs.get(id),
+    all: (): Run[] => [...runs.values()],
     add(run: Run): void {
       runs.set(run.id, run);
       snapshot();
