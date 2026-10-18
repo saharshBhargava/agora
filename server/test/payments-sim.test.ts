@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { SimPayments } from '../src/payments/sim.js';
+import { FAIL_CAPTURE_CARD, SimPayments, failingCaptures, simFailNames } from '../src/payments/sim.js';
 import { getPayments } from '../src/payments/provider.js';
 
 const card = { number: '4111111111111111', expMonth: 12, expYear: 2031 };
@@ -85,6 +85,39 @@ describe('SimPayments', () => {
     const c = await after.authorize('r', card, 100);
     expect(c.authId).toMatch(/^\d{22}$/);
     expect([a.authId, b.authId]).not.toContain(c.authId);
+  });
+
+  it('the capture-fail card authorizes but every capture and incremental fails, across a reload', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dibs-sim-'));
+    const p = new SimPayments(dir);
+    const a = await p.authorize('r', { ...card, number: FAIL_CAPTURE_CARD }, 4000);
+    expect(a).toMatchObject({ status: 'AUTHORIZED', approvalCode: '888888', authorizedCents: 4000 });
+    await expect(p.capture('r', a.authId, 100)).rejects.toThrow('simulated capture failure');
+    await expect(p.incremental('r', a.authId, 100)).rejects.toThrow('simulated capture failure');
+    // Releasing the hold still works.
+    expect((await p.reverse('r', a.authId, 1000)).reversedCents).toBe(1000);
+    await expect(new SimPayments(dir).capture('r', a.authId, 100)).rejects.toThrow('simulated capture failure');
+    // An ordinary card on the same simulator is unaffected.
+    const b = await p.authorize('r', card, 4000);
+    expect((await p.capture('r', b.authId, 100)).status).toBe('PENDING');
+  });
+
+  it('failingCaptures fails capture and incremental only for the given authorizations', async () => {
+    const sim = new SimPayments();
+    const a = await sim.authorize('r', card, 4000);
+    const b = await sim.authorize('r', card, 4000);
+    const p = failingCaptures(sim, new Set([a.authId]));
+    await expect(p.capture('r', a.authId, 100)).rejects.toThrow('simulated capture failure');
+    await expect(p.incremental('r', a.authId, 100)).rejects.toThrow('simulated capture failure');
+    expect((await p.reverse('r', a.authId, 100)).reversedCents).toBe(100);
+    expect((await p.capture('r', b.authId, 100)).status).toBe('PENDING');
+    expect((await p.incremental('r', b.authId, 100)).status).toBe('AUTHORIZED');
+    expect((await p.payout('r', '4111', 5)).amountCents).toBe(5);
+  });
+
+  it('simFailNames reads a comma list of names, case-insensitively', () => {
+    expect(simFailNames(' Marcus, priya ,,')).toEqual(new Set(['marcus', 'priya']));
+    expect(simFailNames(undefined)).toEqual(new Set());
   });
 
   it('ids from two fresh simulators do not collide', async () => {

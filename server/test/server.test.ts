@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer, qrJoinUrl } from '../src/index.js';
 import { checkout } from '../src/run.js';
 import { seedRun } from '../src/seed.js';
-import { SimPayments } from '../src/payments/sim.js';
+import { FAIL_CAPTURE_CARD, SimPayments } from '../src/payments/sim.js';
 import { StubPrice } from '../src/price/stub.js';
 import { StubVision } from '../src/vision/stub.js';
 import type { Run } from '../src/types.js';
@@ -233,6 +233,64 @@ describe('dibs server', () => {
     expect(done.status).toBe(200);
     expect(done.body.settle[A]).toMatchObject({ step: 'captured', error: null });
     expect(['settled', 'partlySettled']).toContain(done.body.state);
+  });
+
+  describe('simulated capture failures', () => {
+    afterEach(() => {
+      delete process.env.SIM_FAIL_CAPTURE;
+    });
+    /** Ann and Bo split the eggs, then the run is locked with its receipt read. */
+    async function toReceipt(boCard = card) {
+      const { body: created } = await post('/api/runs');
+      const runId = created.runId as string;
+      const shopperId = created.shopperId as string;
+      const A = (await post(`/api/runs/${runId}/join`, { name: 'Ann', card, capCents: 3000 })).body.personId as string;
+      const bo = await post(`/api/runs/${runId}/join`, { name: 'Bo', card: boCard, capCents: 4000 });
+      expect(bo.status).toBe(200);
+      const B = bo.body.personId as string;
+      const eggs = (await post(`/api/runs/${runId}/chips`, { imageBase64: '', hint: 'eggs' })).body;
+      for (const id of [A, B]) {
+        const ws = connect(runId, id);
+        await ws.opened;
+        ws.send({ t: 'claim', chipId: eggs.id });
+      }
+      for (let i = 0; i < 100 && (await getRun(runId)).chips[0].claimers.length < 2; i++) await sleep(10);
+      await post(`/api/runs/${runId}/checkout`, { personId: shopperId });
+      for (let i = 0; i < 100 && (await getRun(runId)).state !== 'locked'; i++) await sleep(10);
+      expect((await post(`/api/runs/${runId}/receipt`, { imageBase64: '' })).status).toBe(200);
+      return { runId, shopperId, A, B };
+    }
+
+    it('SIM_FAIL_CAPTURE names a person whose capture fails, leaving the run partly settled', async () => {
+      process.env.SIM_FAIL_CAPTURE = 'marcus, BO';
+      const { runId, shopperId, A, B } = await toReceipt();
+      const done = await post(`/api/runs/${runId}/confirm`, { personId: shopperId });
+      expect(done.status).toBe(200);
+      expect(done.body.state).toBe('partlySettled');
+      expect(done.body.settle[A]).toMatchObject({ step: 'captured', capturedCents: 436 });
+      expect(done.body.settle[B]).toMatchObject({ step: 'failed', capturedCents: 0, error: 'simulated capture failure' });
+      expect(done.body.payout).toBeNull();
+      // Retry once the switch is off: only Bo's capture runs, then the payout.
+      delete process.env.SIM_FAIL_CAPTURE;
+      const n = payments.calls.length;
+      const retry = await post(`/api/runs/${runId}/confirm`, { personId: shopperId });
+      expect(retry.body.state).toBe('settled');
+      expect(payments.calls.slice(n).map((c) => c.method)).toEqual(['capture', 'payout']);
+      expect(retry.body.settle[B]).toMatchObject({ step: 'captured', capturedCents: 436, error: null });
+    });
+
+    it('joining with the capture-fail card holds fine but its capture fails at settle', async () => {
+      const { runId, shopperId, A, B } = await toReceipt({ ...card, number: FAIL_CAPTURE_CARD });
+      expect((await getRun(runId)).people.find((p) => p.id === B)!.approvalCode).toBe('888888');
+      const done = await post(`/api/runs/${runId}/confirm`, { personId: shopperId });
+      expect(done.body.state).toBe('partlySettled');
+      expect(done.body.settle[A].step).toBe('captured');
+      expect(done.body.settle[B]).toMatchObject({ step: 'failed', error: 'simulated capture failure' });
+      // The card keeps failing on retry.
+      const retry = await post(`/api/runs/${runId}/confirm`, { personId: shopperId });
+      expect(retry.body.state).toBe('partlySettled');
+      expect(retry.body.settle[B].step).toBe('failed');
+    });
   });
 
   const nullPriceVision = (fail = false) => {

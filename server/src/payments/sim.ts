@@ -8,9 +8,12 @@ const APPROVAL = '888888';
 const MAX_AUTH_CENTS = 100000;
 const DECLINE_CARD = '42423482938483873';
 const OUTAGE_CARD = '4000000000000002';
+/** Stripe-style "attaches fine, charges fail": authorize succeeds, every capture and incremental throws. */
+export const FAIL_CAPTURE_CARD = '4000000000000341';
+const CAPTURE_FAILURE = 'simulated capture failure';
 
 /** `preAuth` marks a pre-authorization (Cybersource authIndicator "0"), which every join is. */
-type AuthState = { authorized: number; reversed: number; captured: number; preAuth: boolean };
+type AuthState = { authorized: number; reversed: number; captured: number; preAuth: boolean; failCapture?: true };
 export type CallRecord = { method: string; ref: string; args: unknown[] };
 
 export class SimPayments implements PaymentsProvider {
@@ -62,7 +65,10 @@ export class SimPayments implements PaymentsProvider {
     if (card.expYear === 1998 || card.number === DECLINE_CARD || amountCents > MAX_AUTH_CENTS) {
       return { status: 'DECLINED', authId, approvalCode: '', authorizedCents: 0 };
     }
-    this.auths.set(authId, { authorized: amountCents, reversed: 0, captured: 0, preAuth: true });
+    this.auths.set(authId, {
+      authorized: amountCents, reversed: 0, captured: 0, preAuth: true,
+      ...(card.number === FAIL_CAPTURE_CARD ? { failCapture: true as const } : {}),
+    });
     this.persist();
     return { status: 'AUTHORIZED', authId, approvalCode: APPROVAL, authorizedCents: amountCents };
   }
@@ -71,6 +77,7 @@ export class SimPayments implements PaymentsProvider {
     this.log.push({ method: 'incremental', ref, args: [authId, deltaCents] });
     const a = this.auths.get(authId);
     if (!a) return { status: 'DECLINED', authId, approvalCode: '', authorizedCents: 0 };
+    if (a.failCapture) throw new Error(CAPTURE_FAILURE);
     if (a.authorized + deltaCents > MAX_AUTH_CENTS) {
       return { status: 'DECLINED', authId, approvalCode: '', authorizedCents: a.authorized };
     }
@@ -93,6 +100,7 @@ export class SimPayments implements PaymentsProvider {
     this.log.push({ method: 'capture', ref, args: [authId, amountCents] });
     const a = this.auths.get(authId);
     if (!a) throw new Error('unknown authorization');
+    if (a.failCapture) throw new Error(CAPTURE_FAILURE);
     if (amountCents > a.authorized - a.reversed - a.captured) throw new Error('capture exceeds authorized');
     a.captured += amountCents;
     this.persist();
@@ -103,4 +111,26 @@ export class SimPayments implements PaymentsProvider {
     this.log.push({ method: 'payout', ref, args: [recipientPan, amountCents] });
     return { simulated: true, businessApplicationId: 'FD', amountCents, recipientPan, requestId: this.nextId('99') };
   }
+}
+
+/** `SIM_FAIL_CAPTURE`: a comma list of person names, matched case-insensitively. */
+export function simFailNames(env: string | undefined): Set<string> {
+  return new Set((env ?? '').split(',').map((n) => n.trim().toLowerCase()).filter(Boolean));
+}
+
+/** Wraps a provider so capture and incremental throw for the given authorizations (demo of partly settled). */
+export function failingCaptures(p: PaymentsProvider, authIds: ReadonlySet<string>): PaymentsProvider {
+  return {
+    authorize: (ref, card, amount) => p.authorize(ref, card, amount),
+    incremental: async (ref, authId, delta) => {
+      if (authIds.has(authId)) throw new Error(CAPTURE_FAILURE);
+      return p.incremental(ref, authId, delta);
+    },
+    reverse: (ref, authId, amount) => p.reverse(ref, authId, amount),
+    capture: async (ref, authId, amount) => {
+      if (authIds.has(authId)) throw new Error(CAPTURE_FAILURE);
+      return p.capture(ref, authId, amount);
+    },
+    payout: (ref, pan, amount) => p.payout(ref, pan, amount),
+  };
 }

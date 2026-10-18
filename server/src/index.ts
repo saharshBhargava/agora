@@ -9,6 +9,7 @@ import QRCode from 'qrcode';
 import sharp from 'sharp';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { getPayments, type PaymentsProvider, type TestCard } from './payments/provider.js';
+import { SimPayments, failingCaptures, simFailNames } from './payments/sim.js';
 import { identifyChip, identifyPipeline, type PipelineDeps } from './pipeline.js';
 import type { AgentPrice } from './price/agent.js';
 import { getPriceSetup, type PriceProvider } from './price/provider.js';
@@ -436,15 +437,24 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     },
   );
 
+  /** With the simulator, `SIM_FAIL_CAPTURE` names people whose capture and incremental fail at settle. */
+  const settlePayments = (r: Run): PaymentsProvider => {
+    const names = simFailNames(process.env.SIM_FAIL_CAPTURE);
+    if (!(payments instanceof SimPayments) || names.size === 0) return payments;
+    const failing = r.people.filter((p) => !p.isShopper && p.authId && names.has(p.name.trim().toLowerCase()));
+    return failing.length ? failingCaptures(payments, new Set(failing.map((p) => p.authId as string))) : payments;
+  };
+
   app.post<{ Params: { id: string }; Body: { personId: string } }>('/api/runs/:id/confirm', async (req, reply) => {
     const run = guard(reply, req.params.id, req.body.personId, true);
     if (!run) return;
     if (run.state !== 'receipt' && run.state !== 'partlySettled' && run.state !== 'settled') return fail(reply, 'no receipt');
     // Serialize per run: a second confirm waits for the first, then re-runs against the stored progress.
     const prev = settling.get(run.id) ?? Promise.resolve();
-    const mine = prev.catch(() => undefined).then(() =>
-      settle(store.get(run.id) as Run, payments, ref(run.id), (r) => store.save(r)),
-    );
+    const mine = prev.catch(() => undefined).then(() => {
+      const cur = store.get(run.id) as Run;
+      return settle(cur, settlePayments(cur), ref(run.id), (r) => store.save(r));
+    });
     settling.set(run.id, mine);
     try {
       return await mine;
