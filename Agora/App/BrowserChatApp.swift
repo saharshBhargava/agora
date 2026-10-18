@@ -21,9 +21,9 @@ struct BrowserChatApp: App {
                     CaptureView(settings: workspace.settings, inventory: workspace.inventory)
                         .tabItem { Label("Capture", systemImage: "camera.viewfinder") }
                         .tag(AppTab.capture)
-                    InventoryView(store: workspace.inventory)
-                        .tabItem { Label("Inventory", systemImage: "shippingbox") }
-                        .tag(AppTab.inventory)
+                    ListsView(inventory: workspace.inventory, shopping: workspace.shopping, settings: workspace.settings, trips: workspace.trips)
+                        .tabItem { Label("Lists", systemImage: "list.bullet") }
+                        .tag(AppTab.lists)
                     SettingsView(settings: workspace.settings, workspace: workspace)
                         .tabItem { Label("Settings", systemImage: "gearshape") }
                         .tag(AppTab.settings)

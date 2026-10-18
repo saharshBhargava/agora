@@ -254,9 +254,21 @@ final class ShoppingTests: XCTestCase {
             let attachment = XCTAttachment(image: image); attachment.name = selection; attachment.lifetime = .keepAlways
             add(attachment)
         }
-        await calendar.signOut()
         let api = AgoraClient(calendar: calendar, baseURL: URL(string: "https://shopping.example.com"), http: session)
         let trips = TripStore(api: api, inventory: inventory, calendar: calendar)
+        let lists = UIHostingController(rootView: ListsView(inventory: inventory, shopping: shopping, settings: settings, trips: trips))
+        window.rootViewController = lists; window.makeKeyAndVisible()
+        lists.view.frame = window.bounds; lists.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(300))
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
+        }
+        let path = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("lists-overview.png")
+        try XCTUnwrap(image.pngData()).write(to: path)
+        print("Lists screenshot: \(path.path)")
+        let attachment = XCTAttachment(image: image); attachment.name = "Lists overview"; attachment.lifetime = .keepAlways
+        add(attachment)
+        await calendar.signOut()
         let home = UIHostingController(rootView: HomeView(selectedTab: .constant(.home), store: inventory, shopping: shopping, settings: settings, trips: trips))
         home.loadViewIfNeeded(); home.view.layoutIfNeeded(); XCTAssertNotNil(home.view)
     }

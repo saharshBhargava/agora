@@ -22,7 +22,7 @@ struct WatchListView: View {
                     }.padding(.vertical, 4)
                 }
             }
-        }.navigationTitle("Price watches")
+        }.navigationTitle("Watch list")
             .overlay { if store.loading && store.watches.isEmpty { ProgressView() } }
             .task(id: store.context) { await store.refresh() }.refreshable { await store.refresh() }
             .navigationDestination(item: $store.openWatchID) { id in WatchDetailView(store: store, watchID: id) }

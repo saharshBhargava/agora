@@ -99,7 +99,7 @@ struct TripsView: View {
                 }
             }
         }
-        .navigationTitle("Shopping trips")
+        .navigationTitle("Shopping lists & trips")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("New list", systemImage: "plus") { creatingList = true }

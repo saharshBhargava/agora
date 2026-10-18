@@ -33,7 +33,7 @@ struct RecognitionView: View {
         NavigationStack {
             Form {
                 if differentAccount {
-                    Section { Text("This capture has an inventory save for another account or household. Switch back in Inventory to view or finish it.") }
+                    Section { Text("This capture has an inventory save for another account or household. Switch back in Lists to view or finish it.") }
                 } else {
                     Section {
                         if item.kind == .video { VideoPlayer(player: player).frame(height: 150) }

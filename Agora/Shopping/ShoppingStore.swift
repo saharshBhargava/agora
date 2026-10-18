@@ -168,7 +168,7 @@ final class ShoppingStore: ObservableObject {
     }
 
     func execute(_ call: ShoppingCall, taskID: UUID) async throws -> [String: Any] {
-        guard let householdID else { throw BrowserError("no_household", "Open Inventory to load your household first.") }
+        guard let householdID else { throw BrowserError("no_household", "Open Lists to load your household first.") }
         let version = context
         if call.name == "shopping_context" {
             let feedback = try await api.fetch("v1/wishlist/agent-context", as: ModelJSON.self,

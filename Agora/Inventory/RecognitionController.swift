@@ -94,7 +94,7 @@ final class RecognitionController: ObservableObject {
     func save(item: CaptureItem, store: InventoryStore, library: MediaLibrary) async {
         guard !busy, !completed else { return }
         guard let accountID = store.accountID, let householdID = store.householdID else {
-            message = "Connect your account and select a household in Inventory first."; return
+            message = "Connect your account and select a household in Lists first."; return
         }
         let version = store.context
         busy = true; saving = true; message = nil

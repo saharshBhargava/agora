@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum AppTab: Hashable {
-    case home, chat, capture, inventory, settings
+    case home, chat, capture, lists, settings
 }
 
 struct HomeView: View {
@@ -230,7 +230,10 @@ struct HomeView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            Button("View inventory") { selectedTab = .inventory }
+            NavigationLink("View inventory") {
+                InventoryListView(store: store)
+                    .toolbar(.visible, for: .navigationBar)
+            }
                 .font(.subheadline.weight(.semibold))
             NavigationLink("Plan a restock trip") { tripsDestination }
                 .font(.subheadline.weight(.semibold))

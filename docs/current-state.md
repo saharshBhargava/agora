@@ -164,3 +164,15 @@ archiving across subsequent sign-ins. No migration or API contract change is nee
 real local API/Postgres flows (manual lists and replenishment trips, neither skipped). Simulator captures
 were inspected for creation and checklist screens. This records local source validation, not a production
 deployment or distribution of a new iOS build. List editing, deletion and history remain follow-up work.
+
+## Lists navigation — October 18, 2026 UTC
+
+The native Inventory tab is now **Lists**, with four vertically stacked navigation rows: Inventory list,
+Shopping lists, Watch list, and Suggested for you. These open the existing inventory, shopping-list/trip,
+price-watch, and suggestion screens. Household selection is available on Lists; Home still links directly
+to the inventory list, and the watch list offers access to the wishlist and offer inbox. This is a local
+client navigation change with no new stored data, API, or migration.
+
+Validation: 73 selected iOS simulator tests passed, including inventory, shopping, watches, trips and
+authentication checks. The Lists overview simulator capture was inspected. No production deployment or
+new distributed iOS build is claimed.

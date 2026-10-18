@@ -1,7 +1,88 @@
 import SwiftUI
 import Charts
 
+struct ListsView: View {
+    @ObservedObject var inventory: InventoryStore
+    @ObservedObject var shopping: ShoppingStore
+    @ObservedObject var settings: SettingsStore
+    @ObservedObject var trips: TripStore
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if inventory.households.count > 1 {
+                    Picker("Household", selection: Binding(get: { inventory.householdID }, set: { id in
+                        if let id { Task { await inventory.selectHousehold(id) } }
+                    })) {
+                        ForEach(inventory.households) { Text($0.name).tag(Optional($0.id)) }
+                    }
+                }
+                Section {
+                    NavigationLink {
+                        InventoryListView(store: inventory)
+                    } label: {
+                        listRow("Inventory list", subtitle: "What you have at home", symbol: "shippingbox", tint: .teal)
+                    }
+                    .accessibilityIdentifier("lists.inventory")
+                    NavigationLink {
+                        TripsView(store: trips)
+                    } label: {
+                        listRow("Shopping lists", subtitle: "What to pick up on your next trip", symbol: "checklist", tint: .blue)
+                    }
+                    .accessibilityIdentifier("lists.shopping")
+                    NavigationLink {
+                        WatchListView(store: shopping.watches)
+                            .toolbar {
+                                ToolbarItem(placement: .primaryAction) {
+                                    Menu {
+                                        NavigationLink("Wishlist") { ShoppingView(store: shopping, settings: settings) }
+                                        NavigationLink("Offer inbox") { WatchInboxView(store: shopping.watches) }
+                                    } label: { Label("Watch options", systemImage: "ellipsis.circle") }
+                                }
+                            }
+                    } label: {
+                        listRow("Watch list", subtitle: "Products and prices you’re keeping an eye on", symbol: "binoculars", tint: .purple)
+                    }
+                    .accessibilityIdentifier("lists.watches")
+                    NavigationLink {
+                        ShoppingView(store: shopping, settings: settings, selection: "suggestions")
+                    } label: {
+                        listRow("Suggested for you", subtitle: "Ideas and essentials to replenish", symbol: "sparkles", tint: .orange)
+                    }
+                    .accessibilityIdentifier("lists.suggestions")
+                }
+            }
+            .navigationTitle("Lists")
+            .refreshable { await inventory.refresh(); await shopping.refresh(); await trips.refresh() }
+        }
+        .id(inventory.context)
+    }
+
+    private func listRow(_ title: String, subtitle: String, symbol: String, tint: Color) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: symbol)
+                .font(.title3)
+                .foregroundStyle(tint)
+                .frame(width: 44, height: 44)
+                .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(.headline)
+                Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 10)
+    }
+}
+
 struct InventoryView: View {
+    @ObservedObject var store: InventoryStore
+    var body: some View {
+        NavigationStack { InventoryListView(store: store) }
+    }
+}
+
+struct InventoryListView: View {
     @ObservedObject var store: InventoryStore
     @State private var search = ""
     @State private var locationID: UUID?
@@ -18,67 +99,65 @@ struct InventoryView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                if store.households.count > 1 {
-                    Picker("Household", selection: Binding(get: { store.householdID }, set: { id in
-                        if let id { Task { await store.selectHousehold(id) } }
-                    })) {
-                        ForEach(store.households) { Text($0.name).tag(Optional($0.id)) }
-                    }
-                }
-                Section {
-                    Picker("Location", selection: $locationID) {
-                        Text("All locations").tag(UUID?.none)
-                        ForEach(store.locations) { Text($0.name).tag(Optional($0.id)) }
-                    }
-                    Toggle("Show archived items", isOn: $showArchived)
-                }
-                if let error = store.error {
-                    Section {
-                        Text(error).foregroundStyle(.secondary)
-                        Button("Try again") { Task { await store.refresh() } }.disabled(store.loading)
-                    }
-                }
-                Section {
-                    if store.loading && store.items.isEmpty {
-                        ProgressView("Loading inventory…")
-                    } else if visibleItems.isEmpty && store.error == nil {
-                        ContentUnavailableView(showArchived ? "No archived items" : "No items found", systemImage: "shippingbox",
-                                               description: Text(search.isEmpty && locationID == nil ? "Add an item to start tracking your essentials." : "Try another search or location."))
-                        if !showArchived {
-                            Button("Add item") { adding = true }.disabled(store.householdID == nil)
-                        }
-                    }
-                    ForEach(visibleItems) { item in
-                        NavigationLink {
-                            InventoryDetailView(store: store, itemID: item.id)
-                        } label: {
-                            InventoryRowView(item: item, location: store.locations.first { $0.id == item.locationId }?.name)
-                        }
-                        .accessibilityIdentifier("inventory.item.\(item.id)")
-                    }
-                } header: {
-                    if let household = store.household { Text(household.name) }
+        List {
+            if store.households.count > 1 {
+                Picker("Household", selection: Binding(get: { store.householdID }, set: { id in
+                    if let id { Task { await store.selectHousehold(id) } }
+                })) {
+                    ForEach(store.households) { Text($0.name).tag(Optional($0.id)) }
                 }
             }
-            .searchable(text: $search, prompt: "Search inventory")
-            .navigationTitle("Inventory")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { managingLocations = true } label: { Label("Locations", systemImage: "square.grid.2x2") }
-                        .disabled(store.householdID == nil)
+            Section {
+                Picker("Location", selection: $locationID) {
+                    Text("All locations").tag(UUID?.none)
+                    ForEach(store.locations) { Text($0.name).tag(Optional($0.id)) }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { adding = true } label: { Label("Add item", systemImage: "plus") }
-                        .disabled(store.householdID == nil)
-                        .accessibilityIdentifier("inventory.add")
+                Toggle("Show archived items", isOn: $showArchived)
+            }
+            if let error = store.error {
+                Section {
+                    Text(error).foregroundStyle(.secondary)
+                    Button("Try again") { Task { await store.refresh() } }.disabled(store.loading)
                 }
             }
-            .refreshable { await store.refresh() }
-            .sheet(isPresented: $adding) { InventoryEditor(store: store, original: nil) }
-            .sheet(isPresented: $managingLocations) { InventoryLocationsView(store: store) }
+            Section {
+                if store.loading && store.items.isEmpty {
+                    ProgressView("Loading inventory…")
+                } else if visibleItems.isEmpty && store.error == nil {
+                    ContentUnavailableView(showArchived ? "No archived items" : "No items found", systemImage: "shippingbox",
+                                           description: Text(search.isEmpty && locationID == nil ? "Add an item to start tracking your essentials." : "Try another search or location."))
+                    if !showArchived {
+                        Button("Add item") { adding = true }.disabled(store.householdID == nil)
+                    }
+                }
+                ForEach(visibleItems) { item in
+                    NavigationLink {
+                        InventoryDetailView(store: store, itemID: item.id)
+                    } label: {
+                        InventoryRowView(item: item, location: store.locations.first { $0.id == item.locationId }?.name)
+                    }
+                    .accessibilityIdentifier("inventory.item.\(item.id)")
+                }
+            } header: {
+                if let household = store.household { Text(household.name) }
+            }
         }
+        .searchable(text: $search, prompt: "Search inventory")
+        .navigationTitle("Inventory list")
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { managingLocations = true } label: { Label("Locations", systemImage: "square.grid.2x2") }
+                    .disabled(store.householdID == nil)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { adding = true } label: { Label("Add item", systemImage: "plus") }
+                    .disabled(store.householdID == nil)
+                    .accessibilityIdentifier("inventory.add")
+            }
+        }
+        .refreshable { await store.refresh() }
+        .sheet(isPresented: $adding) { InventoryEditor(store: store, original: nil) }
+        .sheet(isPresented: $managingLocations) { InventoryLocationsView(store: store) }
         .id(store.context)
         .onChange(of: store.context) { _, _ in locationID = nil; adding = false; managingLocations = false }
     }

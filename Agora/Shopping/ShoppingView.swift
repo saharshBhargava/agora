@@ -23,7 +23,7 @@ struct ShoppingView: View {
                 }
                 if let notice = store.notice { Text(notice).font(.subheadline).foregroundStyle(.secondary) }
                 WatchShoppingNotice(store: store.watches)
-                if !store.canUse { Text("Sign in and choose a household in Inventory to start.").foregroundStyle(.secondary) }
+                if !store.canUse { Text("Sign in and choose a household in Lists to start.").foregroundStyle(.secondary) }
             }
             if selection == "wishlist" {
                 Section {
