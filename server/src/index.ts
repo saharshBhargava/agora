@@ -60,7 +60,8 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
   const now = deps.now ?? Date.now;
   const lastCallMs = deps.lastCallMs ?? 10000;
   const store = createStore(deps.dataDir ?? defaultDataDir());
-  const app = Fastify();
+  // Phone photos (receipts, crops) can exceed the 1 MB default.
+  const app = Fastify({ bodyLimit: 8 * 1024 * 1024 });
   await app.register(cors, { origin: true });
 
   const makeDetector = deps.detector ?? getDetector;

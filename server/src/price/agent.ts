@@ -11,7 +11,7 @@ export class AgentPrice implements PriceProvider {
   private readonly timeoutMs: number;
 
   constructor(opts: { timeoutMs?: number } = {}) {
-    this.timeoutMs = opts.timeoutMs ?? 45_000;
+    this.timeoutMs = opts.timeoutMs ?? 120_000;
   }
 
   lookup(name: string, store: string): Promise<{ cents: number; sourceUrl: string } | null> {
