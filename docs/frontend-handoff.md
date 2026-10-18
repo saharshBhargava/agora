@@ -5,56 +5,58 @@ Pending UI work: [frontend-requests.md](frontend-requests.md).
 
 ## Current deployment record
 
-As of October 17, 2026, the Tiger database is created and initialized through migrations `0011`/`0012` with
-only the designated demo account. Connectivity, TimescaleDB, and request-role permissions were verified.
-The commerce demo data was backfilled without resetting earlier inventory/history. In-process API checks
-against that hosted database passed for readiness, profile, inventory, lists, forecasts, agent state,
-mandates, intents, budgets and spend (all HTTP 200); unauthenticated profile access returned 401.
-These checks used temporary process-only test credentials and did not make payments. They do not verify a
-public endpoint or native Google sign-in. Render service setup remains pending; no live API URL is
-available yet. Normal hosted boot checks for pending migrations and ensures demo data idempotently.
-Replace the fields below after deploying; examples are not working hosts.
+As of October 17, 2026, Render is **Live** at `https://agora-api-yq3m.onrender.com`, backed by Tiger with
+TimescaleDB. The database is initialized through migrations `0011`/`0012`; the single designated demo
+account retains its inventory/history and has commerce data. The public health/readiness, docs and
+OpenAPI endpoints returned HTTP 200. Demo password sign-in and authenticated profile, inventory, lists,
+wishlist, forecasts, agent state, mandates, intents, budgets and spend all returned HTTP 200.
+Unauthenticated profile/inventory/agent-state requests returned 401. No payments were made.
+
+The existing keep-warm workflow is configured with repository variable `AGORA_API_URL`; a manual run
+passed. Native Google sign-in/Calendar consent and a real Gemini recognition still need device testing.
+Normal hosted boot checks pending migrations and ensures demo data idempotently.
 
 | Field | Actual value |
 |---|---|
-| Public API origin (no path) | Pending Render deployment |
-| API root | `<origin>/v1` |
-| Health / database readiness | `<origin>/healthz` / `<origin>/readyz` |
-| Interactive docs / OpenAPI | `<origin>/docs` / `<origin>/openapi.json` |
-| Deployed commit | Pending; copy from Render Events |
-| Last successful smoke test | Hosted database + in-process API: October 17, 2026; public API/native Google tests pending |
+| Public API origin (no path) | `https://agora-api-yq3m.onrender.com` |
+| API root | `https://agora-api-yq3m.onrender.com/v1` |
+| Health / database readiness | `/healthz` / `/readyz` at that origin; verified HTTP 200 |
+| Interactive docs / OpenAPI | [Docs](https://agora-api-yq3m.onrender.com/docs) / [OpenAPI](https://agora-api-yq3m.onrender.com/openapi.json) |
+| First verified live commit | `d6bac9d122ebe902735cfcfccd8f704ffbd115a6`; see Render Events for subsequent deploys |
+| Last successful smoke test | Public health, demo login and authenticated reads: October 17, 2026 |
 | Google test-user access | Owner must add each tester in the existing Google Cloud project |
-| Demo Google address | Owner must configure `AGORA_DEMO_GOOGLE_EMAILS` in Render |
-| Live scan provider | Pending backend Gemini or Perceptron key |
+| Demo Google address | Not configured; owner must select the address and set `AGORA_DEMO_GOOGLE_EMAILS` in Render |
+| Recognition keys | Current iOS Capture uses its Settings Gemini key; optional server `/v1/scans` falls back to replay until a backend key is added |
 
 Keep this record public and free of passwords, API keys and bearer tokens. Update it when the deployment
 changes so teammates and resumed agents have one place to find the live configuration.
 
 ## Message to send to the frontend team
 
-Fill in the origin after `/readyz` returns HTTP 200. Share the demo password only through a private
-credential channel if the team needs it for API testing.
+This message is ready to copy. Share the demo password only through a private credential channel if the
+team needs it for API testing; retrieve it from Render Environment, `AGORA_DEMO_PASSWORD`.
 
 ```text
 Agora backend:
-Origin: https://<actual-render-host>.onrender.com
-API root: https://<actual-render-host>.onrender.com/v1
-Docs: https://<actual-render-host>.onrender.com/docs
-OpenAPI: https://<actual-render-host>.onrender.com/openapi.json
+Origin: https://agora-api-yq3m.onrender.com
+API root: https://agora-api-yq3m.onrender.com/v1
+Docs: https://agora-api-yq3m.onrender.com/docs
+OpenAPI: https://agora-api-yq3m.onrender.com/openapi.json
 
 iOS setup:
-1. Pull main. Copy Config/Local.xcconfig.example to Config/Local.xcconfig.
-2. Set AGORA_API_BASE_URL = https:/$()/<actual-render-host>.onrender.com
-   Use only the origin: no /v1 suffix. Leave Google overrides commented.
+1. Pull main; the shared config already has the live API URL.
+2. Remove/update any old AGORA_API_BASE_URL override in Config/Local.xcconfig.
+   The current value is https:/$()/agora-api-yq3m.onrender.com (no /v1 suffix).
 3. Have the project owner add your Google account as an OAuth test user.
 4. Rebuild in Xcode, sign in with Google, approve Calendar, then open Home.
 
 API auth: Authorization: Bearer <fresh Google ID token from the SDK>.
 There is no shared Agora API key. Use an ID token, not a Google access token.
-For populated data, use the designated demo Google account (shared privately).
+Google access to the populated demo account awaits the owner's demo-email selection.
+API testers can use POST /v1/dev/login with handle demo and the Render demo password.
 Your ordinary Google account starts with an empty household.
 
-Chat/caption Gemini key: configure separately in app Settings.
+Chat/caption/Capture recognition Gemini key: configure in app Settings.
 Backend scan provider keys and database credentials stay on the server.
 Free hosting can take about a minute to wake after being idle.
 ```
@@ -93,12 +95,14 @@ Agora account. Call `GET /v1/me` to obtain household IDs rather than hardcoding 
 
 ## Owner's completion checklist
 
-1. Deploy `main` using `render.yaml`; store the direct Tiger URL and backend vision key in Render Environment.
-2. Confirm readiness, demo API login, `/v1/me` and inventory; then test native Google sign-in and a real scan.
-3. Fill the deployment record above with the actual public origin, deployed commit and test time.
-4. Set GitHub Actions repository **variable** `AGORA_API_URL` to the origin (not a secret; no `/readyz` suffix).
-   The existing keep-warm workflow uses it. It is not guaranteed uptime; see SETUP.md for demo preparation.
-5. Send the filled message to the frontend team and provide test-user access. Keep secrets in the provider
+1. Completed: `main` deployed using `render.yaml`, Tiger credentials remain in Render, public and
+   authenticated read checks passed, and `AGORA_API_URL` is set with a successful keep-warm run.
+2. Remaining: add testers in the existing Google project, select the populated demo Google address if
+   needed, then test native Google sign-in/Calendar and real Capture recognition with an app Settings key.
+3. Optional: add a backend Gemini/Perceptron key in Render for the separate server `/v1/scans` flow.
+4. Update this deployment record when the host or access setup changes. Keep-warm is not guaranteed
+   uptime; see SETUP.md for demo preparation.
+5. Send the message above to the frontend team and provide test-user access. Keep secrets in the provider
    dashboards/password manager, not in this file or a frontend build.
 6. When upgrading backend features, read [pr-handoff.md](pr-handoff.md) and current `main` first; don't
    reuse an old migration number or reapply a merged PR.

@@ -1,5 +1,6 @@
 # Render Blueprint (free plan, no credit card). New → Blueprint → pick this repo, then paste the database URL.
 # Free web services sleep after ~15 idle minutes and take about a minute to wake; see backend/README.md.
+# Team API: https://agora-api-yq3m.onrender.com (verified deployment record: docs/frontend-handoff.md).
 services:
   - type: web
     name: agora-api

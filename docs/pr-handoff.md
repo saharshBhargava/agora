@@ -64,8 +64,8 @@ TimescaleDB 17, and the deploy Docker image. No hosted database was reset during
 After merge, the owner-authorized hosting setup applied `0011`/`0012` to Tiger and backfilled the designated
 demo account without a reset. The demo has a mandate, four intents, a budget, three orders and three spend
 entries in addition to its existing inventory/list history. Read-only API checks against Tiger passed for
-all new commerce read endpoints. Render's public API deployment and native Google sign-in still require
-completion; see the [deployment record](frontend-handoff.md#current-deployment-record).
+all new commerce read endpoints. Render is now deployed and verified publicly; native Google sign-in still
+needs device testing. See the [deployment record](frontend-handoff.md#current-deployment-record).
 
 The original sleeping forecast and commerce checkouts were left intact at their earlier local commits.
 Before resuming one, inspect its local changes, fetch origin, and integrate current main using the team's
@@ -78,4 +78,16 @@ Keep `rootDir: backend`, with `dockerfilePath: ./Dockerfile` and `dockerContext:
 relative to the service root, despite the generic Blueprint reference's repo-root wording. Do not restore
 the old `./backend/...` paths. The image CI job now reads and builds from `render.yaml` using
 `.github/scripts/build_render_image.py`, so an invalid effective path fails before deployment.
-This change does not alter secrets, migrations or demo data. Public API verification remains pending.
+This change does not alter secrets, migrations or demo data.
+
+## Live hosting and frontend configuration
+
+The Blueprint was manually synced and approved, and Render successfully deployed `d6bac9d` at
+`https://agora-api-yq3m.onrender.com`. Public readiness/docs/schema and actual demo-password login plus
+authenticated inventory/list/forecast/commerce reads were verified October 17, 2026. Unauthenticated
+requests correctly return 401. The keep-warm workflow variable is configured and its manual run passed.
+
+`Config/Agora.xcconfig` now supplies the public team API URL by default. Resumed frontend agents should
+pull main, remove stale local URL overrides, and rebuild. Do not blank the shared API URL or restore old
+deployment paths. See [frontend-handoff.md](frontend-handoff.md) for a ready-to-send teammate message and
+the remaining Google test-user/demo-email/device-key setup. Secrets remain in Render; none were committed.

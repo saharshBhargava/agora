@@ -6,6 +6,11 @@ free plans explicitly and check the provider's displayed terms before creating r
 URL from step 2. Public frontend configuration and a message to copy to teammates are in
 [docs/frontend-handoff.md](docs/frontend-handoff.md).
 
+**The team API is now live at [https://agora-api-yq3m.onrender.com](https://agora-api-yq3m.onrender.com/docs).**
+Readiness, demo API sign-in and authenticated data endpoints were verified October 17, 2026. Frontend
+developers can pull `main` and rebuild: the public URL is already set in `Config/Agora.xcconfig`. The steps
+below explain recreating the deployment and obtaining the optional credentials.
+
 | # | Account | Needed for | Required? |
 |---|---|---|---|
 | 1 | [Tiger Cloud](https://console.cloud.timescale.com) | Database (Postgres + TimescaleDB) | Yes |
@@ -149,7 +154,10 @@ Teammates' own Google accounts stay ordinary, empty accounts: use them to show "
    project, then **Create API key**. Copy the key privately. Check the project's available quota/billing.
 2. Render, then **Environment**: set `AGORA_GEMINI_API_KEY` and save. Backend scans now use Gemini vision. Without a key
    they only work for pre-recorded replay fixtures, and the server logs a warning instead of crashing.
-3. The iOS chat agent uses a key entered in the app's **Settings** tab. Use a separate tester key/project so
+3. The iOS chat, caption and current Capture → inventory recognition flows use a key entered in the app's
+   **Settings** tab. Capture calls Gemini directly from the device, then saves reviewed JSON metadata to the
+   API; it does not require the backend's vision key. That backend key enables the separate `/v1/scans`
+   server-processing flow. Use a separate tester key/project so
    on-device usage does not consume the backend's quota or require sharing the backend credential. Do not
    embed a provider key in a distributed app binary; this Settings flow is for trusted demo testers.
 
@@ -161,10 +169,15 @@ Gemini takes over for that frame automatically.
 
 ## 6. Point the iOS app at it
 
-Copy `Config/Local.xcconfig.example` to `Config/Local.xcconfig` (gitignored) and set:
+The shared `Config/Agora.xcconfig` now points to the live team API. Pull `main` and rebuild. If an existing
+`Config/Local.xcconfig` overrides `AGORA_API_BASE_URL` with an old address, remove that override or replace it
+with the live address below.
+
+Only when overriding the shared server, copy `Config/Local.xcconfig.example` to `Config/Local.xcconfig`
+(gitignored) and set:
 
 ```xcconfig
-AGORA_API_BASE_URL = https:/$()/<your-service>.onrender.com
+AGORA_API_BASE_URL = https:/$()/agora-api-yq3m.onrender.com
 ```
 
 The `$()` is intentional: it stops xcconfig from treating `//` as a comment. The example leaves Google
@@ -184,14 +197,14 @@ connecting a web frontend.
 First check readiness (on Windows use `curl.exe`; replace the host):
 
 ```bash
-curl -s https://<your-service>.onrender.com/readyz
+curl -s https://agora-api-yq3m.onrender.com/readyz
 ```
 
 Then test authentication and data. In PowerShell, this prompts for the password instead of saving it in
 shell history, and does not print the token:
 
 ```powershell
-$api = "https://<your-service>.onrender.com"
+$api = "https://agora-api-yq3m.onrender.com"
 $demoCredential = Get-Credential -UserName demo -Message "Use AGORA_DEMO_PASSWORD from Render"
 $loginBody = @{ handle = "demo"; password = $demoCredential.GetNetworkCredential().Password } | ConvertTo-Json
 $session = Invoke-RestMethod "$api/v1/dev/login" -Method Post -ContentType "application/json" -Body $loginBody
