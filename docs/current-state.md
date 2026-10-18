@@ -227,7 +227,7 @@ card numbers. Run and env details: [Dibs README](dibs/README.md).
 |---|---|
 | Hosting | Laptop + HTTPS tunnel via `scripts/demo-server.sh`. **Not on Render**; `render.yaml` still pins `rootDir: backend`, so the Dibs root `Dockerfile` is not used by Agora's deploy. `railway.json` was never deployed. |
 | Identity | None shared with Agora: a typed name and a per-run key. No Agora account, household or demo-account link yet. |
-| Agora data | The "+ Wish" page can read the demo household's open lists, wishlist suggestions and run-outs through the Dibs server when `TEAM_API_BASE_URL` and `AGORA_DEMO_PASSWORD` are set; this adapter is tested with mocked responses only, not against the live API. Without them it suggests from past Dibs runs. |
+| Agora data | The "+ Wish" page can read a household's open lists, wishlist suggestions and run-outs through the Dibs server when `TEAM_API_BASE_URL` is set: the person's own team-API token (`X-Household-Token`) reads their household, and with no token and `AGORA_DEMO_PASSWORD` set it reads the demo household. This adapter is tested with mocked responses only, not against the live API. Without a household it suggests from past Dibs runs. |
 | CI | `.github/workflows/dibs.yml`: server + web tests, typecheck and smoke on PRs and main; the Dibs iOS suite on PRs only. Agora's `backend`/`ios` workflows and `deploy` are unaffected by Dibs paths. |
 
 Verification on branch `dibs-mock-demo` (31713d0): server 248 and web 142 tests, server/web typecheck,

@@ -1,5 +1,6 @@
 // GET /api/runs/:id/wish-picks: what the "+ Wish" page offers. The household's shopping list and
-// suggestions come from the team backend when it is configured (src/team/backend.ts); suggestions
+// suggestions come from the team backend when it is configured (src/team/backend.ts), read as the signed-in
+// person when the app sends their token (X-Household-Token) and as the demo account otherwise; suggestions
 // always also draw on this server's own run history, which is all there is when the backend is
 // unset or down.
 import { cleanText } from './team/clean.js';
@@ -19,9 +20,13 @@ export type HouseholdList = WishList & { updatedAt: number };
 /** Everything the household source knows, before it is fitted to one run. */
 export type HouseholdPicks = { lists: HouseholdList[]; suggestions: WishSuggestion[] };
 
-/** The household's lists and suggestions. Rejects when they can't be had; the caller falls back. */
+/**
+ * The household's lists and suggestions. `token` is the signed-in person's own team-API bearer token, when they
+ * sent one: it is that person's household, and never anyone else's. Rejects when they can't be had; the caller
+ * falls back.
+ */
 export interface HouseholdSource {
-  picks(): Promise<HouseholdPicks>;
+  picks(token?: string): Promise<HouseholdPicks>;
 }
 
 /** The comparison key for an item name: the same rule as `normalize` in run.ts. */
@@ -155,10 +160,10 @@ export function composePicks(run: Run, household: HouseholdPicks | null, history
 }
 
 /** The household's picks, or null when there is no source or it failed (it logs its own failures). */
-export async function householdPicks(source: HouseholdSource | null): Promise<HouseholdPicks | null> {
+export async function householdPicks(source: HouseholdSource | null, token?: string): Promise<HouseholdPicks | null> {
   if (!source) return null;
   try {
-    return await source.picks();
+    return await source.picks(token);
   } catch {
     return null;
   }
