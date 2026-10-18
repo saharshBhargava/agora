@@ -246,8 +246,17 @@ a Gmail account just to let the frontend team sign in. See [frontend handoff](fr
 - **Runtime contract:** current routers/schemas/migrations and deployed OpenAPI, plus [API contracts](api/).
 - **Frontend integration:** [frontend handoff](frontend-handoff.md); [frontend requests](frontend-requests.md) is backlog where marked.
 - **Recreating/local fallback:** [SETUP.md](../SETUP.md) and [backend README](../backend/README.md).
+- **Dibs (side-by-side):** [docs/dibs/README.md](dibs/README.md) (`ios/`, `server/`, `web/`). Not hosted on Render;
+  CI is `.github/workflows/dibs.yml`. Later nesting / Agora tab / FastAPI port: [dibs/merge-plan.md](dibs/merge-plan.md).
 - **Historical design/reference:** [backend spec](backend-spec.md), [original planning notes](Dubhacks%20Planning%201.md),
   [judging rubric](RUBRIC.md). These are not evidence of implementation or instructions to change hosting.
+
+## Dibs side-by-side on main — Phase A
+
+Phase A lands Dibs **next to** Agora without changing Render deploy paths: Node server, Next web, and the
+standalone `ios/` XcodeGen app. Stub and live-demo scripts remain laptop/tunnel based. Do not treat the
+root `Dockerfile` / `railway.json` as Agora infrastructure. Wish-page proxy to the Agora demo API is
+optional via `TEAM_API_BASE_URL` + `AGORA_DEMO_PASSWORD` on the Dibs server only.
 
 If a later inspection disagrees with this snapshot, resolve against current main/live provider evidence and
 update the dated record. Do not change the deployment just to make it match an older document.

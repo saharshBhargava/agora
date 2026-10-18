@@ -146,8 +146,8 @@ The pipeline is sized to stay well inside every free plan:
 
 | Service | Limit | This setup uses |
 |---|---|---|
-| GitHub Actions | Free and unmetered for standard runners on **public** repos; ~20 concurrent jobs (5 macOS) | Backend CI on PRs and merges (then deploy); iOS simulator CI on PRs only; keep-warm every 10 min; 1 backup/day. **If the repo goes private** (2,000 min/month, macOS counts 10x): change keep-warm to every 30 min |
-| Render Free | 750 instance hours/month (one always-on service ≈ 744), limited build minutes, may restart anytime | One service; builds only when backend code changed, and only the newest of a burst. **Don't add preview environments or a second service**: they share the 750 hours |
+| GitHub Actions | Free and unmetered for standard runners on **public** repos; ~20 concurrent jobs (5 macOS) | Backend CI on PRs and merges (then deploy); Agora iOS simulator CI on PRs only; Dibs path-filtered `dibs.yml` (Node + Dibs iOS); keep-warm every 10 min; 1 backup/day. **If the repo goes private** (2,000 min/month, macOS counts 10x): change keep-warm to every 30 min |
+| Render Free | 750 instance hours/month (one always-on service ≈ 744), limited build minutes, may restart anytime | One service; builds only when backend code changed, and only the newest of a burst. **Don't add preview environments or a second service**: they share the 750 hours. The root Node `Dockerfile` is Dibs-only — leave `rootDir: backend` |
 | Tiger Free | 750 MiB storage per service, shared compute | Read-only smoke checks and one export per day; photos are deleted after review |
 
 ## Local fallback

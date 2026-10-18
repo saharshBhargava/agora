@@ -1,0 +1,84 @@
+name: dibs
+
+# Path-filtered CI for the side-by-side Dibs demo (server / web / ios).
+# Does not deploy: Render only builds backend/ via backend.yml → deploy.yml.
+
+on:
+  pull_request:
+    paths:
+      - "server/**"
+      - "web/**"
+      - "ios/**"
+      - "scripts/dev.sh"
+      - "scripts/demo-server.sh"
+      - "scripts/smoke.sh"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "Dockerfile"
+      - ".github/workflows/dibs.yml"
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - "web/**"
+      - "ios/**"
+      - "scripts/dev.sh"
+      - "scripts/demo-server.sh"
+      - "scripts/smoke.sh"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "Dockerfile"
+      - ".github/workflows/dibs.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r test
+      - run: bash scripts/smoke.sh
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Choose available iPhone simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for devices in d["devices"].values() for x in devices if x["name"].startswith("iPhone")))')
+          echo "SIMULATOR_ID=$DEVICE" >> "$GITHUB_ENV"
+      - name: Build and test Dibs
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild test -project Dibs.xcodeproj -scheme Dibs \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath build -resultBundlePath build/TestResults.xcresult \
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=18.4 \
+            > build-test.log 2>&1 || { tail -n 160 build-test.log; exit 1; }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dibs-ios-verification
+          path: |
+            ios/build/TestResults.xcresult
+            ios/build-test.log
