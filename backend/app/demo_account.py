@@ -366,6 +366,22 @@ async def _shopping_refresh(db: Database, user_id: UUID) -> None:
 
 
 async def _price_watches(db: Database, user_id: UUID) -> None:
+    """Preserve history and add watches for every active demo wishlist item, including untargeted items."""
+    from app.watch_ops import sync_wishlist_watch
+
+    await _price_watch_history(db, user_id)
+    async with db.scoped(user_id) as conn:
+        rows = await conn.fetch("SELECT id FROM wishlist_items WHERE status='active' ORDER BY household_id,id")
+        for row in rows:
+            await sync_wishlist_watch(conn, row['id'], user_id)
+        # The shared-browser fallback is for ordinary accounts only, including on additive demo backfills.
+        await conn.execute(
+            "UPDATE watch_runs SET browser_state='none',browser_urls='[]',browser_prices='[]',"
+            "browser_token=NULL,browser_user_id=NULL,browser_expires_at=NULL "
+            "WHERE user_id=$1 AND browser_state<>'none'", user_id)
+
+
+async def _price_watch_history(db: Database, user_id: UUID) -> None:
     """Backfill a confirmed skillet watch and its previous observation without external effects."""
     from app.price_search import Offer
     from app.watch_schemas import WatchCriteria

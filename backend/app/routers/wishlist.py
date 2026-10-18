@@ -41,6 +41,7 @@ from app.schemas import (
     WishlistStatus,
     WishlistSuggestionIn,
 )
+from app.watch_ops import sync_wishlist_watch
 from app.wishlist_ops import _refuse_open_duplicate, _resolve_links, lock_household, propose
 
 router = APIRouter(prefix="/v1/wishlist", tags=["wishlist"])
@@ -110,6 +111,10 @@ async def _load(conn: asyncpg.Connection, item_id: UUID) -> WishlistItem:
 
 
 async def _locked(conn: asyncpg.Connection, item_id: UUID) -> asyncpg.Record:
+    household_id = await conn.fetchval('SELECT household_id FROM wishlist_items WHERE id=$1', item_id)
+    if household_id is None:
+        raise not_found('wishlist item')
+    await lock_household(conn, household_id)
     row = await conn.fetchrow(f"SELECT w.*, {_STATUS} AS effective FROM wishlist_items w WHERE w.id = $1 FOR UPDATE",
                               item_id)
     if row is None:
@@ -208,6 +213,7 @@ async def add_item(body: WishlistItemIn, request: Request, user: Principal = Cur
         raise Problem(422, "invalid_request", "Title cannot be blank.")
     async with request.app.state.db.scoped(user.user_id) as conn:
         household_id = await require_household(conn, body.household_id, user.user_id)
+        await lock_household(conn, household_id)
         category = await _resolve_links(conn, household_id, body.product_id, body.inventory_item_id, body.category)
         key = title_key(body.title)
         await _refuse_open_duplicate(conn, household_id, key)
@@ -218,6 +224,8 @@ async def add_item(body: WishlistItemIn, request: Request, user: Principal = Cur
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'user', 'active', $13) RETURNING id""",
             household_id, body.title.strip(), key, body.notes, category, body.quantity, body.target_price_cents,
             body.needed_by, body.priority, body.pinned, body.product_id, body.inventory_item_id, user.user_id)
+        await sync_wishlist_watch(conn, item_id, user.user_id,
+                                  daily_cap=request.app.state.settings.watch_daily_check_cap)
         await audit(conn, "wishlist.item_added", actor_id=user.user_id, household_id=household_id,
                     target_type="wishlist_item", target_id=item_id, meta={"source": "user"})
         await notify(conn, household_id, "wishlist.updated", item_id)
@@ -278,9 +286,15 @@ async def update_item(item_id: UUID, body: WishlistPatch, request: Request,
             changes["category"] = category_key(changes["category"])
         if not changes:
             return await _load(conn, item_id)
+        previous_status = await conn.fetchval(
+            'SELECT status FROM price_watches WHERE wishlist_item_id=$1', item_id)
         columns = ", ".join(f"{name} = ${i}" for i, name in enumerate(changes, start=2))  # names are fixed
         await conn.execute(f"UPDATE wishlist_items SET {columns}, updated_at = now() WHERE id = $1",
                            item_id, *changes.values())
+        await sync_wishlist_watch(conn, item_id, user.user_id,
+                                  changed_fields={name for name, value in changes.items() if row[name] != value},
+                                  previous_status=previous_status,
+                                  daily_cap=request.app.state.settings.watch_daily_check_cap)
         return await _changed(conn, row, "wishlist.item_updated", user,
                               {"fields": sorted(k for k in changes if k != "normalized_title")})
 
@@ -306,6 +320,8 @@ async def accept(item_id: UUID, request: Request, user: Principal = CurrentUser)
         await conn.execute(
             """UPDATE wishlist_items SET status = 'active', snoozed_until = NULL, accepted_at = now(),
                       decided_at = now(), decided_by = $2, updated_at = now() WHERE id = $1""", item_id, user.user_id)
+        await sync_wishlist_watch(conn, item_id, user.user_id,
+                                  daily_cap=request.app.state.settings.watch_daily_check_cap)
         return await _changed(conn, row, "wishlist.accepted", user)
 
 

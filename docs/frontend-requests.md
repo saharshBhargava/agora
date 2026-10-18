@@ -479,3 +479,12 @@ photos; see [the contract](api/item-images.md). Native source in the shared work
 across item views. `needs_confirmation` means show a **Choose** action and candidate titles; do not display
 a candidate as the item image before selection. All item names are searchable, with optional details.
 A new native build is required for the updated editor and service-unavailable/retry messages.
+
+
+## Automatic-watch rollout compatibility
+
+The watch-list response advertises `automatic_watches:true` when wishlist saves and startup backfills
+create watches. Native clients must not show “Preparing automatic price checks” indefinitely for an absent
+watch: distinguish unsupported automatic checks (flag absent/false), a failed/unloaded request, and a
+missing watch after a successful response. The updated local native code implements these states.
+See [price watches](api/price-watches.md).

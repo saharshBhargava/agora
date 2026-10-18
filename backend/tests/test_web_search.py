@@ -84,6 +84,24 @@ async def test_rotation_first_success_no_merging():
     assert calls == ['api.exa.ai', 'api.keenable.ai', 'api.exa.ai']
 
 
+@pytest.mark.parametrize('name', ['exa', 'parallel'])
+@pytest.mark.parametrize('structured', [False, True])
+async def test_empty_mcp_results_are_success_without_fallback_or_cooldown(name, structured):
+    calls = []
+
+    def remote(request):
+        calls.append(request)
+        result = ({'structuredContent': {'results': []}} if structured else
+                  {'content': [{'type': 'text', 'text': json.dumps({'results': []})}]})
+        return httpx.Response(200, json={'jsonrpc': '2.0', 'id': 1, 'result': result})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(remote)) as client:
+        router = WebSearchRouter(settings(watch_search_providers=[name, 'keenable']), client)
+        budget = SearchBudget(2)
+        assert await router.search('Lodge skillet', [], 8, budget) == []
+        assert len(calls) == 1 and budget.remaining == 1 and not router.cooldowns
+
+
 async def test_rate_limit_fallback_and_cooldown_shared_between_checks(monkeypatch):
     now = [100]
     monkeypatch.setattr('app.web_search.time.monotonic', lambda: now[0])
@@ -166,8 +184,8 @@ def test_search_and_model_capabilities_are_independent():
     client = httpx.AsyncClient()
     provider = PriceSearchProvider(settings(), client)
     assert provider.router.enabled == ['exa', 'parallel', 'keenable']
-    assert provider.router.available and not provider.discovery_available
-    assert provider.discovery_status == 'model_not_configured'
+    assert provider.router.available and provider.discovery_available and not provider.model_available
+    assert provider.discovery_status == 'available'
     config = settings(watch_model_provider='openai-compatible', openai_model='local-tools-model')
     provider = PriceSearchProvider(config, client)
     assert provider.discovery_available and not provider.key
