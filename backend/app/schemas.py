@@ -182,11 +182,51 @@ class PurchaseOrigin(BaseModel):
     detection_id: UUID
 
 
+class ForecastOut(BaseModel):
+    """The latest run-out forecast for an item, with the evidence behind it and a sentence explaining it."""
+
+    computed_at: datetime
+    method: Literal["theil_sen", "blended", "prior", "insufficient"]
+    status: Literal["out", "runs_out", "steady", "unknown"]
+    confidence: Literal["low", "medium", "high"]
+    rate_per_day: float | None
+    rate_lo: float | None
+    rate_hi: float | None
+    qty_now: float | None = Field(description="Estimated quantity right now, projected from the last reading")
+    last_observed_at: datetime | None
+    last_quantity: float | None
+    runout_at: datetime | None
+    runout_lo: datetime | None
+    runout_hi: datetime | None
+    n_obs: int
+    n_segments: int
+    span_days: float
+    restock_qty: float | None
+    explanation: str
+
+
 class ItemDetail(ItemOut):
     daily: list[DailyPoint]
     observations: list[Observation]
     purchase_history: list[PurchaseOrigin]
     series_engine: Literal["timescale", "postgres"]
+    forecast: ForecastOut | None = None
+
+
+class Runout(BaseModel):
+    item: ItemOut
+    forecast: ForecastOut
+    suggested_quantity: float
+    suggested_merchant: MerchantRef | None
+    merchant_basis: Literal["preferred", "last_purchase"] | None
+    on_list_id: UUID | None = Field(description="An open shopping list that already has this item, if any")
+
+
+class RunoutsOut(BaseModel):
+    household_id: UUID
+    within_days: int
+    as_of: datetime
+    runouts: list[Runout]
 
 
 # ---------------------------------------------------------------- scans
@@ -417,3 +457,110 @@ class WishlistItem(BaseModel):
     updated_at: datetime
     decided_at: datetime | None
     completed_at: datetime | None
+
+
+# ---------------------------------------------------------------- shopping lists
+
+ListReason = Literal["runout", "manual", "agent", "price_drop"]
+ListStatus = Literal["open", "done", "archived"]
+
+
+class ShoppingListItem(BaseModel):
+    id: UUID
+    list_id: UUID
+    title: str
+    inventory_item_id: UUID | None
+    product_id: UUID | None
+    quantity: float
+    unit: str | None
+    note: str | None
+    reason: ListReason
+    added_by: Literal["user", "agent", "system"]
+    explanation: str | None
+    merchant: MerchantRef | None
+    merchant_basis: Literal["preferred", "last_purchase", "list"] | None
+    needed_by: datetime | None
+    checked: bool
+    checked_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ShoppingList(BaseModel):
+    id: UUID
+    household_id: UUID
+    name: str
+    merchant: MerchantRef | None
+    status: ListStatus
+    source: Literal["user", "generated"]
+    needed_by: datetime | None = Field(description="Earliest run-out among unchecked items")
+    open_count: int
+    items: list[ShoppingListItem]
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
+
+
+class ListIn(Strict):
+    household_id: UUID | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=80,
+                             description="Defaults to the store's name, or 'Shopping list'")
+    merchant_id: UUID | None = None
+
+
+class ListPatch(Strict):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    status: ListStatus | None = None
+    merchant_id: UUID | None = None
+
+
+class ListItemIn(Strict):
+    """Send a ``title``, or link an ``inventory_item_id`` / ``product_id`` and the title is filled in."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    inventory_item_id: UUID | None = None
+    product_id: UUID | None = None
+    quantity: float = Field(default=1, gt=0, le=1000)
+    unit: str | None = Field(default=None, min_length=1, max_length=20)
+    note: str | None = Field(default=None, max_length=500)
+    added_by: Literal["user", "agent"] = "user"
+    explanation: str | None = Field(default=None, min_length=1, max_length=500,
+                                    description="Required when added_by is 'agent'")
+
+    @model_validator(mode="after")
+    def _identifiable(self) -> "ListItemIn":
+        if self.title is None and self.inventory_item_id is None and self.product_id is None:
+            raise ValueError("send a title, inventory_item_id or product_id")
+        if self.title is not None and not self.title.strip():
+            raise ValueError("title can't be blank")
+        if self.added_by == "agent" and self.explanation is None:
+            raise ValueError("agent-added items need an explanation")
+        return self
+
+
+class ListItemPatch(Strict):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    quantity: float | None = Field(default=None, gt=0, le=1000)
+    unit: str | None = Field(default=None, min_length=1, max_length=20)
+    note: str | None = Field(default=None, max_length=500)
+    checked: bool | None = None
+
+
+class GenerateIn(Strict):
+    household_id: UUID | None = None
+    within_days: int = Field(default=7, ge=1, le=30)
+    include_unassigned: bool = Field(default=True,
+                                     description="Also list items with no known store, on a 'Groceries' list")
+
+
+class GenerateSkip(BaseModel):
+    inventory_item_id: UUID
+    title: str
+    reason: Literal["already_on_list", "no_store"]
+    list_id: UUID | None
+
+
+class GenerateOut(BaseModel):
+    lists: list[ShoppingList]
+    added: int
+    skipped: list[GenerateSkip]

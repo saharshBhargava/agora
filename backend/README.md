@@ -73,18 +73,23 @@ suggestions need an `Idempotency-Key` header. Errors are RFC 7807 `application/p
 | `GET /scans/{id}/frames/{n}` | Sanitized frame for the review UI (410 once retention deletes it) |
 | `POST /scans/{id}/review` | Accept / correct / reject detections; only those reach inventory |
 | `GET /inventory`, `POST /inventory` | Items with latest quantity; manual add |
-| `GET /inventory/{id}?days=30` | Daily gap-filled series + raw observations with provenance |
+| `GET /inventory/{id}?days=30` | Daily gap-filled series, raw observations with provenance, run-out forecast |
 | `PATCH /inventory/{id}`, `POST /inventory/{id}/observations` | Edit item; record a manual count |
 | `GET /wishlist`, `POST /wishlist` | Household wishlist as a priority queue (score + reasons); manual add |
 | `POST /wishlist/suggestions` | Agent suggestion (rationale + confidence, `Idempotency-Key`); refuses recent rejections |
 | `POST /wishlist/{id}/accept\|reject\|snooze\|purchased`, `PATCH`, `DELETE` | Suggestion decisions and item lifecycle |
 | `POST /wishlist/{id}/feedback`, `GET /wishlist/agent-context` | Thumbs up/down; feedback summary for the on-device agent |
-| `GET /events` | Server-Sent Events: `scan.updated`, `inventory.updated`, `wishlist.updated` (IDs only; refetch) |
+| `GET /forecasts/runouts?within=7d` | What runs out soon, with interval, explanation and suggested store |
+| `GET /lists`, `POST /lists`, `GET\|PATCH /lists/{id}` | Shopping lists (archived, never deleted) |
+| `POST /lists/{id}/items`, `PATCH\|DELETE /lists/{id}/items/{id}` | List lines; agent lines must carry an explanation |
+| `POST /lists/generate` | Per-store lists from upcoming run-outs (`Idempotency-Key`) |
+| `GET /events` | Server-Sent Events: `scan.updated`, `inventory.updated`, `wishlist.updated`, `forecast.updated`, `list.updated` (IDs only; refetch) |
 | `GET /audit`, `GET /audit/verify` | Your audit trail; hash-chain integrity check |
 | `GET /merchants?q=`, `POST /merchants`, `GET /merchants/{id}` | Store search and find-or-create (see [docs/api/purchased-from.md](../docs/api/purchased-from.md)) |
 | `PATCH /scans/{id}`, `PATCH /scans/{id}/detections/{id}` | Change or clear an upload's or one product's store |
 
-Wishlist contract, lifecycle and scoring: [docs/api/wishlist.md](../docs/api/wishlist.md). UI work waiting on the
+Wishlist contract, lifecycle and scoring: [docs/api/wishlist.md](../docs/api/wishlist.md). Forecasting method and
+lists: [docs/api/forecasts-and-lists.md](../docs/api/forecasts-and-lists.md). UI work waiting on the
 frontend team: [docs/frontend-requests.md](../docs/frontend-requests.md).
 
 ## Where things live
@@ -94,7 +99,8 @@ app/main.py           app factory, middleware (request IDs, security headers, bo
 app/auth.py           dev HMAC tokens / OIDC JWKS verification, first-login bootstrap
 app/db.py             pool; scoped() = per-request role + row-level security; audit + notify helpers
 app/pipeline.py       scan job: frames → vision → merge → match → review/auto-commit → media purge
-app/core/             pure logic (merging, quantities, auto-accept rules, wishlist scoring), unit-tested
+app/core/             pure logic (merging, quantities, auto-accept rules, wishlist scoring, forecasting), unit-tested
+app/forecasting.py    forecast jobs: refresh after each confirmed scan, nightly fan-out, stored history
 app/vision/           provider contract, output validation, Perceptron / Gemini / replay, cache
 app/timeseries.py     Timescale and plain-Postgres implementations of the same queries
 app/jobs.py           Postgres job queue (SKIP LOCKED, LISTEN/NOTIFY wake-ups, backoff)

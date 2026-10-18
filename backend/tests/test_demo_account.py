@@ -102,6 +102,26 @@ async def test_demo_account_looks_real_and_is_full(demo_app):
     assert len(wishlist) >= 3 and wishlist[0]["pinned"]
     assert (await client.get("/v1/wishlist/suggestions", headers=headers)).json()
     assert (await client.get("/v1/wishlist/agent-context", headers=headers)).json()["recently_rejected"]
+    lists = (await client.get("/v1/lists", headers=headers)).json()
+    assert lists and lists[0]["items"]
+    assert detail["forecast"] and detail["forecast"]["explanation"]
+
+
+async def test_new_features_backfill_existing_demo_without_duplicates(demo_app):
+    app, _ = demo_app
+    user_id = await ensure_demo_account(app.state.db, app.state.settings)
+    async with app.state.db.system() as conn:
+        household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
+        await conn.execute("DELETE FROM shopping_lists WHERE household_id = $1", household_id)
+        await conn.execute("DELETE FROM consumption_forecasts WHERE household_id = $1", household_id)
+    await ensure_demo_account(app.state.db, app.state.settings)
+    await ensure_demo_account(app.state.db, app.state.settings)
+    async with app.state.db.system() as conn:
+        assert await conn.fetchval("SELECT count(*) FROM shopping_lists WHERE household_id = $1", household_id) == 1
+        item_count = await conn.fetchval(
+            "SELECT count(*) FROM shopping_list_items WHERE household_id = $1", household_id)
+        assert item_count == 2
+        assert await conn.fetchval("SELECT count(*) FROM consumption_forecasts WHERE household_id = $1", household_id)
 
 
 async def test_google_sign_in_with_the_demo_address_reaches_the_same_account(demo_app, signing_key):
