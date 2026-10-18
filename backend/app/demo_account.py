@@ -28,7 +28,8 @@ from app.config import Settings
 from app.core.wishlist import title_key
 from app.db import Database, audit
 from app.forecasting import refresh
-from app.inventory_ops import sync_purchase_origins
+from app.inventory_ops import create_item, record_observation, sync_purchase_origins
+from app.item_images import seed_demo_images
 from app.seed import seed_catalog, seed_household
 
 DEMO_SUBJECT = "demo:primary"
@@ -52,11 +53,13 @@ async def ensure_demo_account(db: Database, settings: Settings) -> UUID:
     if existing:
         await _forecasts_and_lists(db, existing)
         await _manual_lists(db, existing)
+        await _chat_additions(db, existing)
         await _commerce(db, existing)
         await _calendar(db, existing)
         await _trips(db, existing)
         await _shopping_refresh(db, existing)
         await _price_watches(db, existing)
+        await seed_demo_images(db, existing)
         return existing
     user_id = await ensure_user(db, DEMO_SUBJECT, VISIBLE_HANDLE, settings.demo_display_name)
     async with db.system() as conn:
@@ -130,11 +133,13 @@ async def _seed(db: Database, user_id: UUID) -> None:
                     target_id=user_id)
     await _forecasts_and_lists(db, user_id)
     await _manual_lists(db, user_id)
+    await _chat_additions(db, user_id)
     await _commerce(db, user_id)
     await _calendar(db, user_id)
     await _trips(db, user_id)
     await _shopping_refresh(db, user_id)
     await _price_watches(db, user_id)
+    await seed_demo_images(db, user_id)
 
 
 async def _commerce(db: Database, user_id: UUID) -> None:
@@ -220,6 +225,31 @@ async def _manual_lists(db: Database, user_id: UUID) -> None:
              (list_id, household_id, 'Kitchen sponges', 1, 'pack', 'Non-scratch for the pans', merchant, user_id)])
         await audit(conn, 'demo.manual_list', actor_type='system', household_id=household_id,
                     target_type='shopping_list', target_id=list_id)
+
+
+async def _chat_additions(db: Database, user_id: UUID) -> None:
+    """Examples for chat's three destinations, backfilled once without overwriting user edits."""
+    async with db.scoped(user_id) as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo.features'), hashtext($1))", str(user_id))
+        household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
+        if await conn.fetchval("SELECT 1 FROM audit_log WHERE household_id = $1 AND action = 'demo.chat_additions'",
+                               household_id):
+            return
+        item_id = await create_item(conn, household_id, user_id, "Brown rice", category="pantry",
+                                    unit="bag", tracking="manual")
+        await record_observation(conn, household_id, item_id, datetime.now(UTC), 1, "manual", user_id=user_id)
+        await conn.execute(
+            """INSERT INTO wishlist_items (household_id, title, normalized_title, quantity, source, status, created_by)
+               VALUES ($1, 'Electric kettle', $2, 1, 'user', 'active', $3)""",
+            household_id, title_key("Electric kettle"), user_id)
+        list_id = await conn.fetchval(
+            """INSERT INTO shopping_lists (household_id, name, source, created_by)
+               VALUES ($1, 'Weekend groceries', 'user', $2) RETURNING id""", household_id, user_id)
+        await conn.execute(
+            """INSERT INTO shopping_list_items
+                   (list_id, household_id, title, quantity, unit, reason, added_by, created_by)
+               VALUES ($1, $2, 'Rolled oats', 1, 'bag', 'manual', 'user', $3)""", list_id, household_id, user_id)
+        await audit(conn, "demo.chat_additions", actor_type="system", household_id=household_id)
 
 
 async def _detections_and_purchases(conn: asyncpg.Connection, household_id: UUID, user_id: UUID,
@@ -363,6 +393,22 @@ async def _shopping_refresh(db: Database, user_id: UUID) -> None:
 
 
 async def _price_watches(db: Database, user_id: UUID) -> None:
+    """Preserve history and add watches for every active demo wishlist item, including untargeted items."""
+    from app.watch_ops import sync_wishlist_watch
+
+    await _price_watch_history(db, user_id)
+    async with db.scoped(user_id) as conn:
+        rows = await conn.fetch("SELECT id FROM wishlist_items WHERE status='active' ORDER BY household_id,id")
+        for row in rows:
+            await sync_wishlist_watch(conn, row['id'], user_id)
+        # The shared-browser fallback is for ordinary accounts only, including on additive demo backfills.
+        await conn.execute(
+            "UPDATE watch_runs SET browser_state='none',browser_urls='[]',browser_prices='[]',"
+            "browser_token=NULL,browser_user_id=NULL,browser_expires_at=NULL "
+            "WHERE user_id=$1 AND browser_state<>'none'", user_id)
+
+
+async def _price_watch_history(db: Database, user_id: UUID) -> None:
     """Backfill a confirmed skillet watch and its previous observation without external effects."""
     from app.price_search import Offer
     from app.watch_schemas import WatchCriteria

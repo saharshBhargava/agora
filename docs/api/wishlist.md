@@ -9,9 +9,13 @@ feedback teaches the agent without changing an item's status.
 All routes are under `/v1/wishlist`, need `Authorization: Bearer <token>`, and return RFC 7807
 `application/problem+json` errors. Every change publishes a `wishlist.updated` event on `GET /v1/events`.
 
-Active items can now have a separately confirmed [price watch](price-watches.md). Adding/editing a wishlist
-target alone does not authorize monitoring. Changes to an item's identity, quantity, target or deadline
-invalidate the watch's earlier confirmation; purchasing/removing the item completes its watch.
+Every active item automatically gets a [price watch](price-watches.md). Adding an item or accepting a
+suggestion atomically saves the watch and queues its first web price check. Targets are optional: without
+one, source prices are displayed without target-price alerts. Default research is for new items with US
+delivery; users can refine these preferences in watch settings. Identity, quantity, target and deadline
+edits update research and fence stale results. Explicit pauses are preserved; purchasing/removing completes
+the watch. Pending suggestions do not start research. Saving never authorizes a purchase or push permission.
+If the check budget is exhausted, the item still saves and its watch waits for a later scheduled check.
 
 The examples below were captured from the running app (`kedar` dev account). IDs and timestamps will differ.
 
@@ -534,3 +538,20 @@ existing suggestion POST. Model output cannot set target prices through that UI 
 `shopping_context` and `shopping_suggest` share this persistence path. All suggestions still require user
 acceptance to join the active wishlist. Live retailer prices and automatic purchase execution are outside
 this feature.
+
+## Item imagery
+
+Wishlist items and suggestions expose an `image_path` for the shared [item image API](item-images.md). Linked entries
+inherit their inventory image unless a user selects an override. Image discovery does not block saves.
+
+
+## Explicit additions from chat
+
+`wishlist_add` saves an explicit user request directly to the active wishlist using `POST /v1/wishlist`.
+It uses `source=user`, just like the form. Agent recommendations still use `shopping_suggest` and wait
+for acceptance. Chat supports title and optional quantity (default 1, integer 1–99) in this MVP.
+
+The create route accepts an optional `Idempotency-Key`, always supplied by chat. Identical keyed retries
+return the original 201 response; changed bodies return 422 `idempotency_key_reused`. Creation serializes
+with existing wishlist operations, and existing open-title duplicates remain 409 `already_on_wishlist`.
+The same saved item appears in the Wishlist screen immediately. No purchase is performed.

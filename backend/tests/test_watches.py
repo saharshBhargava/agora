@@ -3,12 +3,15 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
 
-from app.price_search import Offer, SearchResult
+from app.price_search import Offer, PriceSearchProvider, SearchResult
 from app.watch_ops import evaluate
 from app.watch_schemas import WatchCriteria
 from tests.conftest import login
+from tests.test_watch_model import completion
+from tests.test_web_search import settings
 
 
 def criteria(**changes):
@@ -76,6 +79,32 @@ async def run_watch(app, watch):
     async with app.state.db.system() as conn:
         user_id = await conn.fetchval('SELECT user_id FROM watch_runs WHERE id=$1', UUID(run['id']))
     await app.state.watches.check_job({'watch_id': watch['id'], 'run_id': run['id'], 'user_id': str(user_id)}, 3)
+
+
+async def test_empty_discovery_persists_successful_no_match_without_retry_or_alerts(client, app, monkeypatch):
+    turns = [completion('web_search', {'query': 'Lodge skillet'}), completion()]
+
+    def remote(request):
+        if request.url.host == 'localhost':
+            return httpx.Response(200, json=turns.pop(0))
+        assert request.url.host == 'search.parallel.ai'
+        return httpx.Response(200, json={'jsonrpc': '2.0', 'id': 1, 'result': {
+            'content': [{'type': 'text', 'text': '{"results": []}'}]}})
+
+    config = settings(watch_model_provider='openai-compatible', openai_model='local-tools-model',
+                      watch_search_providers=['parallel'])
+    async with httpx.AsyncClient(transport=httpx.MockTransport(remote)) as external:
+        monkeypatch.setattr(app.state.watches, 'provider', PriceSearchProvider(config, external))
+        headers, me, _, watch = await new_watch(client, 'watchemptydiscovery')
+        await app.state.watches.check_job({
+            'watch_id': watch['id'], 'run_id': watch['runs'][0]['id'], 'user_id': me['id']}, 1)
+    current = (await client.get(f"/v1/watches/{watch['id']}", headers=headers)).json()
+    assert current['last_result'] == 'no_match' and current['last_successful_at']
+    assert current['last_error'] is None and not current['matches']
+    assert current['runs'][0]['status'] == 'succeeded'
+    assert current['runs'][0]['offer_count'] == current['runs'][0]['match_count'] == 0
+    async with app.state.db.scoped(UUID(me['id'])) as conn:
+        assert not await conn.fetchval('SELECT 1 FROM notifications WHERE watch_id=$1', UUID(watch['id']))
 
 
 async def test_confirmation_idempotency_and_household_rls(client, app):
@@ -148,11 +177,13 @@ async def test_parent_edits_and_pause_invalidate_inflight_result(client, app, mo
     release.set()
     await task
     result = (await client.get(f"/v1/watches/{watch['id']}", headers=headers)).json()
-    assert result['status'] == 'paused' and result['confirmed_at'] is None
+    assert result['status'] == 'active' and result['confirmed_at'] is not None
     assert result['criteria_version'] > watch['criteria_version'] and not result['matches']
-    assert result['runs'][0]['status'] == 'skipped'
+    assert result['criteria']['quantity'] == 2
+    assert result['runs'][0]['status'] == 'queued'
+    assert next(r for r in result['runs'] if r['id'] == watch['runs'][0]['id'])['status'] == 'skipped'
     resumed = await client.patch(f"/v1/watches/{watch['id']}", headers=headers, json={'status': 'active'})
-    assert resumed.status_code == 409 and resumed.json()['title'] == 'confirmation_required'
+    assert resumed.status_code == 200
     async with app.state.db.scoped(UUID(me['id'])) as conn:
         assert not await conn.fetchval('SELECT 1 FROM notifications WHERE watch_id=$1', UUID(watch['id']))
 
@@ -207,7 +238,7 @@ async def test_subscription_only_reconfirmation_does_not_spend_another_check(cli
         assert response.status_code == 200
         assert response.json()['criteria_version'] == watch['criteria_version']
     async with app.state.db.system() as conn:
-        assert await conn.fetchval('SELECT count(*) FROM watch_runs WHERE watch_id=$1', UUID(watch['id'])) == 1
+        assert await conn.fetchval('SELECT count(*) FROM watch_runs WHERE watch_id=$1', UUID(watch['id'])) == 2
     await client.patch(f"/v1/watches/{watch['id']}", headers=headers, json={'status': 'paused'})
     resumed = await client.patch(f"/v1/watches/{watch['id']}", headers=headers, json={'status': 'active'})
     assert resumed.status_code == 200 and resumed.json()['runs'][0]['status'] == 'queued'
@@ -389,7 +420,7 @@ async def test_background_and_manual_checks_share_reserved_daily_budget(client, 
     await app.state.watches.sweep({}, 1)
     result = (await client.get(f"/v1/watches/{watch['id']}", headers=headers)).json()
     assert result['last_error'] == 'check_budget_exhausted' and result['last_result'] == 'skipped'
-    assert len(result['runs']) == 2
+    assert len(result['runs']) == 3  # Automatic creation, custom criteria, then scheduled attempt.
     checked = await client.post(f"/v1/watches/{watch['id']}/check",
                                 headers=headers | {'Idempotency-Key': uuid4().hex})
     assert checked.status_code == 429 and checked.json()['title'] == 'check_budget_exhausted'
@@ -408,7 +439,7 @@ def test_single_character_product_and_size_tokens_remain_required(query, wrong, 
 
 
 @pytest.mark.parametrize('changes', [
-    {'query': '!!!'}, {'location': '...'}, {'required_terms': ['!!!']},
+    {'query': ' '}, {'location': '...'}, {'required_terms': ['!!!']},
     {'excluded_terms': ['   ']}, {'allowed_domains': ['shop..example.com']},
     {'product_url': 'https://127.0.0.1/private'}, {'product_url': 'https://name:secret@example.com'},
 ])

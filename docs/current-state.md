@@ -1,5 +1,45 @@
 # Current state — mandatory read before resuming work
 
+## Product discovery correction — deployed October 18, 2026, 09:44 UTC
+
+PR [#36](https://github.com/saharshBhargava/agora/pull/36) fixes automatic checks spending their page
+budget on articles/PDFs and losing product links behind category/navigation pages. Product pages now
+precede categories even across repeated hosts, and relevant category links are eligible for browser
+fallback even when the server read budget expires. The generic native runner checks up to five candidates
+within its existing lease instead of stopping at three. No item-specific prices or URLs were added.
+
+All **670 backend tests**, Ruff and diff checks passed on current main plus the correction; all **16
+native browser tests** passed, and the final five-retailer regression passed again after fixture refinement.
+Live discovery returned direct PS5 product pages in 5.0 seconds and Xbox product pages in 17.4 seconds.
+The shared WebKit browser read Xbox at Newegg (fourth candidate) and PS5 standard, digital, Pro and bundle
+prices at PlayStation Direct. The backend browser-evidence validator accepted the captured results.
+These are live lower-confidence browser observations, never server-verified alerts or guaranteed future
+prices. Logs are in `build/watch-browser/`. PR/main CI passed, and the
+[deploy run](https://github.com/saharshBhargava/agora/actions/runs/39116414537) succeeded. Public readiness
+verified commit `be1e9de4c9ea8088b266e6f668dc49d5809c05da`, migration 0019 and no pending migrations.
+The backend correction is live; the native five-source change needs a rebuilt app. Existing terminal
+checks can be rerun with **Check now**, or will use the new discovery on their next scheduled check.
+
+## Latest price-watch release — October 18, 2026, 09:26 UTC
+
+PR [#34](https://github.com/saharshBhargava/agora/pull/34) is deployed as
+`047c8f5006b69ba002690d6ef57f0ccfdc86933c`. The
+[deploy run](https://github.com/saharshBhargava/agora/actions/runs/39115233684) passed; public readiness
+reports migration 0019 with no pending migrations. The live OpenAPI exposes browser claim/result routes
+and optional target prices; anonymous watch access returns 401.
+
+The endless “Preparing automatic price checks” message came from an absent watch against the earlier
+backend, which still required separate setup. The release creates watches on wishlist save/acceptance
+and backfills existing active items during worker startup/sweeps, preserving pauses. `automatic_watches`
+is advertised in the watch-list response. The native missing-watch message now distinguishes unsupported,
+unloaded/failed and not-started states; that text correction remains local and needs a rebuilt app.
+
+The isolated backend release passed 649 local tests, Ruff, and the additive migration guard. PR and main
+CI passed both PostgreSQL/TimescaleDB suites and the Docker build; PR upgrade/rollback rehearsal passed.
+The local native status correction passed all 24 selected watch/shopping tests. No production-account
+records were manually edited for diagnosis or verification. Earlier entries saying these backend changes
+are local-only are superseded by this release; native browser/UI changes still require the matching app build.
+
 Verified October 17, 2026 (PDT; October 18 UTC). This is a dated snapshot, not a claim that GitHub and Render
 always have the same commit. Fetch and inspect current state before acting. Current user instructions take
 precedence; older chat history and planning documents do not override current main.
@@ -85,7 +125,7 @@ a Gmail account just to let the frontend team sign in. See [frontend handoff](fr
 | Capture | Photos/video, model captions and recognition, user review and metadata-only inventory save | Real Google/provider/device flows still need appropriate real-account testing; built-in demo ignores media |
 | Model routing | `Agora/Models/` abstraction; Gemini/OpenAI-compatible connections, profiles, per-feature assignment; demo override | Do not revert to Gemini-only controllers or send demo captures to external models |
 | Recognition details | Readable brand/variant/package-size fields composed into reviewed item names; shared validation and Gemini-compatible schema | Do not restore the earlier broad-name-only prompt or unsupported generation-schema constraints |
-| Wishlist | Backend lifecycle, priority ranking, suggestions and feedback; native Wishlist and Suggested views (`Agora/Shopping/`, 7bc3f8e); realistic demo rows | Reviewed price watches, source verification and offer inbox are implemented; real discovery needs a backend model connection |
+| Wishlist | Backend lifecycle, priority ranking, suggestions and feedback; native Wishlist and Suggested views (`Agora/Shopping/`, 7bc3f8e); realistic demo rows | Automatic price research and optional targets are locally implemented below; verify deployment separately |
 | Forecasts/lists | Backend run-outs, histories, list CRUD and generation; demo backfill; native per-store list generation and checklists in Shopping trips | Dedicated forecast-history screens remain requested |
 | Commerce | Backend policy, mandates, approval/outcome lifecycle, pause/resume, budgets/spend, stable provider idempotency | Native commerce approval/mandate/budget UI remains requested; no real Stripe/Visa provider wired |
 | Calendar | Native tools and approval; demo-private routes + persistence; ordinary native Google route; Home trip summaries and reviewed list-to-trip planner | Calendar creation requires explicit review; store hours and travel routes are not inferred |
@@ -177,6 +217,44 @@ Validation: 73 selected iOS simulator tests passed, including inventory, shoppin
 authentication checks. The Lists overview simulator capture was inspected. No production deployment or
 new distributed iOS build is claimed.
 
+## Empty watch-search results — October 18, 2026 UTC
+
+Local debugging reproduced two false failures: empty result arrays in MCP text blocks triggered provider
+fallback/cooldown, and research ending after a successful empty search reported `research_no_evidence`.
+The adapters now preserve explicit empty responses, and the controller allows `no_match` when a search
+completed successfully and no known URLs await reading. Unread sources, model-only conclusions and actual
+provider failures still cannot establish a successful empty check. No schema or seed change is needed.
+
+Validation: 219 focused backend tests passed on disposable local PostgreSQL, including API/worker
+persistence of `no_match` with no retry or notification; Ruff and diff checks passed. Live anonymous
+Exa, Parallel and Keenable searches each returned product results for a Lodge skillet query. These checks
+do not establish production model configuration. This fix is local and has not been deployed.
+
+## Automatic wishlist price research — October 18, 2026 UTC
+
+The user clarified that every active wishlist item should be watched automatically, with optional targets.
+Saving or accepting an item now atomically creates its watch and queues a first check; wishlist edits update
+the criteria and fence stale completions. Explicit pauses remain paused, purchases/removals complete watches,
+and pending suggestions do not search. Existing active items are backfilled at worker startup/sweeps;
+demo creation and idempotent backfill cover every active demo item. Daily/hourly budgets defer work without
+rejecting wishlist saves. Defaults are new condition and US delivery, editable in watch settings.
+
+Search works without a reasoning model through the enabled provider router and the existing public-page
+verifier. With a model, the bounded research controller remains available. The API exposes source-backed
+prices above the target as well as below it. Missing targets still show prices but cannot emit target-price
+alerts. The demo remains simulated and explicitly labeled; ordinary accounts get no demo offers.
+
+**Lists → Watch list** opens the wishlist with its Add item action, price summaries and optional settings.
+The separate activation button is removed. Saves reload watches; queued checks refresh in the foreground
+every two seconds for up to 90 seconds, cancelled on account/household changes. No new SQL migration is
+needed. This is local source work, not a deployed backend or distributed iOS build.
+
+Validation: 555 backend tests and Ruff passed in an isolated checkout on disposable PostgreSQL, and the
+local demo CLI reset passed. All 18 selected iOS simulator tests passed, including the real local API/worker
+flow with no skip: saving alone produced an offer, inbox entry, persisted session recovery and automatic
+criteria resynchronization. The source-price comparison and demo disclosure capture was inspected. Isolation
+excluded concurrent image/chat work in the shared checkout; no production data was changed or release made.
+
 ## Native chat workspace — October 18, 2026
 
 The native chat now has a model selector, independently streaming message rows, Markdown/tables/code,
@@ -201,13 +279,172 @@ Keychain limitation and a video-cancellation test process exit; no full-suite pa
 credentials, microphone hardware, real Google consent and a distributed iOS release are not verified here.
 See [frontend handoff](frontend-handoff.md#native-chat-workspace--october-18-2026) for client behavior/limits.
 
+## Item images — October 18, 2026 UTC
+
+Local source now gives inventory, wishlist/suggestions and shopping-list items a persistent image binding.
+The native app shows bundled representative artwork immediately across inventory, Home, recognition review,
+shopping lists and watch/offer views. Users can choose a discovered image, upload a private photo, restore a
+representative image or return to automatic discovery. Linked items inherit inventory images unless overridden;
+account/household changes clear private image caches. Demo illustrations are labeled and use no external search.
+
+Migration `0017_item_images.sql` adds household-scoped bindings/private assets and a shared public-product
+cache. Existing items are backfilled; identity changes queue bounded background research using the existing
+web-search router, public-page reader and optional watch reasoning model. Extracted image candidates retain
+source attribution, and validated downloads are resized and stripped of EXIF. Search failure leaves a usable
+representative image. Worker startup repairs image jobs consumed by older releases; snapshot restore preserves
+assets and requeues pending work. See the [item-image contract](api/item-images.md) for routes and limits.
+
+Verification on disposable local PostgreSQL: **574 backend tests passed**, Ruff and diff checks passed,
+and the additive migration guard passed. A fresh demo CLI reset produced images for every seeded item.
+An upgrade rehearsal applied the migration/backfill twice and passed API read/write smoke checks with both
+previous main (`524967d`) and current source against the upgraded schema. **86 selected iOS simulator tests
+passed**, including the real local API/Postgres image flow; after final image-store refinements all seven image
+tests passed again, with no skips. The rendered thumbnails were visually inspected. A live public-web Lodge
+skillet lookup extracted candidates and downloaded a matching Target product image. Reasoning-model tool
+behavior was tested with fixtures; live model inference and TimescaleDB were not exercised in these local checks.
+
+Latest main (`8292694`, CI-only PR #29) was integrated without replacing concurrent local work. Validation
+includes the shared checkout's automatic-watch changes. These are local implementation results: no backend
+deployment, production data changes or distribution of a new iOS build is claimed.
+
 Final layout follow-up: 11 focused chat/browser tests passed, followed by a successful render regression
 check after resetting lazy row height estimates on Dynamic Type changes. This fixes an iOS 18 transcript
 that could remain beyond its content after reducing text size. The final thumbnail/minimized capture was
 inspected with the conversation visible and browser state retained. Local captures and logs are under
 `build/chat-interface/` (ignored build artifacts). No production deployment was performed.
 
+## Exact product-image verification — October 18, 2026 UTC
+
+This supersedes the earlier image matching/fallback behavior above. Automatic images now require a
+variant-bound JSON-LD Product image and either matching valid GTIN, consistent brand/model evidence, or
+complete brand/variant/size/pack-count evidence. Extra/mismatched variants, packaging, accessories and
+unknown required identity fields cannot be promoted by the research model. Catalog URLs, Open Graph images
+and title word counts no longer establish a match. Source evidence is persisted; cache keys include the full
+identity and verification version. Migration 0018 adds these fields and requeues earlier automatic matches.
+Old or rollback-worker images without verification are hidden on read; explicit choices remain user-confirmed.
+
+Native thumbnails use a neutral unavailable indicator for unresolved items. The editor accepts product name,
+brand, model, variant, size, color, pack count and barcode; details persist independently and are invalidated
+when the item is renamed. Linked items can override inherited identity. Demo illustrations remain explicitly
+labeled sample assets and never count as exact matches. Configured reasoning models additionally inspect
+sanitized public image bytes; uncertain/conflicting results veto the candidate. Without a model, evidence
+explicitly says visual inspection was not performed. See the [updated contract](api/item-images.md).
+
+Validation: 602 full backend tests passed on disposable PostgreSQL, then 74 focused image/snapshot/demo/model
+checks passed after refinements. All 40 selected iOS tests passed, including the real local API identity and
+photo persistence flow (no skip), legacy-image hiding, recognition, shopping and watches. Ruff and additive
+migration guards passed; upgrading/backfilling twice and running old (`8292694`) and new APIs against the
+upgraded database passed. The recognition unavailable indicator was visually inspected. The live Target
+skillet page supplied no usable structured identity in the fetched HTML and correctly stayed unresolved;
+this is not a successful live exact-image lookup. Exact-match positives and visual-model outcomes were
+validated with controlled fixtures, not live inference credentials. These changes remain local; no deployment,
+production data mutation, TimescaleDB validation or distributed iOS build is claimed.
+
 Publication validation: the exact chat-only changes on current main (`8292694`) passed all 42 selected
 simulator tests, including chat rendering/browser state, authentication/Calendar boundaries and both
 provider transports. This final run excludes the unrelated local IP-validation change mentioned above.
 The Gemini schema correction and compact composer/tab spacing are included.
+
+## Broad item-image release — October 18, 2026
+
+PR [#31](https://github.com/saharshBhargava/agora/pull/31) merged as `190de200`. It supersedes the
+earlier exact-only eligibility restrictions: all names are searched; incomplete or variant-specific matches
+become titled choices that require user confirmation. Source-backed product matches can display automatically.
+The existing web router works independently of a configured reasoning model. Private photos, demo isolation,
+inheritance, cache/version guards and evidence remain in place. See [the contract](api/item-images.md).
+
+PR CI passed **602 tests on both Postgres and TimescaleDB**, Ruff, Docker build and migration/rollback
+rehearsal. The local complete run had 601 passes and one disk-full failure; that isolated case passed after
+removing owned build artifacts. Eight focused native tests passed. Live public searches retrieved PS5
+disc/digital, Xbox Series X versions and a Lodge skillet. A disposable ordinary-account flow for PS5 and
+Xbox persisted explicit selections and served authenticated image bytes. No production-account writes
+were used for these checks. The native editor and Choose/retry messages require a rebuilt iOS app.
+
+Production verified at `190de200` with migrations through 0018 and none pending.
+[Deploy](https://github.com/saharshBhargava/agora/actions/runs/39113668150) passed; anonymous image access
+returned 401 rather than 404, and OpenAPI exposes all image routes. The non-Latin identity correction shipped in
+[#32](https://github.com/saharshBhargava/agora/pull/32). Final production readiness reports
+`6a86e2fd489f636a90ec5f49d7b1a152dadc78cf`, migration 0018 and no pending migrations; its
+[deploy run](https://github.com/saharshBhargava/agora/actions/runs/39114045696) passed. Both final CI
+database suites passed 603 tests, and the anonymous hosted image route again returned 401.
+
+## Hidden shared-browser price fallback — local verification, October 18, 2026
+
+Ordinary wishlist items automatically start price research with optional targets. Normal research tries
+multiple retailers within the existing budgets. If it finishes without a usable price, migration 0019
+persists a final browser handoff. The iOS runner uses the same Chat `BrowserSession`/`WKWebView`, hidden,
+only while the app is active and the browser is free. Existing Chat pages remain intact; human takeover,
+new Chat work, backgrounding and account changes cancel it. Demo accounts never run external browser work.
+
+Claim/result routes enforce household access, actor-bound expiring leases, criteria versions and current
+run ownership. Rendered product evidence is validated and retained for 30 minutes with device-browser
+provenance. It displays current prices and target comparisons but cannot create verified offer alerts.
+Private/blocked pages finish unresolved and can offer manual review; automatic checks never sign in or buy.
+See the [contract](api/price-watches.md#final-fallback-in-the-shared-chat-browser).
+
+Verification: **649 full backend tests passed** on disposable PostgreSQL, including a run from an isolated
+checkout reconciled with current main. Ruff and diff checks passed. Migration 0019 passed the additive
+guard; applying/backfilling twice, resetting the local demo, and running both previous-main and new APIs
+against the upgraded database passed. **70 selected iOS tests passed**, covering Chat/browser preservation,
+account boundaries, shopping and watches. After the final redirect handling change, **24 focused iOS tests
+passed**, including all 15 fallback tests and the real local API/Postgres/worker flow with rendered retailer
+fixtures. The price-comparison screen was captured and visually inspected. Test synchronization now waits
+for WebKit's committed document and settled scroll position instead of reading the preceding frame.
+
+The opt-in live retailer probe read PlayStation's rendered split-element price in about **1.4 seconds**;
+that measures the browser step only. Microsoft's Xbox page exposed no usable price in the bounded read
+and correctly stayed unresolved. These are live external-page observations, not a guarantee that every
+retailer returns a price. Generic non-console extraction, multiple-retailer continuation, uncertain
+currency, cross-host redirects and cancellation are covered with controlled fixtures. No live model
+inference, physical-device or TimescaleDB run is claimed for this local change.
+
+Logs and the inspected screenshot are in `build/watch-browser/` (ignored local artifacts). The shared
+checkout retains concurrent work; reconciliation was done separately at `/tmp/agora-watch-current-main`
+against `origin/main` `6a86e2f`. The fallback and automatic-watch changes remain **local and uncommitted**:
+no production deployment or distributed iOS build is claimed. Browser fallback requires the app to be open;
+the normal scheduled backend checks continue independently.
+
+
+## Chat additions MVP — October 18, 2026
+
+Chat now exposes three validated tools for explicit user requests: add to an existing shopping list,
+add an active wishlist item, or create a new inventory item. Each task first reads fresh household
+context; ambiguous destinations are clarified. Saves use the shared stores, so confirmed additions
+appear in the existing screens. Existing entries are reported without merging or changing quantities.
+Account/household changes cancel pending work and clear chat context; uncertain writes require checking
+Lists. Recommendations retain the separate suggestion/acceptance flow. The built-in demo uses a disclosed
+single-item text grammar with real private-account persistence and an idempotent seed/backfill.
+
+The three existing create APIs accept optional idempotency keys (always sent by chat), serialize retries
+and save responses atomically. Keyed inventory/list additions reject case/whitespace-normalized duplicate
+names; wishlist keeps its existing duplicate rules. No migration is needed. Existing automatic wishlist
+watch synchronization is preserved in the shared checkout. See [chat additions](api/chat-additions.md).
+
+Implementation was prepared on current main through `6a86e2f` and integrated with the shared checkout's
+uncommitted work. Validation: **659 backend tests**, Ruff and diff checks passed; the combined app built,
+and **71 selected iOS simulator tests passed with no skips**, including the real local API/Postgres chat
+flow, duplicate handling, destination ambiguity, persistence reload, Stop and account/household boundaries.
+A disposable local demo CLI reset also passed. Broader exploratory iOS runs encountered the existing
+unsigned-build Keychain limitation and a browser-scroll timing assertion; no full iOS suite pass is claimed.
+Live credentialed model inference, production deployment and a distributed iOS build were not performed.
+
+## Automatic item-image defaults — October 18, 2026
+
+PR [#35](https://github.com/saharshBhargava/agora/pull/35) supersedes the required-choice flow. The backend
+selects the best relevant image for new searches and cached results, and adopts existing saved candidates
+at startup. Manual choices, uploaded photos and explicit removals are preserved; versions fence stale jobs.
+The `best_match` status retains candidate evidence without claiming an exact SKU match.
+
+Native source displays the server-selected image and also supplies an immediate default when an older
+server only returns alternatives. This fixes thumbnails left empty while Other images already has photos.
+Alternatives remain optional under Change image. A rebuilt app is required for the new display behavior.
+
+Validation: 604 backend tests passed before integrating the current wishlist release, then all 650 passed
+on the integrated isolated checkout. PR Postgres/TimescaleDB, Docker and release rehearsal checks passed.
+Live ordinary-account checks on disposable PostgreSQL automatically selected and served PS5 and Xbox
+manufacturer images without a selection request. All eight final native tests passed, including
+the older-server case where alternatives exist but no main asset was assigned. Both post-merge CI database
+suites passed 650 tests. Production was verified at `d818b2791a05fc92e3667715437dff2ac4172a3f`, migration
+0019 with no pending migrations. The [deploy run](https://github.com/saharshBhargava/agora/actions/runs/39115437795)
+passed, and anonymous image access returned 401. The backend is live; distributing the native changes
+requires rebuilding the app.

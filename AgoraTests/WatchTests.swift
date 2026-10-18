@@ -101,6 +101,42 @@ final class WatchTests: XCTestCase {
         var value = WatchDraft(); value.query = "Sony WH-1000XM5 black"; value.location = "Seattle, WA 98107"
         value.targetPrice = "249.00"; value.requiredTerms = "black, WH-1000XM5"; return value
     }
+    func testCurrentPriceComparisonWithOptionalTargetAndFreshness() throws {
+        var value = row
+        var criteria = try XCTUnwrap(value["criteria"] as? [String: Any])
+        criteria["target_price_cents"] = NSNull(); value["criteria"] = criteria
+        value["prices"] = [["id": UUID().uuidString, "title": "Sony headphones", "merchant": "Retailer",
+                            "url": "https://retailer.example/product", "unit_price_cents": 29900,
+                            "currency": "USD", "observed_at": ISO8601DateFormatter().string(from: Date()),
+                            "is_current": true, "reason": "target_not_set"]]
+        let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .iso8601
+        let watch = try decoder.decode(PriceWatch.self, from: JSONSerialization.data(withJSONObject: value))
+        XCTAssertNil(watch.criteria.targetPriceCents)
+        let price = try XCTUnwrap(watch.currentPrices.first)
+        XCTAssertEqual(price.comparison(target: nil), "Add a target price to compare.")
+        XCTAssertEqual(price.comparison(target: 24900), "$50.00 above your target")
+        XCTAssertEqual(price.comparison(target: 34900), "$50.00 below your target")
+        XCTAssertEqual(price.comparison(target: 29900), "At your target price")
+        XCTAssertNotNil(price.safeURL)
+    }
+
+    func testMissingWatchDoesNotPretendLegacyServiceIsPreparingChecks() async throws {
+        WatchHTTP.handler = { _ in (200, ["watches": [], "search_available": true]) }
+        await store.refresh(poll: false)
+        XCTAssertEqual(store.missingWatchStatus, "Automatic price checks aren’t enabled on this service yet.")
+        WatchHTTP.handler = { _ in (200, ["watches": [], "search_available": true, "automatic_watches": true]) }
+        await store.refresh(poll: false)
+        XCTAssertEqual(store.missingWatchStatus, "Price checks haven’t started for this item. Pull to refresh.")
+        WatchHTTP.handler = { _ in (503, ["detail": "Service unavailable"]) }
+        await store.refresh(poll: false)
+        XCTAssertNotNil(store.error)
+        XCTAssertEqual(store.missingWatchStatus, store.error)
+        await calendar.signOut()
+        XCTAssertFalse(store.automaticWatches)
+        XCTAssertEqual(store.missingWatchStatus, "Sign in to load price checks.")
+    }
+
     func testReviewAndExactProductValidation() throws {
         XCTAssertThrowsError(try draft.body(confirmed: false))
         var value = draft
@@ -109,7 +145,9 @@ final class WatchTests: XCTestCase {
         XCTAssertEqual(criteria["required_terms"] as? [String], ["black", "WH-1000XM5"])
         XCTAssertTrue(criteria["max_total_cents"] is NSNull)
         value.location = " "; XCTAssertThrowsError(try value.body(confirmed: true))
-        value = draft; value.targetPrice = "0"; XCTAssertThrowsError(try value.body(confirmed: true))
+        value = draft; value.targetPrice = "0"; XCTAssertNoThrow(try value.body(confirmed: true))
+        value.targetPrice = ""
+        XCTAssertTrue(try value.criteriaBody()["target_price_cents"] is NSNull)
         value = draft; value.productURL = "https://user:password@example.com/item"; XCTAssertThrowsError(try value.body(confirmed: true))
         value = draft; value.allowedDomains = "https://retailer.com/item"; XCTAssertThrowsError(try value.body(confirmed: true))
         value = draft; value.quietHours = true; value.quietStart = 8; value.quietEnd = 8; XCTAssertThrowsError(try value.body(confirmed: true))
@@ -333,15 +371,10 @@ final class WatchLiveTests: XCTestCase {
         var wishlist = WishlistDraft(); wishlist.title = title; wishlist.quantity = 1; wishlist.targetPrice = "35.00"
         try await shopping.save(wishlist)
         let item = try XCTUnwrap(shopping.active.first { $0.title == title })
-        var draft = WatchDraft(item: item); draft.productURL = "https://www.lodgecastiron.com/product/round-cast-iron-classic-skillet"
-        draft.requiredTerms = "Lodge, 12-inch"; draft.excludedTerms = "used, lid only"; draft.location = "Seattle, WA 98107"
-        draft.maxTotal = "40.00"; draft.pushEnabled = false
-        XCTAssertThrowsError(try draft.body(confirmed: false))
-        try await store.save(draft, itemID: item.id, confirmed: true, key: UUID().uuidString)
         var watch = try XCTUnwrap(store.watches.first { $0.wishlistItemId == item.id })
         XCTAssertNotNil(watch.confirmedAt); XCTAssertEqual(watch.criteria.targetPriceCents, 3500)
-        XCTAssertEqual(watch.criteria.requiredTerms, ["lodge", "12-inch"])
-        await store.checkNow(watch); XCTAssertNil(store.error)
+        XCTAssertEqual(watch.criteria.query, title)
+        // Saving alone starts the durable check: no watch setup or Check now request.
         for _ in 0..<40 {
             await store.detail(watch.id)
             watch = try XCTUnwrap(store.watches.first { $0.id == watch.id })
@@ -351,7 +384,7 @@ final class WatchLiveTests: XCTestCase {
         XCTAssertEqual(watch.lastResult, "matched", store.error ?? watch.lastError ?? "No match completed")
         XCTAssertNotNil(watch.lastSuccessfulAt)
         let offer = try XCTUnwrap(watch.currentOffers.first)
-        XCTAssertLessThanOrEqual(offer.unitPriceCents, watch.criteria.targetPriceCents)
+        XCTAssertLessThanOrEqual(offer.unitPriceCents, try XCTUnwrap(watch.criteria.targetPriceCents))
         XCTAssertEqual(offer.quantity, 1); XCTAssertEqual(offer.fulfillment, "delivery"); XCTAssertEqual(offer.condition, "new")
         XCTAssertNotNil(offer.safeURL); XCTAssertFalse(offer.evidence.isEmpty)
         await store.refreshInbox(); XCTAssertNil(store.error)
@@ -375,21 +408,14 @@ final class WatchLiveTests: XCTestCase {
         XCTAssertFalse(persisted.currentOffers.isEmpty)
         XCTAssertNotNil(restored.notifications.first { $0.id == notification.id }?.readAt)
 
-        let alertCount = restored.notifications.filter { $0.watchId == watch.id }.count
         var edit = WishlistDraft(item: item); edit.title += " with lid"
         try await shopping.save(edit, original: item)
         await restored.detail(watch.id)
         let invalidated = try XCTUnwrap(restored.watches.first { $0.id == watch.id })
-        XCTAssertEqual(invalidated.status, "paused"); XCTAssertNil(invalidated.confirmedAt)
-        XCTAssertTrue(invalidated.currentOffers.isEmpty)
-        await restored.setPaused(invalidated, paused: false)
-        XCTAssertNotNil(restored.error, "A changed parent must require explicit reconfirmation")
-        do {
-            _ = try await restoredAPI.request("v1/watches/\(watch.id)/check", method: "POST", key: UUID().uuidString)
-            XCTFail("An invalidated watch must reject manual checks until reconfirmed")
-        } catch let error as BrowserError { XCTAssertEqual(error.status, 409) }
-        await restored.refreshInbox()
-        XCTAssertEqual(restored.notifications.filter { $0.watchId == watch.id }.count, alertCount)
+        XCTAssertEqual(invalidated.status, "active"); XCTAssertNotNil(invalidated.confirmedAt)
+        XCTAssertEqual(invalidated.criteria.query, edit.title)
+        XCTAssertGreaterThan(invalidated.criteriaVersion, watch.criteriaVersion)
+        XCTAssertTrue(invalidated.currentOffers.allSatisfy { $0.criteriaVersion == invalidated.criteriaVersion })
         await calendar.signOut(); XCTAssertTrue(store.watches.isEmpty); XCTAssertTrue(store.notifications.isEmpty)
     }
     private func render<Content: View>(_ content: Content, name: String) async throws {

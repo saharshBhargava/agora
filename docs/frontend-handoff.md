@@ -181,3 +181,25 @@ expands for multiline text, with 16 points of bottom padding to separate it from
 
 Validation: four focused provider/schema simulator tests passed in the isolated chat checkout; the
 shared working checkout built successfully. Live authenticated inference remains unverified.
+
+## Shared-browser price fallback — local integration
+
+`ChatWorkspace.watchBrowser` uses the existing `ChatWorkspace.browser`; it must not instantiate a separate
+web view. `WatchRefresh` refreshes active work and invokes the runner only in the foreground. The server
+must return a pending `browser_fallback` after its normal research has finished. Claim/result endpoints
+require authentication, idempotency keys and the current run/criteria version. See the
+[price-watch contract](api/price-watches.md#final-fallback-in-the-shared-chat-browser).
+
+Keep Chat/human ownership and account invalidation in place. Browser evidence is a persisted price
+comparison with a visible source/disclosure, not a verified offer alert. The designated demo does not run
+this fallback. Migration 0019 and a rebuilt native app are required; local tests do not establish production
+availability. No extra hosting service or model credentials are needed for this native reader.
+
+
+## Chat additions MVP
+
+Chat now supports explicit additions to existing shopping lists, the active wishlist and new inventory
+items. Reads and saves use the shared authenticated stores, and confirmed results appear in Lists.
+An ambiguous list/destination is clarified; existing items are reported without changing quantities.
+The tools, retry/error behavior and built-in demo examples are documented in
+[chat additions](api/chat-additions.md). No list creation or browser/photo extraction is included.

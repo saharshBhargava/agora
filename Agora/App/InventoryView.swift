@@ -31,15 +31,7 @@ struct ListsView: View {
                     }
                     .accessibilityIdentifier("lists.shopping")
                     NavigationLink {
-                        WatchListView(store: shopping.watches)
-                            .toolbar {
-                                ToolbarItem(placement: .primaryAction) {
-                                    Menu {
-                                        NavigationLink("Wishlist") { ShoppingView(store: shopping, settings: settings) }
-                                        NavigationLink("Offer inbox") { WatchInboxView(store: shopping.watches) }
-                                    } label: { Label("Watch options", systemImage: "ellipsis.circle") }
-                                }
-                            }
+                        ShoppingView(store: shopping, settings: settings)
                     } label: {
                         listRow("Watch list", subtitle: "Products and prices you’re keeping an eye on", symbol: "binoculars", tint: .purple)
                     }
@@ -167,7 +159,8 @@ private struct InventoryRowView: View {
     let item: InventoryItem
     let location: String?
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
+        HStack(alignment: .center, spacing: 12) {
+            ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName, category: item.category)
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.displayName).font(.headline)
                 if let location { Text(location).font(.caption).foregroundStyle(.secondary) }
@@ -202,6 +195,7 @@ struct InventoryDetailView: View {
             if let item {
                 Section {
                     InventoryRowView(item: item, location: store.locations.first { $0.id == item.locationId }?.name)
+                    ChangeItemImageButton(ref: .init(kind: "inventory", id: item.id, name: item.displayName, category: item.category))
                     if let category = item.category { LabeledContent("Category", value: category) }
                     if let level = item.parLevel { LabeledContent("Restock below", value: "\(level.formatted()) \(item.unit)") }
                     if let date = item.observedAt {

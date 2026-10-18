@@ -165,7 +165,13 @@ final class ChatInterfaceTests: XCTestCase {
         let cookies = webView.configuration.websiteDataStore.httpCookieStore
         await withCheckedContinuation { continuation in cookies.setCookie(cookie) { continuation.resume() } }
         _ = try await webView.evaluateJavaScript("window.scrollTo(0, 60); window.location.hash = 'second'")
+        // WebKit applies scrolling asynchronously; capture the settled position before changing presentation.
+        for _ in 0..<100 {
+            if (try await webView.evaluateJavaScript("window.scrollY")) as? Double == 60 { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
         let scroll = try await webView.evaluateJavaScript("window.scrollY") as? Double
+        XCTAssertEqual(scroll, 60)
         let historyCount = webView.backForwardList.backList.count
         let identity = ObjectIdentifier(webView)
         for presentation: BrowserPresentation in [.thumbnail, .expanded, .hidden, .thumbnail] {

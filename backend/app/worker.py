@@ -8,6 +8,7 @@ import httpx
 
 from app.config import get_settings
 from app.db import Database
+from app.item_images import ItemImageService
 from app.jobs import Worker
 from app.main import build_pipeline
 from app.notifications import NotificationService
@@ -29,11 +30,13 @@ async def main() -> None:
         shopping = ShoppingRefresher(db)
         await shopping.start()
         watches = WatchService(db, settings, PriceSearchProvider(settings, client))
+        images = ItemImageService(db, PriceSearchProvider(settings, client))
         notifications = NotificationService(db, settings)
         await watches.start()
         await notifications.start()
+        await images.start()
         worker = Worker(db, {**pipeline.handlers, **shopping.handlers, **watches.handlers,
-                            **notifications.handlers}, settings.worker_concurrency)
+                            **notifications.handlers, **images.handlers}, settings.worker_concurrency)
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:

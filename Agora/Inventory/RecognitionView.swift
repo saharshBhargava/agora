@@ -164,7 +164,11 @@ private struct RecognitionItemEditor: View {
     let inventory: [InventoryItem]
     var body: some View {
         Section {
-            Toggle("Include \(draft.name)", isOn: $draft.included)
+            HStack {
+                Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary)
+                    .frame(width: 52, height: 52).accessibilityLabel("Product image pending verification")
+                Toggle("Include \(draft.name)", isOn: $draft.included)
+            }
             Group {
                 Picker("Save as", selection: $draft.inventoryItemID) {
                     Text("New inventory item").tag(nil as UUID?)

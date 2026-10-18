@@ -1,4 +1,4 @@
-"""Explicitly confirmed purchase criteria; model suggestions cannot activate a watch."""
+"""Price research preferences; pending model suggestions do not activate a watch."""
 import re
 from datetime import date
 from typing import Literal
@@ -11,12 +11,12 @@ from app.schemas import Strict
 
 
 class WatchCriteria(Strict):
-    query: str = Field(min_length=2, max_length=200)
+    query: str = Field(min_length=1, max_length=200)
     product_url: str | None = Field(default=None, max_length=2048)
     required_terms: list[str] = Field(default_factory=list, max_length=20)
     excluded_terms: list[str] = Field(default_factory=list, max_length=20)
     quantity: int = Field(default=1, ge=1, le=99)
-    target_price_cents: int = Field(ge=1, le=10000000)
+    target_price_cents: int | None = Field(default=None, ge=0, le=10000000)
     max_total_cents: int | None = Field(default=None, ge=1, le=10000000)
     currency: Literal['USD'] = 'USD'
     fulfillment: Literal['delivery', 'pickup']
@@ -26,7 +26,14 @@ class WatchCriteria(Strict):
     allow_membership: bool = False
     needed_by: date | None = None
 
-    @field_validator('query', 'location')
+    @field_validator('query')
+    @classmethod
+    def clean_query(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError('Enter a product name.')
+        return value.strip()
+
+    @field_validator('location')
     @classmethod
     def clean_text(cls, value: str) -> str:
         value = value.strip()

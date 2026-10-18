@@ -37,6 +37,7 @@ struct HomeView: View {
                             }
                             ForEach(shopping.active.prefix(3)) { item in
                                 HStack {
+                                    ItemThumbnail(kind: "wishlist", id: item.id, name: item.title, category: item.category, size: 40)
                                     Text(item.title).font(.subheadline)
                                     Spacer()
                                     if let price = item.targetLabel { Text(price).font(.caption).foregroundStyle(.secondary) }
@@ -53,7 +54,10 @@ struct HomeView: View {
                             }
                             ForEach(shopping.suggestions.prefix(2)) { item in
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(item.title).font(.subheadline.weight(.semibold))
+                                    HStack {
+                                        ItemThumbnail(kind: "wishlist", id: item.id, name: item.title, category: item.category, size: 40)
+                                        Text(item.title).font(.subheadline.weight(.semibold))
+                                    }
                                     if let reason = item.rationale { Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
                                 }
                             }
@@ -185,7 +189,8 @@ struct HomeView: View {
                     .font(.subheadline).foregroundStyle(.secondary)
             } else {
                 ForEach(lowItems.prefix(4)) { item in
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    HStack(alignment: .center, spacing: 12) {
+                        ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName, category: item.category, size: 40)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.displayName).font(.subheadline.weight(.semibold))
                             if let threshold = item.parLevel {

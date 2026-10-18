@@ -149,7 +149,7 @@ async def test_no_key_reports_search_unavailable_but_direct_url_monitoring_works
                         env="test", gemini_api_key=None,
                                                 watch_search_api_key=None), client, Fetcher())
         missing = await provider.search(CRITERIA, [])
-        assert missing.errors == ["research_model_not_configured"]
+        assert missing.errors == ["search_not_configured"]
         direct = await provider.search({**CRITERIA, "product_url": URL}, [])
         assert len(direct.offers) == 1 and not direct.errors
 

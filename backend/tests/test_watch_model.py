@@ -73,3 +73,34 @@ async def test_model_credential_never_follows_redirect():
     async with httpx.AsyncClient(transport=httpx.MockTransport(remote), follow_redirects=True) as client:
         result = await PriceSearchProvider(config, client).search(CRITERIA, [])
         assert result.errors == ['research_model_unavailable'] and len(calls) == 1
+
+
+@pytest.mark.parametrize('search_results,known_urls,expected_errors', [
+    ([], [], []),
+    ([ROW], [], ['research_no_evidence']),
+    ([], [URL], ['research_no_evidence']),
+])
+async def test_empty_search_is_no_match_but_unread_sources_are_not_verified(
+        search_results, known_urls, expected_errors):
+    turns = [completion('web_search', {'query': 'Lodge skillet'}), completion()]
+
+    def remote(request):
+        if request.url.host == 'localhost':
+            return httpx.Response(200, json=turns.pop(0))
+        assert request.url.host == 'api.keenable.ai'
+        return httpx.Response(200, json={'results': search_results})
+
+    config = settings(watch_model_provider='openai-compatible', openai_model='local-tools-model',
+                      watch_search_providers=['keenable'])
+    async with httpx.AsyncClient(transport=httpx.MockTransport(remote)) as client:
+        result = await PriceSearchProvider(config, client).search(CRITERIA, known_urls)
+    assert result.errors == expected_errors
+    assert not result.offers and result.checked_count == 0
+
+
+async def test_model_finishing_without_searching_is_still_a_failure():
+    config = settings(watch_model_provider='openai-compatible', openai_model='local-tools-model')
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda r: httpx.Response(200, json=completion()))) as client:
+        result = await PriceSearchProvider(config, client).search(CRITERIA, [])
+    assert result.errors == ['research_no_evidence'] and not result.offers

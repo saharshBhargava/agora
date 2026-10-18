@@ -425,9 +425,12 @@ See [backend refresh design](backend-spec.md#45-prices-deals-small-businesses).
 - Accept, reject with a reason, snooze, feedback, edit, pin, priorities, mark purchased and remove all use
   existing wishlist endpoints. Failed refreshes retain previous results; account/household switches clear
   shopping state and discard stale responses.
-- Price-watch checks run every six hours plus initial/manual checks; they use server credentials and durable
-  jobs independently of Find ideas. The active wishlist row opens **Set up price watch**. Confirm product,
-  per-item target, optional total, quantity, condition, fulfillment and alerts before activating.
+- Price-watch checks run every six hours plus initial/manual checks. Saving an active wishlist item or
+  accepting a suggestion starts the first check automatically. **Lists → Watch list** opens the wishlist
+  with its Add item action. Targets are optional. Rows show current source prices and target comparisons,
+  and **Prices and watch settings** opens details and optional refinements. There is no separate activation.
+- The client reloads watches after wishlist mutations and polls pending checks every two seconds for at
+  most 90 seconds. Account/household changes cancel polling. Work continues in the backend afterwards.
 - The wishlist toolbar opens **Price watches** and **Offer inbox**. Detail shows last successful/next check,
   failures vs no matches, explicit verification gaps, current vs historical offers, evidence and retailer link.
 - Push permission is requested after explicit opt-in; denial or unavailable APNs does not hide the inbox.
@@ -467,7 +470,49 @@ the same request key concurrently; the losing write is rolled back. Preserve the
 and reload trips to recover saved state. A key already used for different input returns
 `422 idempotency_key_reused`.
 
-Price-watch capability responses now include `discovery_status` (`available`, `model_not_configured`,
-`search_not_configured`). The watch UI distinguishes model setup from web-provider setup and does not
-interpret a failed capability request or a service 404 as unavailable retailer discovery. Scheduled
-research uses server model/provider settings; foreground model credentials remain on the phone.
+Price-watch capability responses include `discovery_status` (`available` or `search_not_configured`).
+A reasoning model is optional: enabled providers can search the product title and verify source pages
+deterministically. The client retains support for older `model_not_configured` responses and does not
+interpret a failed capability request or service 404 as provider availability. Scheduled research uses
+server settings; foreground model credentials remain on the phone. Demo prices remain explicitly simulated.
+
+## Automatic item images
+
+Inventory, Home, wishlist/suggestions, shopping lists and watch/offer views use shared thumbnails. The app
+shows the server's selected image for exact and best-match results. When an older server only supplies
+usable alternatives, it displays a default immediately instead of leaving the main thumbnail empty.
+Explicit removal remains respected. **Change image** offers optional alternatives, a private household
+photo, removal and search refinements. Users are never required to choose a version before seeing an image.
+
+The backend automatically selects from new searches and cached results and adopts existing candidate-only
+items at startup. It preserves source evidence and every manual override. Inventory-linked items inherit
+the selected image. Source URLs and sanitized image bytes are saved; the app loads authenticated API copies.
+See [the contract](api/item-images.md) and [current deployment state](current-state.md). Native source passed
+eight focused simulator tests, including the alternatives-only main-thumbnail regression; rebuilding the
+app is required to distribute these client changes.
+
+## Shared-browser price fallback — implemented locally
+
+After normal multi-retailer research finishes without a usable price, an ordinary-account watch can
+request a final hidden check in the existing Chat browser. The runner waits while Chat owns a page,
+uses the same web view, and yields on human interaction, new chat work, account change or app inactivity.
+It runs only while the app is open. It does not automatically show the browser or switch tabs.
+
+Watch list/detail screens show waiting/checking/completed/unavailable states and persisted current prices
+with an optional-target comparison. Browser observations disclose that condition, stock and delivery need
+retailer confirmation; they do not generate verified offer alerts. Private/challenge pages can expose a
+manual review action. Demo accounts never open external pages. See the [API contract](api/price-watches.md#final-fallback-in-the-shared-chat-browser).
+Both migration 0019/backend changes and a rebuilt iOS app are required; this is not a deployment claim.
+
+The missing-watch row now uses `automatic_watches` from the watch-list response. A successful empty
+response from an older backend shows that automatic checks are unavailable; network failures and unloaded
+state remain distinct. An absent watch is never represented as an indefinitely running preparation step.
+
+
+## Chat additions MVP — implemented locally, October 18, 2026
+
+Chat can add items to existing shopping lists, the active wishlist and new inventory entries. Explicit
+requests save immediately; ambiguous destinations are clarified and duplicates leave quantities unchanged.
+Shared screens update after confirmed saves. Existing suggestions remain a separate acceptance flow.
+See [chat additions](api/chat-additions.md) for argument limits, demo examples and retry behavior.
+List creation from chat, existing-stock changes, browser/photo extraction and undo remain outside this MVP.

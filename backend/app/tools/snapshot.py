@@ -130,6 +130,11 @@ async def restore(dsn: str, path: str, passphrase: str | None = None) -> dict:
                 await conn.execute(f"TRUNCATE {names} RESTART IDENTITY CASCADE")
                 # The chain trigger would re-hash imported rows; copy them verbatim instead.
                 await conn.execute("ALTER TABLE audit_log DISABLE TRIGGER audit_chain")
+                # Image triggers would create duplicate bindings/jobs before those tables are restored.
+                image_triggers = (("inventory_items", "inventory_image"), ("wishlist_items", "wishlist_image"),
+                                  ("shopping_list_items", "list_image"), ("price_watches", "watch_image_source"))
+                for table_name, trigger in image_triggers:
+                    await conn.execute(f'ALTER TABLE "{table_name}" DISABLE TRIGGER "{trigger}"')
                 for table in tables:
                     data = archive.read(f"{table['name']}.csv")
                     header = next(csv.reader(io.StringIO(data.split(b"\n", 1)[0].decode())), [])
@@ -137,6 +142,19 @@ async def restore(dsn: str, path: str, passphrase: str | None = None) -> dict:
                         await conn.copy_to_table(table["name"], source=io.BytesIO(data), columns=header,
                                                  format="csv", header=True)
                     counts[table["name"]] = await conn.fetchval(f'SELECT count(*) FROM public."{table["name"]}"')
+                for table_name, trigger in image_triggers:
+                    await conn.execute(f'ALTER TABLE "{table_name}" ENABLE TRIGGER "{trigger}"')
+                # Also support snapshots made before image bindings existed. Preserve imported overrides.
+                await conn.execute("""INSERT INTO item_images
+                    (kind,item_id,household_id,inventory_id,wishlist_id,list_item_id)
+                    SELECT 'inventory',id,household_id,id,NULL::uuid,NULL::uuid FROM inventory_items
+                    UNION ALL SELECT 'wishlist',id,household_id,NULL,id,NULL FROM wishlist_items
+                    UNION ALL SELECT 'list',id,household_id,NULL,NULL,id FROM shopping_list_items
+                    ON CONFLICT(kind,item_id) DO NOTHING""")
+                await conn.execute("DELETE FROM jobs WHERE kind='image.resolve'")
+                await conn.execute("""INSERT INTO jobs(kind,payload,max_attempts)
+                    SELECT 'image.resolve',jsonb_build_object('kind',kind,'item_id',item_id,'version',version),2
+                    FROM item_images WHERE status='queued' AND NOT user_selected""")
                 await conn.execute("ALTER TABLE audit_log ENABLE TRIGGER audit_chain")
                 serials = await conn.fetch(
                     """SELECT table_name, column_name FROM information_schema.columns

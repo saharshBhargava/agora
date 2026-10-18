@@ -238,6 +238,13 @@ final class LocalModelTests: XCTestCase {
         for url in ["", "file:///tmp/model", "ftp://localhost", "http://8.8.8.8/v1", "http://169.254.169.254/v1", "http://[fe80::1]:8080/v1", "http://172.32.1.2/v1", "http://010.0.0.1/v1", "https://user:pass@host/v1", "http://localhost/v1?key=secret", "http://localhost/v1#fragment", "http://localhost:0/v1"] {
             XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint(url), url)
         }
+        // Reject ambiguous numeric IP spellings before the hostname/DNS path can normalize them.
+        for host in ["010.0.0.1", "127.1", "2130706433", "0x7f000001", "0x7f.0.0.1", "127.000.0.1", "%30%31%30.0.0.1"] {
+            XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint("http://\(host)/v1", addressesForHost: { _ in
+                XCTFail("Numeric IP spellings must not be treated as hostnames")
+                return ["10.0.0.1"]
+            }), host)
+        }
         XCTAssertEqual(try OpenAICompatibleClient.validateEndpoint("http://localhost:1234").absoluteString, "http://localhost:1234/v1")
         XCTAssertNoThrow(try OpenAICompatibleClient.validateEndpoint("http://macbook.local/v1", addressesForHost: { _ in ["192.168.1.10"] }))
         XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint("http://macbook.local/v1", addressesForHost: { _ in ["8.8.8.8"] }))

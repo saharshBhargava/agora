@@ -8,7 +8,6 @@ struct ShoppingView: View {
     @State private var editing: WishlistItem?
     @State private var rejecting: WishlistItem?
     @State private var expandedHistory = false
-    @State private var watching: WishlistItem?
 
     var body: some View {
         List {
@@ -27,7 +26,7 @@ struct ShoppingView: View {
             }
             if selection == "wishlist" {
                 Section {
-                    Text("Save what you want and the price you'd like to pay. Set up a price watch to review exact product criteria and find matching offers.")
+                    Text("Every wishlist item is watched automatically. We search for current prices and compare them with your target when you set one.")
                         .font(.subheadline).foregroundStyle(.secondary)
                     if store.active.isEmpty && !store.loading {
                         ContentUnavailableView("Make room for something good", systemImage: "heart", description: Text("Add an item, set a target price, or accept a suggestion."))
@@ -84,7 +83,7 @@ struct ShoppingView: View {
                 }
             }
         }
-        .navigationTitle(selection == "wishlist" ? "Wishlist" : "Suggested for you")
+        .navigationTitle(selection == "wishlist" ? "Watch list" : "Suggested for you")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
@@ -98,17 +97,17 @@ struct ShoppingView: View {
             }
         }
         .overlay { if store.loading && store.items.isEmpty { ProgressView("Loading shopping…") } }
-        .refreshable { await store.refresh() }
+        .refreshable { await store.refresh(); await store.watches.refresh() }
         .task { await store.refresh(); await store.watches.refresh() }
         .sheet(isPresented: $adding) { WishlistEditor(store: store) }
         .sheet(item: $editing) { WishlistEditor(store: store, item: $0) }
-        .sheet(item: $watching) { item in WatchEditor(store: store.watches, itemID: item.id, item: item, watch: store.watches.watch(for: item)) }
         .sheet(item: $rejecting) { WishlistRejection(store: store, item: $0) }
     }
 
     private func row(_ item: WishlistItem) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .center) {
+                ItemThumbnail(kind: "wishlist", id: item.id, name: item.title, category: item.category)
                 if item.pinned { Image(systemName: "pin.fill").foregroundStyle(.orange) }
                 Text(item.title).font(.headline)
                 Spacer()
@@ -140,7 +139,7 @@ struct ShoppingView: View {
                     Button { rejecting = item } label: { Image(systemName: "xmark").accessibilityLabel("Reject suggestion") }
                 }.disabled(store.busy)
             } else if item.status == "active" {
-                Button("Set up price watch") { watching = item }.buttonStyle(.bordered)
+                WishlistWatchSummary(store: store.watches, item: item)
                 HStack {
                     Button("Purchased") { Task { await store.act(item, action: "purchased") } }.buttonStyle(.bordered)
                     Spacer()
@@ -148,7 +147,10 @@ struct ShoppingView: View {
                 }.disabled(store.busy)
             } else { Text(item.status.capitalized).font(.caption).foregroundStyle(.secondary) }
             HStack {
-                if item.editable { Button("Edit") { editing = item } }
+                if item.editable {
+                    Button("Edit") { editing = item }
+                    ChangeItemImageButton(ref: .init(kind: "wishlist", id: item.id, name: item.title, category: item.category))
+                }
                 Spacer()
                 if item.source == "agent" {
                     Button { Task { await store.feedback(item, rating: "up") } } label: {
@@ -162,6 +164,26 @@ struct ShoppingView: View {
         }
         .buttonStyle(.borderless)
         .padding(.vertical, 8)
+    }
+}
+
+private struct WishlistWatchSummary: View {
+    @ObservedObject var store: WatchStore
+    let item: WishlistItem
+    var body: some View {
+        if let watch = store.watch(for: item) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(store.browserFallbackStatus[watch.id] ?? watch.resultLabel).font(.caption).foregroundStyle(.secondary)
+                if let disclosure = watch.simulationDisclosure { Text(disclosure).font(.caption).foregroundStyle(.secondary) }
+                if let price = watch.currentPrices.first {
+                    Text("\(WishlistItem.money(price.unitPriceCents)) at \(price.merchant)").font(.subheadline)
+                    Text(price.comparison(target: watch.criteria.targetPriceCents)).font(.caption)
+                }
+                NavigationLink("Prices and watch settings") { WatchDetailView(store: store, watchID: watch.id) }
+            }
+        } else {
+            Text(store.missingWatchStatus).font(.caption).foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -185,8 +207,9 @@ private struct WishlistEditor: View {
                     TextField("Notes", text: $draft.notes, axis: .vertical).lineLimit(2...5)
                 }
                 Section {
-                    TextField("Target price in USD", text: $draft.targetPrice).keyboardType(.decimalPad)
+                    TextField("Target price in USD (optional)", text: $draft.targetPrice).keyboardType(.decimalPad)
                     Text("Your desired price per item, before shipping and tax. This is a target, not a live offer.").font(.caption).foregroundStyle(.secondary)
+                    Text("Saving starts automatic price searches for new items with US delivery. You can refine the product, region and alerts in watch settings. Nothing is purchased.").font(.caption).foregroundStyle(.secondary)
                     Toggle("Needed by a date", isOn: $draft.hasDeadline)
                     if draft.hasDeadline { DatePicker("Needed by", selection: $draft.deadline, displayedComponents: .date) }
                 }

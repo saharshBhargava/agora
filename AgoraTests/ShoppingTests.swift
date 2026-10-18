@@ -149,6 +149,23 @@ final class ShoppingTests: XCTestCase {
         XCTAssertNil(shopping.error)
     }
 
+    func testSavingWishlistReloadsAutomaticWatchesWithoutSeparateActivation() async throws {
+        var saved = row; saved["status"] = "active"
+        var requests: [String] = []
+        ShoppingHTTP.handler = { request in
+            requests.append("\(request.httpMethod ?? "GET") \(request.url!.path)")
+            if request.url!.path == "/v1/watches" {
+                return (200, ["watches": [], "search_available": true, "discovery_available": true])
+            }
+            return (201, saved)
+        }
+        var draft = WishlistDraft(); draft.title = "Coffee filters"
+        try await shopping.save(draft)
+        XCTAssertEqual(requests, ["POST /v1/wishlist", "GET /v1/watches"])
+        XCTAssertTrue(shopping.watches.hasLoadedCapabilities)
+        XCTAssertNil(shopping.watches.error)
+    }
+
     func testInventoryPollDoesNotResetShoppingAndSignOutDiscardsInflightRead() async throws {
         let oldContext = shopping.context
         await inventory.refresh()
@@ -234,6 +251,149 @@ final class ShoppingTests: XCTestCase {
         XCTAssertTrue(empty.isEmpty)
     }
 
+    func testAdditionArgumentsRejectInventedFieldsAndBadQuantities() throws {
+        for name in ShoppingCall.additions {
+            var args: [String: Any] = ["title": "Eggs"]
+            if name == "shopping_list_add" { args["listId"] = UUID().uuidString }
+            XCTAssertNoThrow(try ShoppingCall(["name": name, "args": args]))
+            for value in [true, "2", -1, Double.infinity, 10001] as [Any] {
+                var invalid = args; invalid["quantity"] = value
+                XCTAssertThrowsError(try ShoppingCall(["name": name, "args": invalid]))
+            }
+            var invalid = args; invalid["household_id"] = UUID().uuidString
+            XCTAssertThrowsError(try ShoppingCall(["name": name, "args": invalid]))
+            invalid = args; invalid["title"] = "  "
+            XCTAssertThrowsError(try ShoppingCall(["name": name, "args": invalid]))
+        }
+        XCTAssertThrowsError(try ShoppingCall(["name": "wishlist_add", "args": ["title": "Eggs", "quantity": 1.5]]))
+        XCTAssertThrowsError(try ShoppingCall(["name": "shopping_list_add", "args": ["title": "Eggs"]]))
+    }
+
+    func testChatInventorySaveUpdatesSharedStoreAndRequiresFreshContext() async throws {
+        let taskID = UUID()
+        let call = try ShoppingCall(["name": "inventory_add", "args": ["title": "Rice", "quantity": 2, "unit": "bags"]])
+        do { _ = try await shopping.execute(call, taskID: taskID); XCTFail("Context required") }
+        catch { XCTAssertEqual((error as? BrowserError)?.code, "context_required") }
+        _ = try await shopping.execute(ShoppingCall(["name": "shopping_context", "args": [:]]), taskID: taskID)
+        var saved = stock; saved["id"] = UUID().uuidString; saved["display_name"] = "Rice"; saved["quantity"] = 2; saved["unit"] = "bags"
+        let original = ShoppingHTTP.handler!
+        var keys: [String] = []
+        ShoppingHTTP.handler = { request in
+            if request.httpMethod == "POST" {
+                XCTAssertEqual(request.url?.path, "/v1/inventory")
+                let body = shoppingBody(request)
+                XCTAssertEqual(body["household_id"] as? String, self.household.uuidString)
+                XCTAssertEqual(body["quantity"] as? Int, 2)
+                keys.append(request.value(forHTTPHeaderField: "Idempotency-Key")!)
+                return (201, saved)
+            }
+            return original(request)
+        }
+        let result = try await shopping.execute(call, taskID: taskID)
+        XCTAssertEqual(result["status"] as? String, "saved")
+        _ = try await shopping.execute(call, taskID: taskID)
+        XCTAssertEqual(keys.count, 2); XCTAssertEqual(keys.first, keys.last)
+        XCTAssertEqual(inventory.activeItems.filter { $0.displayName == "Rice" }.count, 1)
+        XCTAssertEqual(inventory.activeItems.first { $0.displayName == "Rice" }?.quantity, 2)
+    }
+
+    func testChatWishlistSaveUpdatesActiveItemsAndDuplicateIsNotSuccess() async throws {
+        let taskID = UUID()
+        _ = try await shopping.execute(ShoppingCall(["name": "shopping_context", "args": [:]]), taskID: taskID)
+        let call = try ShoppingCall(["name": "wishlist_add", "args": ["title": "Coffee filters"]])
+        var saved = row; saved["status"] = "active"; saved["source"] = "user"
+        let original = ShoppingHTTP.handler!
+        ShoppingHTTP.handler = { request in
+            if request.httpMethod == "POST" {
+                XCTAssertEqual(request.url?.path, "/v1/wishlist")
+                XCTAssertNotNil(request.value(forHTTPHeaderField: "Idempotency-Key"))
+                return (201, saved)
+            }
+            return original(request)
+        }
+        _ = try await shopping.execute(call, taskID: taskID)
+        XCTAssertEqual(shopping.active.count, 1)
+        ShoppingHTTP.handler = { _ in (409, ["title": "already_on_wishlist", "detail": "Already on wishlist"]) }
+        let result = try await shopping.execute(call, taskID: taskID)
+        XCTAssertEqual(result["status"] as? String, "already_exists")
+        XCTAssertEqual(shopping.active.count, 1)
+    }
+
+    func testChatTimeoutIsUncertainAndSignoutDiscardsLateSave() async throws {
+        let taskID = UUID()
+        _ = try await shopping.execute(ShoppingCall(["name": "shopping_context", "args": [:]]), taskID: taskID)
+        let call = try ShoppingCall(["name": "inventory_add", "args": ["title": "Rice"]])
+        ShoppingHTTP.handler = { _ in (503, ["title": "unavailable"]) }
+        do { _ = try await shopping.execute(call, taskID: taskID); XCTFail("Must not claim success") }
+        catch { XCTAssertEqual((error as? BrowserError)?.code, "outcome_unknown") }
+        let requested = expectation(description: "save dispatched")
+        let saved = stock
+        ShoppingHTTP.delay = 0.15
+        ShoppingHTTP.handler = { _ in requested.fulfill(); return (201, saved) }
+        let pending = Task { try await self.shopping.execute(call, taskID: taskID) }
+        await fulfillment(of: [requested], timeout: 2)
+        await calendar.signOut()
+        do { _ = try await pending.value; XCTFail("Late result must be discarded") } catch {}
+        XCTAssertTrue(inventory.items.isEmpty); XCTAssertTrue(shopping.items.isEmpty)
+    }
+
+    func testAgentExposesAdditionToolsAndStopsOnHouseholdChange() async throws {
+        let secondHousehold = UUID()
+        let profile: [String: Any] = ["households": [
+            ["id": household.uuidString, "name": "Home", "locations": []],
+            ["id": secondHousehold.uuidString, "name": "Other home", "locations": []]
+        ]]
+        let original = ShoppingHTTP.handler!
+        var writes = 0
+        ShoppingHTTP.handler = { request in
+            if request.httpMethod == "POST" { writes += 1 }
+            if request.url?.path == "/v1/me" { return (200, profile) }
+            return original(request)
+        }
+        await inventory.refresh()
+        let entered = expectation(description: "model running")
+        let agent = AgentCoordinator(settings: settings, browser: BrowserSession(policy: settings.policy), calendar: calendar, shopping: shopping)
+        agent.modelClientOverride = ChatAdditionModel { request in
+            XCTAssertTrue(ShoppingCall.additions.isSubset(of: Set(request.tools.map(\.name))))
+            entered.fulfill()
+            try await Task.sleep(for: .seconds(10))
+            return ModelResponse(message: .init(role: .assistant, toolCalls: [
+                .init(id: "late", name: "inventory_add", arguments: ["title": .string("Rice")])
+            ]))
+        }
+        XCTAssertTrue(agent.send("Add rice to inventory"))
+        await fulfillment(of: [entered], timeout: 2)
+        await inventory.selectHousehold(secondHousehold)
+        XCTAssertFalse(agent.running); XCTAssertTrue(agent.messages.isEmpty)
+        XCTAssertEqual(writes, 0)
+    }
+
+    func testStopDuringAdditionReportsUncertainWithoutLateSuccess() async throws {
+        let agent = AgentCoordinator(settings: settings, browser: BrowserSession(policy: settings.policy), calendar: calendar, shopping: shopping)
+        agent.modelClientOverride = ChatAdditionModel { request in
+            let name = request.messages.last?.toolResults.last?.name == "shopping_context" ? "inventory_add" : "shopping_context"
+            return ModelResponse(message: .init(role: .assistant, toolCalls: [
+                .init(id: UUID().uuidString, name: name, arguments: name == "inventory_add" ? ["title": .string("Rice")] : [:])
+            ]))
+        }
+        let posted = expectation(description: "write dispatched")
+        let original = ShoppingHTTP.handler!, saved = stock
+        ShoppingHTTP.handler = { request in
+            if request.httpMethod == "POST" {
+                ShoppingHTTP.delay = 0.25
+                posted.fulfill(); return (201, saved)
+            }
+            return original(request)
+        }
+        XCTAssertTrue(agent.send("Add rice to inventory"))
+        await fulfillment(of: [posted], timeout: 3)
+        agent.stop()
+        XCTAssertFalse(agent.running); XCTAssertNil(agent.approval)
+        XCTAssertTrue(agent.status.contains("may have been saved"))
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertFalse(agent.messages.contains { $0.tool?.status == .complete && $0.tool?.name == "Adding to inventory" })
+    }
+
     func testShoppingViewsRenderLoadedAndEmptyStates() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
         let previous = scene.windows.first(where: \.isKeyWindow)
@@ -283,5 +443,16 @@ private final class ShoppingModel: ModelClient {
     func generate(_ request: ModelRequest, onEvent: @escaping @MainActor (ModelEvent) -> Void) async throws -> ModelResponse {
         lastRequest = request
         return ModelResponse(message: .init(role: .assistant, content: [.text(output)]))
+    }
+}
+
+@MainActor
+private final class ChatAdditionModel: ModelClient {
+    let identity = ModelIdentity(provider: .openAICompatible, model: "chat-fixture")
+    let capabilities = ModelCapabilities(tools: true)
+    let handler: (ModelRequest) async throws -> ModelResponse
+    init(handler: @escaping (ModelRequest) async throws -> ModelResponse) { self.handler = handler }
+    func generate(_ request: ModelRequest, onEvent: @escaping @MainActor (ModelEvent) -> Void) async throws -> ModelResponse {
+        try await handler(request)
     }
 }

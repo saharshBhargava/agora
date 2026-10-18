@@ -8,6 +8,7 @@ final class WatchStore: ObservableObject {
     @Published private(set) var searchAvailable = false
     @Published private(set) var discoveryAvailable = false
     @Published private(set) var hasLoadedCapabilities = false
+    @Published private(set) var automaticWatches = false
     @Published private(set) var discoveryStatus: String?
     @Published private(set) var loading = false
     @Published private(set) var busy = false
@@ -17,25 +18,34 @@ final class WatchStore: ObservableObject {
     @Published var openWatchID: UUID?
     @Published private(set) var browserReviewRequestID: UUID?
     var browserReviewHandler: ((URL) throws -> Void)?
+    var browserFallbackHandler: ((PriceWatch) async -> Void)?
+    @Published private(set) var browserFallbackStatus: [UUID: String] = [:]
     private let api: AgoraClient
     private var householdID: UUID?
     private var subscription: AnyCancellable?
     private var loadID = UUID()
     private var mutationKeys: [String: String] = [:]
+    private var pollingTask: Task<Void, Never>?
 
     init(api: AgoraClient, inventory: InventoryStore) {
         self.api = api
         subscription = inventory.$householdID.combineLatest(inventory.$context)
             .removeDuplicates { $0.0 == $1.0 && $0.1 == $1.1 }.sink { [weak self] household, _ in
                 guard let self else { return }
+                self.pollingTask?.cancel(); self.pollingTask = nil
                 self.householdID = household; self.context = UUID(); self.loadID = UUID()
                 self.watches = []; self.notifications = []; self.searchAvailable = false; self.discoveryAvailable = false; self.loading = false; self.busy = false
                 self.hasLoadedCapabilities = false
+                self.automaticWatches = false
                 self.discoveryStatus = nil
                 self.error = nil; self.notice = nil; self.openWatchID = nil; self.browserReviewRequestID = nil; self.mutationKeys = [:]
+                self.browserFallbackStatus = [:]
             }
     }
     var canUse: Bool { householdID != nil }
+    var hasPendingWork: Bool {
+        watches.contains { $0.isChecking || ["pending", "claimed"].contains($0.browserFallback?.status ?? "") }
+    }
     var discoveryUnavailable: Bool { hasLoadedCapabilities && !discoveryAvailable }
     var discoveryExplanation: String {
         switch discoveryStatus {
@@ -48,11 +58,27 @@ final class WatchStore: ObservableObject {
         }
     }
     func watch(for item: WishlistItem) -> PriceWatch? { watches.first { $0.wishlistItemId == item.id } }
+    var missingWatchStatus: String {
+        if let error { return error }
+        if !canUse { return "Sign in to load price checks." }
+        if !hasLoadedCapabilities { return loading ? "Loading price checks…" : "Price checks haven’t loaded. Pull to refresh." }
+        if !automaticWatches { return "Automatic price checks aren’t enabled on this service yet." }
+        return "Price checks haven’t started for this item. Pull to refresh."
+    }
+    func setBrowserStatus(_ message: String?, for watch: UUID) { browserFallbackStatus[watch] = message }
+    func runBrowserFallbacks() async {
+        guard let browserFallbackHandler else { return }
+        let version = context
+        for watch in watches where watch.browserFallback?.status == "pending" && !watch.isChecking {
+            guard context == version, !Task.isCancelled else { return }
+            await browserFallbackHandler(watch)
+        }
+    }
     private func check(_ version: UUID) throws {
         try Task.checkCancellation()
         guard context == version else { throw CancellationError() }
     }
-    func refresh() async {
+    func refresh(poll: Bool = true) async {
         guard let householdID else { return }
         let version = context, request = UUID(); loadID = request; loading = true
         defer { if loadID == request { loading = false } }
@@ -61,8 +87,12 @@ final class WatchStore: ObservableObject {
                 query: [.init(name: "household_id", value: householdID.uuidString)])
             try check(version); guard loadID == request else { return }
             watches = result.watches; searchAvailable = result.searchAvailable; discoveryAvailable = result.discoveryAvailable ?? result.searchAvailable
+            let pending = Set(watches.filter { ["pending", "claimed"].contains($0.browserFallback?.status ?? "") }.map(\.id))
+            browserFallbackStatus = browserFallbackStatus.filter { pending.contains($0.key) }
             hasLoadedCapabilities = true; error = nil
+            automaticWatches = result.automaticWatches == true
             discoveryStatus = result.discoveryStatus
+            if poll { pollPendingChecks() }
         } catch {
             if context == version, loadID == request, !Task.isCancelled {
                 hasLoadedCapabilities = false
@@ -87,6 +117,21 @@ final class WatchStore: ObservableObject {
     private func upsert(_ watch: PriceWatch) {
         loadID = UUID(); loading = false
         watches.removeAll { $0.id == watch.id }; watches.insert(watch, at: 0); error = nil
+        pollPendingChecks()
+    }
+    private func pollPendingChecks() {
+        guard pollingTask == nil, watches.contains(where: \.isChecking) else { return }
+        let version = context
+        pollingTask = Task { [weak self] in
+            // Bounded foreground refresh; account changes cancel it and background jobs keep running.
+            for _ in 0..<45 {
+                do { try await Task.sleep(for: .seconds(2)) } catch { break }
+                guard let self, self.context == version, !Task.isCancelled else { break }
+                await self.refresh(poll: false)
+                if !self.watches.contains(where: \.isChecking) { break }
+            }
+            if let self, self.context == version { self.pollingTask = nil }
+        }
     }
     func save(_ draft: WatchDraft, itemID: UUID, confirmed: Bool, key: String) async throws {
         guard householdID != nil, !busy else { throw CancellationError() }
@@ -95,7 +140,7 @@ final class WatchStore: ObservableObject {
         let result = try await api.fetch("v1/wishlist/\(itemID)/watch", as: PriceWatch.self, method: "PUT", body: body, key: key)
         try check(version); guard result.householdId == householdID else { throw CancellationError() }
         upsert(result)
-        notice = result.searchAvailable ? "Watch confirmed. Your first check is queued." : "Watch saved. Retailer search is currently unavailable."
+        notice = result.searchAvailable ? "Watch settings saved." : "Watch saved. Retailer search is currently unavailable."
     }
     func setPaused(_ watch: PriceWatch, paused: Bool) async {
         guard watch.householdId == householdID, !busy else { return }

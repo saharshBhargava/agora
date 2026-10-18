@@ -2,7 +2,7 @@ import SwiftUI
 import WebKit
 
 @MainActor
-final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     @Published var state = BrowserState()
     let webView: WKWebView
     let world = WKContentWorld.world(name: "AgoraBrowserTools")
@@ -16,6 +16,54 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var pending: [UUID: (Result<Any?, Error>) -> Void] = [:]
     private var navigationFailure: String?
     private var activeNavigation: WKNavigation?
+    private(set) var priceResearchID: UUID?
+    private var priceResearchRules: WKContentRuleList?
+
+    func preparePriceResearch(_ id: UUID) async throws {
+        guard priceResearchID == id else { throw BrowserError("cancelled") }
+        let savedEpoch = epoch, savedLease = lease
+        let json = """
+        [{"trigger":{"url-filter":".*","resource-type":["image","media","font"]},"action":{"type":"block"}}]
+        """
+        let rules = try await WKContentRuleListStore.default().compileContentRuleList(
+            forIdentifier: "AgoraPriceResearch", encodedContentRuleList: json)
+        try check(epoch: savedEpoch, lease: savedLease)
+        guard priceResearchID == id, let rules else { throw BrowserError("cancelled") }
+        priceResearchRules = rules; webView.configuration.userContentController.add(rules)
+    }
+    private func removePriceResearchRules() {
+        if let rules = priceResearchRules { webView.configuration.userContentController.remove(rules) }
+        priceResearchRules = nil
+    }
+
+    /// Lend the actual chat web view only when it has no user page to displace.
+    func beginPriceResearch() throws -> UUID {
+        guard !state.isOpen, !state.busy, priceResearchID == nil else { throw BrowserError("browser_busy") }
+        let id = UUID(); priceResearchID = id
+        if webView.bounds.width == 0 { webView.frame = CGRect(x: 0, y: 0, width: 390, height: 844) }
+        state.isOpen = true; state.presentation = .hidden; state.busy = true
+        return id
+    }
+    func endPriceResearch(_ id: UUID, epoch expectedEpoch: UInt64, lease expectedLease: UInt64) {
+        guard priceResearchID == id else { return }
+        priceResearchID = nil; state.busy = false; removePriceResearchRules()
+        // Human or chat ownership always wins; never close their page after cancellation.
+        if epoch == expectedEpoch, lease == expectedLease { close() }
+    }
+    func cancelPriceResearch() {
+        guard priceResearchID != nil else { return }
+        priceResearchID = nil; close()
+    }
+    func priceEvidence() async throws -> [String: Any] {
+        guard priceResearchID != nil, !state.privateMode else { throw BrowserError("user_action_required") }
+        let capturedEpoch = epoch, capturedLease = lease
+        var result = try await bridge(["operation": "priceEvidence"])
+        try check(epoch: capturedEpoch, lease: capturedLease)
+        guard let url = webView.url else { throw BrowserError("observation_unavailable") }
+        try policy.validate(url)
+        result["final_url"] = url.absoluteString
+        return result
+    }
 
     init(policy: BrowserPolicy) {
         self.policy = policy
@@ -39,6 +87,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
     /// Presentation never revokes the agent lease or transfers page ownership.
     func setPresentationFromUser(_ presentation: BrowserPresentation) {
+        if priceResearchID != nil, presentation != .hidden { humanInteraction() }
         state.presentation = presentation
         switch presentation {
         case .expanded: AppLog.event(.browser, "presentation.expanded")
@@ -49,6 +98,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     func revoke() { lease &+= 1 }
     func humanInteraction() {
         AppLog.event(.browser, "human.interaction")
+        priceResearchID = nil; state.busy = false; removePriceResearchRules()
         revoke(); onHumanInteraction?()
         state.status = "You have control · Resume in chat when ready"
     }
@@ -61,6 +111,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
     func close() {
         AppLog.event(.browser, "session.closed", count: pending.count)
+        priceResearchID = nil; removePriceResearchRules()
         epoch &+= 1; revoke(); webView.stopLoading()
         settleAll(BrowserError("stale_session"))
         webView.loadHTMLString("", baseURL: nil)
@@ -127,6 +178,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         try policy.validate(url)
         if !state.isOpen { state.isOpen = true; state.presentation = .thumbnail }
         navigationFailure = nil
+        let previousDocument = documentEpoch
         webView.load(URLRequest(url: url))
         let savedEpoch = epoch, savedLease = lease
         let deadline = ContinuousClock.now + .seconds(20)
@@ -134,7 +186,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
             try await Task.sleep(for: .milliseconds(200))
             try check(epoch: savedEpoch, lease: savedLease)
             if let navigationFailure { throw BrowserError("navigation_failed", navigationFailure) }
-            if !webView.isLoading { return try await observe() }
+            if priceResearchID != nil, documentEpoch != previousDocument { return try await observe() }
+            if !webView.isLoading, priceResearchID == nil { return try await observe() }
         } while ContinuousClock.now < deadline
         webView.stopLoading(); throw BrowserError("timeout")
     }
@@ -167,6 +220,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
                 "pixelWidth": image.cgImage?.width ?? 0, "pixelHeight": image.cgImage?.height ?? 0]
     }
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if priceResearchID != nil, action.request.httpMethod != "GET" { decisionHandler(.cancel); return }
         guard let url = action.request.url else { decisionHandler(.cancel); return }
         if url.absoluteString == "about:blank" { decisionHandler(state.isOpen ? .cancel : .allow); return }
         do { try policy.validate(url) } catch {
@@ -192,6 +246,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         state.status = "Browser process stopped. Reload the page to recover."
     }
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if priceResearchID != nil { return nil }
         if let url = action.request.url, (try? policy.validate(url)) != nil { webView.load(URLRequest(url: url)) }
         else { state.status = "Popup destination unsupported. Use a public HTTPS website without embedded credentials." }
         return nil

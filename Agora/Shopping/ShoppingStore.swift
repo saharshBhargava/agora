@@ -18,6 +18,7 @@ final class ShoppingStore: ObservableObject {
     private var pending: [(body: [String: Any], key: String)] = []
     private var refreshKey: String?
     private var householdID: UUID?
+    private var contextTaskID: UUID?
 
     init(api: AgoraClient, inventory: InventoryStore) {
         self.api = api; self.inventory = inventory
@@ -26,6 +27,7 @@ final class ShoppingStore: ObservableObject {
             .removeDuplicates { $0.0 == $1.0 && $0.1 == $1.1 }.sink { [weak self] household, _ in
             guard let self else { return }
             self.householdID = household; self.context = UUID(); self.loadID = UUID()
+            self.contextTaskID = nil
             self.items = []; self.refreshStatus = nil; self.error = nil; self.notice = nil
             self.loading = false; self.busy = false; self.pending = []; self.refreshKey = nil
         }
@@ -83,6 +85,7 @@ final class ShoppingStore: ObservableObject {
         let row = try await api.fetch(original.map { "v1/wishlist/\($0.id)" } ?? "v1/wishlist", as: WishlistItem.self,
             method: original == nil ? "POST" : "PATCH", body: try draft.body(householdID: householdID, editing: original != nil))
         try check(version); update(row)
+        await watches.refresh()
     }
     func act(_ item: WishlistItem, action: String, body: [String: Any]? = nil) async {
         guard !busy, item.householdId == householdID else { return }
@@ -93,6 +96,7 @@ final class ShoppingStore: ObservableObject {
             let row = try await api.fetch(path, as: WishlistItem.self,
                                           method: action == "remove" ? "DELETE" : "POST", body: body)
             try check(version); update(row)
+            await watches.refresh()
         } catch { if context == version, !Task.isCancelled { self.error = InventoryStore.message(error) } }
     }
     func feedback(_ item: WishlistItem, rating: String) async {
@@ -167,17 +171,69 @@ final class ShoppingStore: ObservableObject {
         return body
     }
 
-    func execute(_ call: ShoppingCall, taskID: UUID) async throws -> [String: Any] {
+    func execute(_ call: ShoppingCall, taskID: UUID, trips: TripStore? = nil) async throws -> [String: Any] {
         guard let householdID else { throw BrowserError("no_household", "Open Lists to load your household first.") }
         let version = context
         if call.name == "shopping_context" {
             let feedback = try await api.fetch("v1/wishlist/agent-context", as: ModelJSON.self,
                 query: [.init(name: "household_id", value: householdID.uuidString)])
             try check(version)
-            return ["feedback": feedback.foundation, "inventory": inventory.activeItems.prefix(100).map { item -> [String: Any] in
+            let stock = try await api.fetch("v1/inventory", as: [InventoryItem].self,
+                query: [.init(name: "household_id", value: householdID.uuidString)])
+            try check(version)
+            let lists = try await trips?.listsForChat() ?? []
+            try check(version)
+            contextTaskID = taskID
+            return ["feedback": feedback.foundation, "shopping_lists": lists.map { list -> [String: Any] in
+                ["id": list.id.uuidString, "name": list.name, "items": list.items.map { ["title": $0.title, "quantity": $0.quantity] as [String: Any] }]
+            }, "inventory": stock.prefix(100).map { item -> [String: Any] in
                 ["id": item.id.uuidString, "name": item.displayName, "quantity": item.quantity as Any? ?? NSNull(),
                  "unit": item.unit, "restock_level": item.parLevel as Any? ?? NSNull()]
             }]
+        }
+        if call.isAddition {
+            guard contextTaskID == taskID else { throw BrowserError("context_required", "Read shopping_context before adding an item.") }
+            let key = try call.requestKey(taskID: taskID)
+            let title = call.arguments["title"] as! String
+            let quantity = (call.arguments["quantity"] as? NSNumber)?.doubleValue
+            let unit = call.arguments["unit"] as? String
+            do {
+                switch call.name {
+                case "inventory_add":
+                    let item = try await inventory.addFromChat(title: title, quantity: quantity, unit: unit, key: key)
+                    try check(version)
+                    return ["id": item.id.uuidString, "title": item.displayName, "destination": "Inventory", "status": "saved",
+                            "quantity": item.quantity as Any? ?? NSNull(), "unit": item.unit]
+                case "wishlist_add":
+                    let row = try await api.fetch("v1/wishlist", as: WishlistItem.self, method: "POST",
+                        body: ["household_id": householdID.uuidString, "title": title, "quantity": Int(quantity ?? 1)], key: key)
+                    try check(version)
+                    guard row.householdId == householdID else { throw BrowserError("invalid_server_response") }
+                    update(row)
+                    await watches.refresh()
+                    try check(version)
+                    return ["id": row.id.uuidString, "title": row.title, "quantity": row.quantity, "destination": "Wishlist", "status": "saved"]
+                default:
+                    guard let trips, let listID = UUID(uuidString: call.arguments["listId"] as! String),
+                          let list = trips.lists.first(where: { $0.id == listID && $0.householdId == householdID && $0.status == "open" }) else {
+                        throw BrowserError("list_unavailable", "Read shopping_context and choose an existing open list.")
+                    }
+                    var draft = TripItemDraft(); draft.title = title; draft.quantity = String(quantity ?? 1); draft.unit = unit ?? ""
+                    let item = try await trips.addItem(listID: listID, draft: draft, key: key)
+                    try check(version)
+                    return ["id": item.id.uuidString, "title": item.title, "quantity": item.quantity,
+                            "destination": list.name, "status": "saved"]
+                }
+            } catch let error as BrowserError where ["already_on_list", "already_on_wishlist", "already_in_inventory"].contains(error.code) {
+                try check(version)
+                return ["status": "already_exists", "message": error.localizedDescription, "title": title,
+                        "instruction": "Tell the user it already exists. No quantity was changed; do not retry with a different name."]
+            } catch {
+                try check(version)
+                if let failure = error as? BrowserError, let status = failure.status, (400..<500).contains(status) { throw failure }
+                if let failure = error as? BrowserError, ["list_unavailable", "invalid_list_item"].contains(failure.code) { throw failure }
+                throw BrowserError("outcome_unknown", "The item may have been saved. Check Lists before trying again.")
+            }
         }
         let candidate = try call.candidate(inventoryIDs: Set(inventory.activeItems.map(\.id)))
         let row = try await api.fetch("v1/wishlist/suggestions", as: WishlistItem.self, method: "POST",
