@@ -254,21 +254,21 @@ final class TripStore: ObservableObject {
         let result = try await api.fetch("v1/trips/\(trip.id)/outcome", as: TripRecord.self, method: "PATCH", body: body)
         try check(version); upsert(result)
     }
-    func createList(name: String, merchantID: UUID?) async throws -> UUID {
+    func createList(name: String, merchantID: UUID?, key: String? = nil) async throws -> UUID {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name.count <= 80 else {
             throw BrowserError("invalid_list", "Enter a list name of 1–80 characters.")
         }
-        guard canUse, !busy, let householdID else { throw CancellationError() }
+        guard canUse, !busy, let householdID else { throw BrowserError("lists_unavailable", "Wait for shopping lists to finish loading.") }
         let version = context
         busy = true; loadID = UUID(); loading = false; error = nil; notice = nil
         defer { if context == version { busy = false } }
         var body: [String: Any] = ["name": name, "household_id": householdID.uuidString]
         if let merchantID { body["merchant_id"] = merchantID.uuidString }
-        let list = try await api.fetch("v1/lists", as: TripList.self, method: "POST", body: body)
+        let list = try await api.fetch("v1/lists", as: TripList.self, method: "POST", body: body, key: key)
         try check(version)
         guard list.householdId == householdID else { throw BrowserError("invalid_server_response") }
-        lists.insert(list, at: 0); proposals = []
+        lists.removeAll { $0.id == list.id }; lists.insert(list, at: 0); proposals = []
         return list.id
     }
 

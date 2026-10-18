@@ -225,6 +225,13 @@ final class DemoModelClient: ModelClient {
         func reply(_ text: String, calls: [ModelToolCall] = []) -> ModelResponse {
             ModelResponse(message: .init(role: .assistant, content: [.text(text)], toolCalls: calls))
         }
+        if let result = request.messages.last?.toolResults.last, result.name == "shopping_list_create" {
+            let value = result.value.foundation as? [String: Any] ?? [:]
+            guard let name = value["name"] as? String else { return reply("The list wasn’t confirmed saved. Check Lists before retrying.") }
+            if value["status"] as? String == "already_exists" { return reply("Your \(name) list already exists. You can ask me to add an item to it.") }
+            guard value["status"] as? String == "saved" else { return reply("The list wasn’t confirmed saved. Check Lists before retrying.") }
+            return reply("Created \(name). You can find it in Lists and ask me to add items.")
+        }
         if let result = request.messages.last?.toolResults.last, ShoppingCall.additions.contains(result.name) {
             let value = result.value.foundation as? [String: Any] ?? [:]
             if value["status"] as? String == "already_exists" { return reply("That item already exists. I left its quantity unchanged.") }
@@ -236,6 +243,19 @@ final class DemoModelClient: ModelClient {
         let prompt = request.messages.reversed().first { message in
             message.role == .user && message.content.contains { if case .text = $0 { return true }; return false }
         }?.content.compactMap { if case .text(let text) = $0 { return text }; return nil }.joined(separator: " ") ?? ""
+        let creationPattern = #"(?i)^(?:please\s+)?(?:create|make|start)\s+(?:me\s+)?(?:a\s+|an\s+|new\s+|a new\s+)?(?:shopping\s+)?list(?:\s+(?:called|named)\s+(.+?))?[.!]?$"#
+        if let match = try NSRegularExpression(pattern: creationPattern).firstMatch(in: prompt, range: NSRange(prompt.startIndex..., in: prompt)) {
+            guard request.tools.contains(where: { $0.name == "shopping_list_create" }) else { return reply("Open Lists to load your household, then try again.") }
+            let name = Range(match.range(at: 1), in: prompt).map { String(prompt[$0]) } ?? "Shopping list"
+            if name.lowercased().contains(" with ") {
+                return reply("The built-in demo creates a named list first. Try ‘Create a shopping list called Weekend’, then add one item per message.")
+            }
+            guard let result = request.messages.last?.toolResults.last, result.name == "shopping_context" else {
+                return reply("I’ll check your lists first.", calls: [.init(id: UUID().uuidString, name: "shopping_context", arguments: [:])])
+            }
+            guard result.value.object?["error"] == nil else { return reply("I couldn’t read your lists. Try again once they’re available.") }
+            return reply("", calls: [.init(id: UUID().uuidString, name: "shopping_list_create", arguments: ["name": .string(name)])])
+        }
         let pattern = #"(?i)^(?:please\s+)?(?:add|put|save)\s+(.+?)\s+(?:to|on|in|into)\s+(?:my\s+|the\s+)?(.+?)[.!]?$"#
         let regex = try NSRegularExpression(pattern: pattern)
         guard let match = regex.firstMatch(in: prompt, range: NSRange(prompt.startIndex..., in: prompt)),
@@ -274,7 +294,7 @@ final class DemoModelClient: ModelClient {
             let generic = ["shopping", "shopping list", "list"].contains(destination)
             let matches = generic ? lists : lists.filter { ($0["name"] as? String)?.lowercased() == name || ($0["name"] as? String)?.lowercased() == destination }
             guard matches.count == 1, let id = matches[0]["id"] as? String else {
-                return reply(lists.isEmpty ? "Create a shopping list in Lists first, then ask me to add the item." :
+                return reply(lists.isEmpty ? "Ask me to create a shopping list first, then add the item." :
                     "Which shopping list? Repeat your request with its name: " + lists.compactMap { $0["name"] as? String }.joined(separator: ", "))
             }
             arguments["listId"] = .string(id)

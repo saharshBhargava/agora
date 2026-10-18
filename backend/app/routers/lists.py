@@ -143,12 +143,26 @@ async def create_list(body: ListIn, request: Request, user: Principal = CurrentU
         household_id = await require_household(conn, body.household_id, user.user_id)
         if body.merchant_id is not None:
             await require_merchant(conn, body.merchant_id, household_id)
+        # Match the lock order of other list mutations before acquiring the request-key lock.
+        await replenishment.lock(conn, household_id)
+        key, digest, previous = await idempotency.begin_optional_add(
+            conn, request, user.user_id, "lists.create",
+            {**body.model_dump(mode="json"), "household_id": str(household_id)})
+        if previous is not None:
+            return ShoppingList.model_validate(previous)
         name = (body.name or "").strip() or _store_name(await _merchant_row(conn, body.merchant_id)) or DEFAULT_NAME
+        if key is not None:
+            names = await conn.fetch("SELECT name FROM shopping_lists WHERE household_id = $1 AND status = 'open' "
+                                     "AND merchant_id IS NOT DISTINCT FROM $2", household_id, body.merchant_id)
+            if any(idempotency.item_name_key(row["name"]) == idempotency.item_name_key(name) for row in names):
+                raise Problem(409, "already_exists", "An open list with this name and store already exists.")
         list_id = await _create_list(conn, household_id, user.user_id, name, body.merchant_id, "user")
         await audit(conn, "list.created", actor_id=user.user_id, household_id=household_id,
                     target_type="shopping_list", target_id=list_id, meta={"source": "user"})
         await notify(conn, household_id, "list.updated", list_id)
-        return await _one(conn, list_id)
+        result = await _one(conn, list_id)
+        await idempotency.finish_optional_add(conn, user.user_id, key, digest, result.model_dump(mode="json"))
+        return result
 
 
 @router.get("/{list_id}", response_model=ShoppingList)

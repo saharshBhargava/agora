@@ -209,11 +209,11 @@ availability. No extra hosting service or model credentials are needed for this 
 
 ## Chat additions MVP
 
-Chat now supports explicit additions to existing shopping lists, the active wishlist and new inventory
-items. Reads and saves use the shared authenticated stores, and confirmed results appear in Lists.
+Chat supports explicit shopping-list creation and additions to shopping lists, the active wishlist and new inventory
+items. Creation returns a persisted list ID for subsequent additions and updates the shared Lists UI. Reads and saves use the shared authenticated stores, and confirmed results appear in Lists.
 An ambiguous list/destination is clarified; existing items are reported without changing quantities.
 The tools, retry/error behavior and built-in demo examples are documented in
-[chat additions](api/chat-additions.md). No list creation or browser/photo extraction is included.
+[chat additions](api/chat-additions.md). Browser/photo extraction is not included.
 
 ## Capture and scan review — native source, October 18, 2026
 

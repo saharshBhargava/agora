@@ -1,5 +1,27 @@
 # Current state — mandatory read before resuming work
 
+## Chat-created shopping lists — local implementation, October 18, 2026
+
+Gemini and OpenAI-compatible chat agents now receive `shopping_list_create` after household loading.
+Explicit creation requests read fresh shopping context, create a named unassigned list and use its saved
+ID to add requested items through the existing tool. Shared Lists updates immediately; matching open
+lists are reused. Creation does not schedule a trip or purchase anything. The server-verified demo adds
+the grammar `Create a shopping list called Weekend`, followed by its existing one-item addition requests.
+
+`POST /v1/lists` now supports optional idempotency keys, serialized retries and duplicate checks for keyed
+requests, preserving older unkeyed forms. Account changes and Stop invalidate pending native work;
+unconfirmed writes require checking Lists. No migration is needed. Demo seed/backfill adds a Sunday
+farmers market list with apples and sourdough once, preserving later renames and archiving.
+Backend deployment and a rebuilt app are required; these changes have not been released.
+
+Validation: **696 backend tests**, Ruff and **150 selected simulator tests passed**, including the iOS CI
+suites, both provider schema/continuation checks and the real local API chat-create/add/reload flow.
+The demo reset ran only against a disposable loopback database. Logs/results:
+`/tmp/agora-create-list-backend.log`, `/tmp/agora-create-list-final.log`,
+`/tmp/agora-create-list-final.xcresult`, `/tmp/agora-create-list-demo-reset.log`.
+An earlier broader provider run hit existing unsigned-simulator Keychain entitlement failures and skipped
+the separate model fixture-server test; no full provider-suite or live credentialed inference pass is claimed.
+
 ## Native UI publication validation — October 18, 2026
 
 The pending visual refresh, camera startup fixes, chat suggestion pills, capture action icons/title case

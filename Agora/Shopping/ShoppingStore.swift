@@ -210,6 +210,37 @@ final class ShoppingStore: ObservableObject {
                  "unit": item.unit, "restock_level": item.parLevel as Any? ?? NSNull()]
             }]
         }
+        if call.name == "shopping_list_create" {
+            guard contextTaskID == taskID else { throw BrowserError("context_required", "Read shopping_context before creating a list.") }
+            guard let trips else { throw BrowserError("lists_unavailable", "Shopping lists are unavailable.") }
+            let name = call.arguments["name"] as! String
+            func matchingList() -> TripList? {
+                trips.lists.first { $0.householdId == householdID && $0.status == "open" && $0.merchant == nil &&
+                    $0.name.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased() ==
+                    name.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased() }
+            }
+            func existingResult(_ list: TripList) -> [String: Any] {
+                ["id": list.id.uuidString, "name": list.name, "status": "already_exists",
+                 "instruction": "This open list already exists. Use its ID for explicitly requested additions; do not claim you created it."]
+            }
+            if let list = matchingList() { return existingResult(list) }
+            do {
+                let id = try await trips.createList(name: name, merchantID: nil, key: call.requestKey(taskID: taskID))
+                try check(version)
+                return ["id": id.uuidString, "name": name, "status": "saved", "destination": "Shopping lists"]
+            } catch let error as BrowserError where error.code == "already_exists" {
+                try check(version)
+                _ = try await trips.listsForChat()
+                try check(version)
+                if let list = matchingList() { return existingResult(list) }
+                throw error
+            } catch {
+                try check(version)
+                if let failure = error as? BrowserError,
+                   (failure.status.map { (400..<500).contains($0) } == true || ["lists_unavailable", "invalid_list"].contains(failure.code)) { throw failure }
+                throw BrowserError("outcome_unknown", "The list may have been saved. Check Lists before trying again.")
+            }
+        }
         if call.isAddition {
             guard contextTaskID == taskID else { throw BrowserError("context_required", "Read shopping_context before adding an item.") }
             let key = try call.requestKey(taskID: taskID)

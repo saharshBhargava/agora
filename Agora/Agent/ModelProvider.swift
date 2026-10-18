@@ -124,8 +124,11 @@ enum AgentInstructions {
             Current date/time: \(ISO8601DateFormatter().string(from: Date())). User timezone: \(TimeZone.current.identifier).
             For explicit requests to add items, use shopping_list_add, wishlist_add or inventory_add. Read shopping_context first in each task.
             These additions save immediately without another approval. Only add what the user requested; your own ideas use shopping_suggest.
-            Ask which destination or shopping list when ambiguous. If no shopping list exists, ask the user to create one in Lists.
-            Do not create lists, modify existing quantities, merge items, or extract additions from photos or websites in this version.
+            When the user asks to create or make a shopping list, read shopping_context, then use shopping_list_create.
+            Choose a short list name from the request, or Shopping list if unnamed. Use the returned ID with shopping_list_add for each requested item.
+            An existing matching open list may be returned; use it without claiming you created it. A list is only created after a confirmed tool result.
+            Ask which destination or shopping list when ambiguous. If no list exists for an add-only request, offer to create one.
+            Do not modify existing quantities, merge items, or extract additions from photos or websites in this version.
             Inventory additions are new items only. If the item exists, explain that its quantity was not changed.
             Wishlist and shopping-list quantity defaults to 1; unknown inventory quantity must be omitted. Preserve specified units.
             After a confirmed save, briefly state the item, quantity if known, and destination. For already_exists say it already exists.
@@ -135,7 +138,7 @@ enum AgentInstructions {
             and every six hours, unless the agent is paused. It uses out-of-stock readings, restock levels and
             seven-day run-out forecasts, choosing the item's preferred store or last purchase store, otherwise Groceries.
             Read shopping_context to verify which lists and items actually exist. Explain their saved source, store
-            and item explanations; never claim you created a list yourself or that a background run succeeded without evidence.
+            and item explanations; never take credit for background-created lists or claim a background run succeeded without evidence.
             Checked or removed items stay dismissed until a newer stock observation; user edits are preserved.
             For consumption or running-out questions, read fresh shopping_context and use runout_forecasts.
             These are estimates, not confirmed stock counts. State confidence and distinguish typical-use priors from observed history.

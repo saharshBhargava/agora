@@ -92,3 +92,63 @@ async def test_chat_demo_backfill_preserves_edits(app, client):
     after = (await client.get('/v1/lists', headers=headers)).json()
     assert any(r['id'] == weekend['id'] and r['name'] == 'My renamed weekend' for r in after)
     assert not any(r['name'] == 'Weekend groceries' for r in after)
+
+
+async def test_chat_create_list_replay_duplicate_and_isolation(client):
+    headers = await login(client, 'create_' + uuid4().hex[:12])
+    other = await login(client, 'other_' + uuid4().hex[:12])
+    household = (await client.get('/v1/me', headers=headers)).json()['households'][0]['id']
+    body = {'household_id': household, 'name': 'Weekend supplies'}
+    keyed = {**headers, 'Idempotency-Key': str(uuid4())}
+    first = await client.post('/v1/lists', headers=keyed, json=body)
+    assert first.status_code == 201, first.text
+    replay = await client.post('/v1/lists', headers=keyed, json=body)
+    assert replay.json() == first.json()
+    changed = await client.post('/v1/lists', headers=keyed, json={**body, 'name': 'Other supplies'})
+    assert changed.status_code == 422
+    assert changed.json()['title'] == 'idempotency_key_reused'
+    duplicate = await client.post('/v1/lists', headers={**headers, 'Idempotency-Key': str(uuid4())},
+                                  json={**body, 'name': '  WEEKEND   supplies '})
+    assert duplicate.status_code == 409, duplicate.text
+    assert duplicate.json()['title'] == 'already_exists'
+    forbidden = await client.post('/v1/lists', headers={**other, 'Idempotency-Key': keyed['Idempotency-Key']},
+                                   json=body)
+    assert forbidden.status_code == 404
+    # The returned ID immediately accepts items and persists across a reload.
+    path = '/v1/lists/' + first.json()['id']
+    item = await client.post(path + '/items', headers={**headers, 'Idempotency-Key': str(uuid4())},
+                             json={'title': 'Eggs', 'quantity': 2, 'unit': 'cartons'})
+    assert item.status_code == 201, item.text
+    assert (await client.get(path, headers=headers)).json()['items'][0]['title'] == 'Eggs'
+    await client.patch(path, headers=headers, json={'status': 'done'})
+    assert (await client.post('/v1/lists', headers=keyed, json=body)).json() == first.json()
+
+
+async def test_chat_create_list_concurrency_and_legacy_forms(client):
+    headers = await login(client, 'create_race_' + uuid4().hex[:8])
+    body = {'name': 'Camping supplies'}
+    keyed = {**headers, 'Idempotency-Key': str(uuid4())}
+    results = await asyncio.gather(*(client.post('/v1/lists', headers=keyed, json=body) for _ in range(3)))
+    assert [r.status_code for r in results] == [201] * 3
+    assert len({r.json()['id'] for r in results}) == 1
+    results = await asyncio.gather(*(client.post('/v1/lists', headers={**headers, 'Idempotency-Key': str(uuid4())},
+                                                 json={'name': 'Picnic'}) for _ in range(2)))
+    assert sorted(r.status_code for r in results) == [201, 409]
+    assert (await client.post('/v1/lists', headers={**headers, 'Idempotency-Key': 'x'}, json=body)).status_code == 400
+    # Older forms without keys keep their existing ability to create same-name lists.
+    assert (await client.post('/v1/lists', headers=headers, json=body)).status_code == 201
+    assert (await client.post('/v1/lists', headers=headers, json=body)).status_code == 201
+
+
+async def test_chat_list_demo_backfill_preserves_renames_and_archives(app, client):
+    from app.demo_account import ensure_demo_account
+    headers = await login(client, 'demo')
+    lists = (await client.get('/v1/lists', headers=headers)).json()
+    market = next(row for row in lists if row['name'] == 'Sunday farmers market')
+    assert {item['title'] for item in market['items']} == {'Seasonal apples', 'Sourdough loaf'}
+    await client.patch('/v1/lists/' + market['id'], headers=headers,
+                       json={'name': 'My market list', 'status': 'archived'})
+    await ensure_demo_account(app.state.db, app.state.settings)
+    after = (await client.get('/v1/lists', headers=headers)).json()
+    assert not any(row['name'] == 'Sunday farmers market' for row in after)
+    assert (await client.get('/v1/lists/' + market['id'], headers=headers)).json()['name'] == 'My market list'

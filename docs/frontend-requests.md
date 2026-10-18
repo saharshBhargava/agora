@@ -543,4 +543,7 @@ Chat can add items to existing shopping lists, the active wishlist and new inven
 requests save immediately; ambiguous destinations are clarified and duplicates leave quantities unchanged.
 Shared screens update after confirmed saves. Existing suggestions remain a separate acceptance flow.
 See [chat additions](api/chat-additions.md) for argument limits, demo examples and retry behavior.
-List creation from chat, existing-stock changes, browser/photo extraction and undo remain outside this MVP.
+List creation from chat is now implemented locally through `shopping_list_create`, with a persisted ID
+for subsequent item additions and shared Lists updates. The create API accepts optional idempotency keys;
+the backend update and rebuilt native app are required. Existing-stock changes, browser/photo extraction
+and undo remain outside this MVP.

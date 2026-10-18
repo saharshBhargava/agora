@@ -34,6 +34,7 @@ struct ChatToolActivity {
         case "calendar_create_event": return "Adding a Calendar event"
         case "calendar_list_events", "calendar_availability": return "Checking your Calendar"
         case "shopping_context": return "Reading your shopping context"
+        case "shopping_list_create": return "Creating a shopping list"
         case "shopping_list_add": return "Adding to shopping list"
         case "wishlist_add": return "Adding to wishlist"
         case "inventory_add": return "Adding to inventory"
@@ -43,7 +44,7 @@ struct ChatToolActivity {
     }
     /// Only useful, public-facing fields. Never display raw model or DOM payloads.
     static func summary(_ values: [String: Any]) -> String {
-        ["url", "action", "title", "summary", "text", "error"].compactMap { key in
+        ["url", "action", "title", "name", "summary", "text", "error"].compactMap { key in
             guard let value = values[key] as? String, !value.isEmpty else { return nil }
             return String(value.prefix(1200))
         }.joined(separator: "\n")
