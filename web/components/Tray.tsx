@@ -48,6 +48,7 @@ export const TrayChipView = forwardRef<HTMLButtonElement, { chip: ChipT; me: str
       <span className="tray-chip-share">{share === null ? '~$?' : formatCents(share)}</span>
       {n > 1 && <span className="chip-badge tray-split">÷{n}</span>}
       <span className="tray-chip-name">{chip.name}</span>
+      {chip.overCap.includes(me) && <span className="tray-overcap">Raise your cap or leave</span>}
     </button>
   );
 });

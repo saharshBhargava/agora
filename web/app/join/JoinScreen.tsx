@@ -1,12 +1,13 @@
 'use client';
 import { useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api, type JoinResult } from '@/lib/api';
 import { HeldBadge } from '@/components/HeldBadge';
 import { formatCents } from '@/lib/money';
 
 export default function JoinScreen() {
   const params = useSearchParams();
+  const router = useRouter();
   const runId = params.get('run') ?? '';
   const name = params.get('name') || 'A';
   const capParam = Number.parseInt(params.get('cap') ?? '', 10);
@@ -21,7 +22,9 @@ export default function JoinScreen() {
     setBusy(true);
     setError(null);
     try {
-      setJoined(await api.join(runId, name, capCents, { decline }));
+      const res = await api.join(runId, name, capCents, { decline });
+      setJoined(res);
+      router.push(`/claim?run=${encodeURIComponent(runId)}&person=${encodeURIComponent(res.personId)}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not join');
     } finally {

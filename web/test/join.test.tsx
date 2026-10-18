@@ -15,12 +15,14 @@ vi.mock('@/lib/api', () => ({
   TEST_CARD: { number: '4111111111111111', expMonth: 12, expYear: 2031 },
 }));
 const params = new URLSearchParams('run=r1');
-vi.mock('next/navigation', () => ({ useSearchParams: () => params }));
+const push = vi.fn();
+vi.mock('next/navigation', () => ({ useSearchParams: () => params, useRouter: () => ({ push, replace: push }) }));
 
 import JoinScreen from '@/app/join/JoinScreen';
 
 beforeEach(() => {
   calls = [];
+  push.mockClear();
 });
 
 test('tapping Join shows the held badge with approval code', async () => {
@@ -39,4 +41,14 @@ test('shows the server error when join is refused', async () => {
   render(<JoinScreen />);
   fireEvent.click(screen.getByRole('button', { name: /join/i }));
   await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('run is locked'));
+});
+
+test('after a successful join, routes to /claim with the person id', async () => {
+  impl = async () => ({
+    personId: 'p1',
+    auth: { status: 'AUTHORIZED', authId: 'a1', approvalCode: '888888', authorizedCents: 4000 },
+  });
+  render(<JoinScreen />);
+  fireEvent.click(screen.getByRole('button', { name: /join/i }));
+  await waitFor(() => expect(push).toHaveBeenCalledWith('/claim?run=r1&person=p1'));
 });

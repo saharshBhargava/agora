@@ -372,3 +372,22 @@ p { margin: 0; }
 .banner .btn { flex: 0 0 auto; }
 .btn-secondary { border: 1px solid var(--border); }
 .live { background: var(--surface); }
+
+/* ---- claimer and settle ---- */
+.tray-overcap { font-size: var(--fs-sm); color: var(--danger); font-weight: 700; }
+.liveview-toggle { appearance: none; border: 0; padding: 0; background: none; width: 100%; cursor: pointer; display: block; }
+.liveview-large { aspect-ratio: 4 / 3; max-height: none; }
+.claim-toast { flex-wrap: wrap; }
+.wish-sheet { display: flex; gap: var(--space-1); }
+.wish-sheet input { flex: 1; min-height: var(--tap); padding: 0 var(--space-2); border-radius: var(--radius-sm); border: 1px solid var(--border); font: inherit; background: var(--surface); color: var(--text); }
+.wish-sheet .btn { width: auto; padding: 0 var(--space-2); }
+.settle { display: flex; flex-direction: column; gap: var(--space-2); }
+.receipt-list, .settle-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.receipt-line { display: flex; flex-direction: column; gap: var(--space-1); }
+.receipt-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); font-weight: 650; }
+.receipt-thumb { width: 36px; height: 36px; border-radius: var(--radius-sm); object-fit: cover; }
+.receipt-actions { display: flex; gap: var(--space-1); }
+.receipt-actions .btn, .receipt-actions select { flex: 1; }
+.settle-line { display: flex; flex-direction: column; gap: 2px; }
+.settle-name { font-weight: 700; }
+.settle-photo { position: relative; height: 32dvh; min-height: 200px; display: flex; border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }
