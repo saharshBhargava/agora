@@ -33,6 +33,12 @@ final class ShopperCamera {
         camera.onTrigger = { [weak self] trigger in
             Task { @MainActor [weak self] in self?.post(trigger) }
         }
+        camera.onRemoved = { [weak self] chipId in
+            Task { @MainActor [weak self] in self?.removed(chipId) }
+        }
+        camera.onRestored = { [weak self] chipId in
+            Task { @MainActor [weak self] in self?.restored(chipId) }
+        }
     }
 
     /// Asks for camera access, then starts the session.
@@ -75,6 +81,20 @@ final class ShopperCamera {
         store.sendFrame(jpeg: jpeg, detect: false)
     }
 
+    /// The item left the cart: the shopper removes its chip (the server keeps an undo).
+    private func removed(_ chipId: String) {
+        let name = store.run?.chip(chipId)?.name ?? "?"
+        let sent = store.remove(chipId)
+        DibsLog.event("watcher removed chip=\(chipId) name=\(name) sent=\(sent)")
+    }
+
+    /// A removed item turned up elsewhere (it was moved): bring its chip back.
+    private func restored(_ chipId: String) {
+        let name = store.run?.chip(chipId)?.name ?? "?"
+        let sent = store.undoRemove(chipId)
+        DibsLog.event("watcher restored chip=\(chipId) name=\(name) sent=\(sent)")
+    }
+
     private func post(_ trigger: CartTrigger) {
         cropCount += 1
         let n = cropCount
@@ -82,16 +102,18 @@ final class ShopperCamera {
         let id = UUID()
         pending[id] = ScanGeometry.visionToTopLeft(trigger.box)
         DibsLog.event("addChip #\(n) start crop=\(Int(trigger.cropSize.width))x\(Int(trigger.cropSize.height)) \(trigger.jpeg.count / 1024) KB")
-        let api = api, runId = runId, base64 = trigger.jpeg.base64EncodedString()
+        let api = api, runId = runId, base64 = trigger.jpeg.base64EncodedString(), camera = camera, itemId = trigger.itemId
         Task { [weak self] in
             do {
                 let chip = try await api.addChip(runId: runId, imageBase64: base64)
+                camera.attach(chipId: chip.id, toItem: itemId)
                 let price = chip.priceCents.map { Money.format($0) } ?? "no price"
                 DibsLog.event("addChip #\(n) ok name=\"\(chip.name)\" price=\(price) source=\(chip.priceSource.rawValue) state=\(chip.state.rawValue)")
                 self?.lastAddError = nil
             } catch {
                 let text = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 DibsLog.event("addChip #\(n) error=\(text)")
+                camera.forget(item: itemId)
                 self?.lastAddError = text
             }
             self?.pending[id] = nil

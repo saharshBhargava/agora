@@ -6,7 +6,7 @@ import Foundation
 import ImageIO
 
 /// JPEG encoding for the shopper camera: the 2 fps livestream frame, the trigger crop, and the
-/// 32x32 gray thumbnail for scene change. Thread-safe (CIContext is), used on the video queue.
+/// 96 px gray thumbnail for scene change. Thread-safe (CIContext is), used on the video queue.
 final class FrameEncoder: @unchecked Sendable {
     static let streamInterval: TimeInterval = 0.5
     static let streamWidth: CGFloat = 640
@@ -16,6 +16,8 @@ final class FrameEncoder: @unchecked Sendable {
 
     private let context = CIContext(options: [.cacheIntermediates: false])
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+    /// Gamma 2.2 gray, so thumbnail levels match sRGB gray (the server's thresholds) instead of linear light.
+    private let grayColorSpace = CGColorSpace(name: CGColorSpace.genericGrayGamma2_2)!
 
     /// Size of a streamed frame for a source frame of `size` (640 wide, aspect kept).
     static func streamSize(for size: CGSize) -> CGSize {
@@ -49,26 +51,36 @@ final class FrameEncoder: @unchecked Sendable {
         return (data, CGSize(width: out.extent.width.rounded(), height: out.extent.height.rounded()))
     }
 
-    /// 32x32 grayscale thumbnail bytes (Lanczos-averaged, so sensor noise mostly cancels out).
-    func thumbnail(_ buffer: CVPixelBuffer) -> [UInt8] {
-        let side = SceneDiff.side
+    /// Thumbnail size for a frame: 96 px on the long side, aspect kept.
+    static func thumbSize(for size: CGSize) -> (width: Int, height: Int) {
+        let long = CGFloat(SceneDiff.longSide)
+        guard size.width > 0, size.height > 0 else { return (SceneDiff.longSide, SceneDiff.longSide) }
+        if size.height >= size.width {
+            return (max(1, Int((long * size.width / size.height).rounded())), SceneDiff.longSide)
+        }
+        return (SceneDiff.longSide, max(1, Int((long * size.height / size.width).rounded())))
+    }
+
+    /// Grayscale thumbnail (Lanczos-averaged, so sensor noise mostly cancels out), rows from the top.
+    func thumbnail(_ buffer: CVPixelBuffer) -> SceneThumb {
         let image = CIImage(cvPixelBuffer: buffer)
+        let (w, h) = Self.thumbSize(for: image.extent.size)
         let gray = image.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 0])
         let f = CIFilter.lanczosScaleTransform()
         f.inputImage = gray
-        f.scale = Float(CGFloat(side) / image.extent.height)
-        f.aspectRatio = Float(image.extent.height / image.extent.width)
+        f.scale = Float(CGFloat(h) / image.extent.height)
+        f.aspectRatio = Float((CGFloat(w) / image.extent.width) / (CGFloat(h) / image.extent.height))
         let out = f.outputImage ?? gray
         let small = out
             .transformed(by: CGAffineTransform(translationX: -out.extent.minX, y: -out.extent.minY))
             .clampedToExtent()
-            .cropped(to: CGRect(x: 0, y: 0, width: side, height: side))
-        var bytes = [UInt8](repeating: 0, count: side * side)
+            .cropped(to: CGRect(x: 0, y: 0, width: w, height: h))
+        var bytes = [UInt8](repeating: 0, count: w * h)
         bytes.withUnsafeMutableBytes { raw in
-            context.render(small, toBitmap: raw.baseAddress!, rowBytes: side, bounds: small.extent,
-                           format: .L8, colorSpace: nil)
+            context.render(small, toBitmap: raw.baseAddress!, rowBytes: w, bounds: small.extent,
+                           format: .L8, colorSpace: grayColorSpace)
         }
-        return bytes
+        return SceneThumb(width: w, height: h, pixels: bytes)
     }
 
     private func scaled(_ image: CIImage, by scale: CGFloat) -> CIImage {

@@ -2,212 +2,396 @@ import CoreGraphics
 import XCTest
 @testable import Dibs
 
+/// A synthetic 54x96 scene: a textured floor with bright items, viewed through a camera offset.
+private struct Scene {
+    static let w = 54, h = 96
+    /// Items in floor (world) pixels, top-left origin.
+    var items: [(x: Int, y: Int, w: Int, h: Int)]
+    /// Camera offset in pixels: thumbnail pixel (x, y) shows world (x + sx, y + sy).
+    var sx = 0, sy = 0
+    var brightness = 0
+    var texture = 0
+
+    func world(_ x: Int, _ y: Int) -> Int {
+        for it in items where x >= it.x && x < it.x + it.w && y >= it.y && y < it.y + it.h {
+            return 225 - ((x + y) % 3) * 8
+        }
+        let fx = Double(x), fy = Double(y), t = Double(texture)
+        return Int(110 + 45 * sin(0.37 * fx + 0.11 * fy + t) + 35 * cos(0.23 * fy - 0.17 * fx + 2 * t) + 12 * sin(0.9 * fx) * cos(0.7 * fy))
+    }
+
+    var thumb: SceneThumb {
+        var px = [UInt8](repeating: 0, count: Self.w * Self.h)
+        for y in 0..<Self.h {
+            for x in 0..<Self.w { px[y * Self.w + x] = UInt8(max(0, min(255, world(x + sx, y + sy) + brightness))) }
+        }
+        return SceneThumb(width: Self.w, height: Self.h, pixels: px)
+    }
+
+    /// Vision-normalized box (bottom-left origin) of a world rect as this camera sees it.
+    func box(_ r: (x: Int, y: Int, w: Int, h: Int)) -> CGRect {
+        let tlx = Double(r.x - sx) / Double(Self.w), tly = Double(r.y - sy) / Double(Self.h)
+        let bw = Double(r.w) / Double(Self.w), bh = Double(r.h) / Double(Self.h)
+        return CGRect(x: tlx, y: 1 - tly - bh, width: bw, height: bh)
+    }
+
+    func box(item i: Int) -> CGRect { box(items[i]) }
+}
+
 final class CartWatcherTests: XCTestCase {
-    private let apple = CGRect(x: 0.4, y: 0.3, width: 0.2, height: 0.2)
-    private let milk = CGRect(x: 0.05, y: 0.6, width: 0.2, height: 0.3)
+    // A can on the left, an apple on the right (world pixels in a 54x96 thumbnail).
+    private let can = (x: 6, y: 30, w: 12, h: 24)
+    private let apple = (x: 32, y: 40, w: 14, h: 14)
+    private let milk = (x: 20, y: 66, w: 14, h: 18)
 
-    private func obs(_ t: Double, _ box: CGRect?, hand: Bool = false, change: Double = 0) -> CartWatcher.Observation {
-        .init(time: t, box: box, handPresent: hand, changeFraction: change)
-    }
-
-    private func obs(_ t: Double, boxes: [CGRect]) -> CartWatcher.Observation {
-        .init(time: t, boxes: boxes, handPresent: false, changeFraction: 0)
-    }
-
-    /// Feeds `boxes` every 0.1 s; returns all triggers in order.
-    private func feedMany(_ w: inout CartWatcher, _ boxes: [CGRect], from start: Double, seconds: Double) -> [CGRect] {
-        var out: [CGRect] = []
+    private func feed(_ w: inout CartWatcher, _ scene: Scene, _ boxes: [CGRect], from start: Double, seconds: Double,
+                      hand: Bool = false, distance: (CGRect, Int) -> Double? = { _, _ in nil }) -> [CartWatcher.Decision] {
+        var out: [CartWatcher.Decision] = []
+        let thumb = scene.thumb
         for i in 0...Int((seconds / 0.1).rounded()) {
-            for d in w.observe(obs(start + Double(i) * 0.1, boxes: boxes)) { if case .trigger(let b) = d { out.append(b) } }
+            out += w.observe(.init(time: start + Double(i) * 0.1, boxes: boxes, handPresent: hand, thumb: thumb), distance: distance)
         }
         return out
     }
 
-    /// Feeds `box` every 0.1 s from `start` for `seconds`; returns the triggers seen.
-    @discardableResult
-    private func feed(_ w: inout CartWatcher, _ box: CGRect?, from start: Double, seconds: Double, hand: Bool = false) -> [CGRect] {
-        var out: [CGRect] = []
-        let steps = Int((seconds / 0.1).rounded())
-        for i in 0...steps {
-            for d in w.observe(obs(start + Double(i) * 0.1, box, hand: hand)) { if case .trigger(let b) = d { out.append(b) } }
+    private func removals(_ ds: [CartWatcher.Decision]) -> [String] {
+        ds.compactMap { if case .removed(let c, _) = $0 { c } else { nil } }
+    }
+
+    private func moves(_ ds: [CartWatcher.Decision]) -> [CGRect] {
+        ds.compactMap { if case .moved(_, _, let b) = $0 { b } else { nil } }
+    }
+
+    /// Can and apple at start, with chips "can" and "apple" attached to their items.
+    private func startWithChips() -> (CartWatcher, Scene) {
+        var (w, scene) = startWithCanAndApple()
+        XCTAssertEqual(w.items.count, 2)
+        w.attach(chipId: "can", toItem: w.itemId(for: scene.box(item: 0))!)
+        w.attach(chipId: "apple", toItem: w.itemId(for: scene.box(item: 1))!)
+        return (w, scene)
+    }
+
+    private func triggers(_ ds: [CartWatcher.Decision]) -> [CGRect] {
+        ds.compactMap { if case .trigger(let b) = $0 { b } else { nil } }
+    }
+
+    /// Two items in view at start: two triggers, then the reference is taken. Returns the watcher.
+    private func startWithCanAndApple(_ initial: Bool = true) -> (CartWatcher, Scene) {
+        var w = CartWatcher(triggerOnInitialScene: initial)
+        let scene = Scene(items: [can, apple])
+        let ds = feed(&w, scene, [scene.box(item: 0), scene.box(item: 1)], from: 0, seconds: 2.5)
+        XCTAssertTrue(ds.contains(.referenceTaken))
+        XCTAssertTrue(w.watching)
+        return (w, scene)
+    }
+
+    // MARK: initial scene
+
+    func testTwoInitialItemsTriggerOnceEach() {
+        var w = CartWatcher()
+        let scene = Scene(items: [can, apple])
+        let boxes = [scene.box(item: 0), scene.box(item: 1)]
+        XCTAssertEqual(feed(&w, scene, boxes, from: 0, seconds: 0.9), Array(repeating: .settling(elapsed: 0), count: 1) + (1...9).map { .settling(elapsed: Double($0) * 0.1) })
+        XCTAssertEqual(w.observe(.init(time: 1.0, boxes: boxes, handPresent: false, thumb: scene.thumb)), [.trigger(boxes[0]), .trigger(boxes[1])])
+        let rest = feed(&w, scene, boxes.reversed(), from: 1.1, seconds: 6)
+        XCTAssertEqual(triggers(rest), [])
+        XCTAssertEqual(rest.filter { $0 == .referenceTaken }.count, 1, "reference taken once, after 2 s still")
+    }
+
+    func testInitialSceneKeptSilentlyWhenDisabled() {
+        var (w, scene) = startWithCanAndApple(false)
+        XCTAssertEqual(w.settled.count, 2)
+        scene.items.append(milk)
+        let ds = feed(&w, scene, [scene.box(item: 0), scene.box(item: 1), scene.box(item: 2)], from: 2.6, seconds: 1.5)
+        XCTAssertEqual(triggers(ds), [scene.box(item: 2)])
+    }
+
+    func testInitialStaggeredSettlesStillTrigger() {
+        var w = CartWatcher()
+        let scene = Scene(items: [can, apple])
+        var ds = feed(&w, scene, [scene.box(item: 0)], from: 0, seconds: 0.7)
+        ds += feed(&w, scene, [scene.box(item: 0), scene.box(item: 1)], from: 0.8, seconds: 3)
+        XCTAssertEqual(triggers(ds), [scene.box(item: 0), scene.box(item: 1)])
+    }
+
+    // MARK: watching: only real pixel change triggers
+
+    func testFlickeringAndMergingBoxesOverSamePixelsNeverTrigger() {
+        var (w, scene) = startWithCanAndApple()
+        let a = scene.box(item: 0), b = scene.box(item: 1)
+        let configs: [[CGRect]] = [
+            [a.union(b)],                                             // one box around both
+            [a.offsetBy(dx: 0.08, dy: 0.03), b.offsetBy(dx: -0.06, dy: -0.04)],   // separate, moved
+            [a.insetBy(dx: -0.05, dy: -0.04), b.insetBy(dx: 0.02, dy: 0.02)],
+            [a.union(b).insetBy(dx: -0.04, dy: -0.04)],
+            [CGRect(x: 0.3, y: 0.05, width: 0.3, height: 0.2)],       // floor only
+        ]
+        var t = 2.6
+        var all: [CartWatcher.Decision] = []
+        for _ in 0..<3 {
+            for c in configs {
+                all += feed(&w, scene, c, from: t, seconds: 1.5)
+                t += 1.6
+            }
         }
-        return out
+        XCTAssertEqual(triggers(all), [])
+        XCTAssertTrue(all.contains { if case .unchanged = $0 { true } else { false } })
     }
 
-    func testTriggersOnceAfterOneSecondStill() {
+    func testNewItemTriggersOnceWhenItsPixelsChange() {
+        var (w, scene) = startWithCanAndApple()
+        scene.items.append(milk)
+        let boxes = [scene.box(item: 0), scene.box(item: 1), scene.box(item: 2)]
+        let ds = feed(&w, scene, boxes, from: 2.6, seconds: 5)
+        XCTAssertEqual(triggers(ds), [scene.box(item: 2)])
+    }
+
+    func testNewItemNextToOldOnesWithMergedBoxTriggersOnce() {
+        var (w, scene) = startWithCanAndApple()
+        scene.items.append(milk)
+        // Saliency boxes everything as one blob, then the milk alone.
+        let blob = scene.box(item: 0).union(scene.box(item: 1)).union(scene.box(item: 2))
+        var ds = feed(&w, scene, [blob], from: 2.6, seconds: 1.5)
+        ds += feed(&w, scene, [scene.box(item: 2)], from: 4.2, seconds: 2)
+        XCTAssertEqual(triggers(ds), [scene.box(item: 2)], "the blob is mostly unchanged; the milk alone triggers")
+    }
+
+    func testNoTriggerWhileHandPresentThenTriggerAfter() {
+        var (w, scene) = startWithCanAndApple()
+        scene.items.append(milk)
+        let boxes = [scene.box(item: 2)]
+        XCTAssertEqual(triggers(feed(&w, scene, boxes, from: 2.6, seconds: 3, hand: true)), [])
+        XCTAssertEqual(triggers(feed(&w, scene, boxes, from: 5.7, seconds: 1.2)), [scene.box(item: 2)])
+    }
+
+    // MARK: camera shifts and scene changes
+
+    func testSmallCameraShiftRebaselinesWithoutTriggers() {
+        var (w, scene) = startWithCanAndApple()
+        scene.sx = 2
+        scene.sy = -1
+        let ds = feed(&w, scene, [scene.box(item: 0), scene.box(item: 1)], from: 2.6, seconds: 4)
+        XCTAssertEqual(triggers(ds), [])
+        XCTAssertTrue(ds.contains(.cameraShift(dx: 2, dy: -1)), "\(ds.prefix(3))")
+        // Settled boxes followed the shift.
+        XCTAssertEqual(w.settled[0].minX, scene.box(item: 0).minX, accuracy: 1e-9)
+        XCTAssertEqual(w.settled[0].minY, scene.box(item: 0).minY, accuracy: 1e-9)
+        // Merged and separate boxes after the shift still never trigger.
+        let merged = scene.box(item: 0).union(scene.box(item: 1))
+        XCTAssertEqual(triggers(feed(&w, scene, [merged], from: 6.7, seconds: 3)), [])
+    }
+
+    func testBrightnessChangeDoesNotTrigger() {
+        var (w, scene) = startWithCanAndApple()
+        scene.brightness = 18
+        let ds = feed(&w, scene, [scene.box(item: 0).union(scene.box(item: 1))], from: 2.6, seconds: 3)
+        XCTAssertEqual(triggers(ds), [])
+    }
+
+    func testWholeNewSceneRebaselinesAndDoesNotRetriggerItems() {
+        var (w, scene) = startWithCanAndApple()
+        scene.texture = 3
+        scene.sx = 4
+        scene.items = [(x: 10, y: 10, w: 14, h: 20), (x: 30, y: 60, w: 16, h: 16)]
+        let ds = feed(&w, scene, [scene.box(item: 0), scene.box(item: 1)], from: 2.6, seconds: 5)
+        XCTAssertEqual(triggers(ds), [], "initial-scene triggering happens once per watcher")
+        XCTAssertTrue(ds.contains(.rebaseline) || ds.contains(.motion))
+        XCTAssertEqual(w.reference, scene.thumb, "reference retaken on the new scene")
+    }
+
+    // MARK: box filters
+
+    func testCornerAndTinyBoxesIgnored() {
         var w = CartWatcher()
-        for i in 0..<10 {
-            XCTAssertEqual(w.observe(obs(Double(i) * 0.1, apple)), [.settling(elapsed: Double(i) * 0.1)], "t=\(i)")
-        }
-        XCTAssertEqual(w.observe(obs(1.0, apple)), [.trigger(apple)])
-        XCTAssertEqual(w.settled, [apple])
-        XCTAssertTrue(feed(&w, apple, from: 1.1, seconds: 5).isEmpty)
+        let corner = (x: 0, y: 70, w: 11, h: 26)    // touches left and bottom
+        let scene = Scene(items: [corner, (x: 30, y: 10, w: 6, h: 10)])
+        let cornerBox = scene.box(item: 0)
+        XCTAssertGreaterThanOrEqual(CartWatcher.edgesTouched(cornerBox, margin: 0.008), 2)
+        XCTAssertLessThan(scene.box(item: 1).width * scene.box(item: 1).height, 0.03)
+        XCTAssertEqual(triggers(feed(&w, scene, [cornerBox, scene.box(item: 1)], from: 0, seconds: 3)), [])
     }
 
-    func testNoTriggerWhileHandPresent() {
+    func testOneEdgeBoxStillCounts() {
         var w = CartWatcher()
-        XCTAssertEqual(w.observe(obs(0, apple, hand: true)), [.handPresent])
-        XCTAssertTrue(feed(&w, apple, from: 0, seconds: 3, hand: true).isEmpty)
-        // The hand leaves: the clock starts again from then.
-        XCTAssertEqual(w.observe(obs(3.25, apple)), [.settling(elapsed: 0)])
-        XCTAssertEqual(w.observe(obs(3.75, apple)), [.settling(elapsed: 0.5)])
-        XCTAssertEqual(w.observe(obs(4.25, apple)), [.trigger(apple)])
-    }
-
-    func testHandMidwayResetsStillness() {
-        var w = CartWatcher()
-        feed(&w, apple, from: 0, seconds: 0.8)
-        _ = w.observe(obs(0.9, apple, hand: true))
-        XCTAssertEqual(w.observe(obs(1.0, apple)), [.settling(elapsed: 0)])
-    }
-
-    func testSameBoxDoesNotTriggerTwiceEvenWithJitter() {
-        var w = CartWatcher()
-        XCTAssertEqual(feed(&w, apple, from: 0, seconds: 1), [apple])
-        let nudged = apple.offsetBy(dx: 0.03, dy: 0.02)   // IoU with apple still >= 0.5
-        XCTAssertGreaterThanOrEqual(CartWatcher.iou(apple, nudged), 0.5)
-        XCTAssertTrue(feed(&w, nudged, from: 1.1, seconds: 3).isEmpty)
-        XCTAssertEqual(w.observe(obs(4.2, nudged)), [.known])
-    }
-
-    func testNewBoxTriggersAfterSettledOne() {
-        var w = CartWatcher()
-        XCTAssertEqual(feed(&w, apple, from: 0, seconds: 1), [apple])
-        XCTAssertEqual(feed(&w, milk, from: 1.1, seconds: 1), [milk])
-        XCTAssertEqual(w.settled, [apple, milk])
-    }
-
-    func testMovingBoxNeverSettles() {
-        var w = CartWatcher()
-        for i in 0..<30 {
-            // Slides 0.04 per observation: IoU frame to frame ~0.67 < 0.8.
-            let box = apple.offsetBy(dx: CGFloat(i % 10) * 0.04 - 0.2, dy: 0)
-            if w.observe(obs(Double(i) * 0.1, box)).contains(where: { if case .trigger = $0 { true } else { false } }) { XCTFail("triggered at \(i)") }
-        }
-    }
-
-    func testLargeChangeRebaselines() {
-        var w = CartWatcher()
-        XCTAssertEqual(feed(&w, apple, from: 0, seconds: 1), [apple])
-        XCTAssertEqual(w.observe(obs(1.1, apple, change: 0.61)), [.rebaseline])
-        XCTAssertTrue(w.settled.isEmpty)
-        XCTAssertEqual(w.observe(obs(1.2, apple, change: 0.6)), [.settling(elapsed: 0)], "0.6 is not above the threshold")
-    }
-
-    func testRebaselineWinsOverHandAndDoesNotTrigger() {
-        var w = CartWatcher()
-        for i in 0..<20 {
-            XCTAssertEqual(w.observe(obs(Double(i) * 0.1, apple, hand: true, change: 0.9)), [.rebaseline])
-        }
-    }
-
-    func testInitialSceneBecomesBaselineWhenDisabled() {
-        var w = CartWatcher(triggerOnInitialScene: false)
-        XCTAssertTrue(feed(&w, apple, from: 0, seconds: 2).isEmpty)
-        XCTAssertEqual(w.settled, [apple])
-        XCTAssertEqual(feed(&w, milk, from: 2.1, seconds: 1), [milk])
-        // After a rebaseline the next scene is the baseline again.
-        XCTAssertEqual(w.observe(obs(3.3, milk, change: 0.9)), [.rebaseline])
-        var baselined = false
-        for i in 0...10 { if case .baselined = w.observe(obs(3.4 + Double(i) * 0.1, milk)).first { baselined = true } }
-        XCTAssertTrue(baselined)
-    }
-
-    func testInitialSceneTriggersByDefault() {
-        var w = CartWatcher()
-        XCTAssertTrue(w.triggerOnInitialScene)
-        XCTAssertEqual(feed(&w, apple, from: 0, seconds: 1), [apple])
-    }
-
-    func testWholeSceneAndSpeckBoxesIgnored() {
-        var w = CartWatcher()
-        XCTAssertTrue(feed(&w, CGRect(x: 0, y: 0, width: 0.9, height: 0.9), from: 0, seconds: 2).isEmpty)
-        XCTAssertTrue(feed(&w, CGRect(x: 0.5, y: 0.5, width: 0.05, height: 0.05), from: 2.1, seconds: 2).isEmpty)
-        XCTAssertEqual(w.observe(obs(4.5, nil)), [.empty])
-    }
-
-    func testEmptyFramesBeyondGraceResetStillness() {
-        var w = CartWatcher()
-        feed(&w, apple, from: 0, seconds: 0.8)
-        for t in [0.9, 1.0, 1.1] { XCTAssertEqual(w.observe(obs(t, nil)), [.empty]) }
-        XCTAssertEqual(w.observe(obs(1.25, apple)), [.settling(elapsed: 0)])
-    }
-
-    func testOneMissedFrameKeepsTheTrack() {
-        var w = CartWatcher()
-        feed(&w, apple, from: 0, seconds: 0.5)
-        XCTAssertEqual(w.observe(obs(0.6, nil)), [.empty])
-        XCTAssertEqual(feed(&w, apple, from: 0.7, seconds: 0.3), [apple], "still triggers at 1.0 s")
-    }
-
-    // MARK: several items
-
-    private let can = CGRect(x: 0.1, y: 0.2, width: 0.15, height: 0.3)
-
-    func testTwoItemsInViewTogetherTriggerTwiceThenStayQuiet() {
-        var w = CartWatcher()
-        let triggers = feedMany(&w, [apple, can], from: 0, seconds: 1)
-        XCTAssertEqual(Set(triggers.map { "\($0)" }), Set([apple, can].map { "\($0)" }))
-        XCTAssertEqual(triggers.count, 2)
-        XCTAssertTrue(feedMany(&w, [can, apple], from: 1.1, seconds: 5).isEmpty, "order swaps do not re-trigger")
-        XCTAssertEqual(w.observe(obs(6.2, boxes: [apple, can])), [.known])
-    }
-
-    func testSecondItemArrivingLaterTriggersOnItsOwnClock() {
-        var w = CartWatcher()
-        XCTAssertEqual(feedMany(&w, [apple], from: 0, seconds: 0.5), [])
-        XCTAssertEqual(w.observe(obs(0.6, boxes: [apple, can])), [.settling(elapsed: 0.6)])
-        XCTAssertEqual(feedMany(&w, [apple, can], from: 0.7, seconds: 0.3), [apple])
-        XCTAssertEqual(feedMany(&w, [apple, can], from: 1.1, seconds: 0.4), [])
-        XCTAssertEqual(feedMany(&w, [apple, can], from: 1.6, seconds: 0), [can])
-    }
-
-    func testOverlappingBoxesMergeIntoOne() {
-        var w = CartWatcher()
-        let near = apple.offsetBy(dx: 0.02, dy: 0)    // IoU ~0.82 > 0.5: same item
-        XCTAssertEqual(feedMany(&w, [apple, near], from: 0, seconds: 2), [apple])
-    }
-
-    func testAtMostThreeBoxesTracked() {
-        var w = CartWatcher()
-        let boxes = (0..<5).map { CGRect(x: Double($0) * 0.2, y: 0.1, width: 0.15, height: 0.15) }
-        XCTAssertEqual(feedMany(&w, boxes, from: 0, seconds: 1), Array(boxes.prefix(3)))
+        let scene = Scene(items: [(x: 0, y: 20, w: 20, h: 40)])
+        XCTAssertEqual(triggers(feed(&w, scene, [scene.box(item: 0)], from: 0, seconds: 2)), [scene.box(item: 0)])
     }
 
     func testGroupBoxAroundTwoItemsIsDropped() {
         var w = CartWatcher()
-        // Saliency's top box covers both items; the two items also come back as their own boxes.
-        let group = apple.union(can)
-        XCTAssertGreaterThan(group.width * group.height, 2.5 * apple.width * apple.height)
-        let triggers = feedMany(&w, [group, apple, can], from: 0, seconds: 2)
-        XCTAssertEqual(triggers.count, 2)
-        XCTAssertFalse(triggers.contains(group))
+        let scene = Scene(items: [can, apple])
+        let a = scene.box(item: 0), b = scene.box(item: 1)
+        let group = a.union(b)
+        XCTAssertGreaterThan(group.width * group.height, 2.5 * max(a.width * a.height, b.width * b.height))
+        let t = triggers(feed(&w, scene, [group, a, b], from: 0, seconds: 2))
+        XCTAssertEqual(t, [a, b])
     }
 
-    func testBoxAreaLimits() {
+    func testOverlappingBoxesMergeAndCapAtThree() {
         var w = CartWatcher()
-        XCTAssertEqual(feedMany(&w, [CGRect(x: 0, y: 0, width: 0.1, height: 0.19)], from: 0, seconds: 2), [], "1.9% is too small")
-        XCTAssertEqual(feedMany(&w, [CGRect(x: 0, y: 0, width: 0.9, height: 0.8)], from: 2.1, seconds: 2), [], "72% is the whole scene")
-        let ok = CGRect(x: 0, y: 0, width: 0.1, height: 0.21)
-        XCTAssertEqual(feedMany(&w, [ok], from: 4.2, seconds: 1), [ok])
+        let items = (0..<4).map { (x: 2 + $0 * 13, y: 10, w: 11, h: 16) }
+        let scene = Scene(items: items)
+        let boxes = items.indices.map { scene.box(item: $0) }
+        let near = boxes[0].offsetBy(dx: 0.01, dy: 0)
+        XCTAssertEqual(triggers(feed(&w, scene, [boxes[0], near] + boxes.dropFirst(), from: 0, seconds: 2)), Array(boxes.prefix(3)))
     }
 
-    func testIoU() {
+    // MARK: tracking
+
+    func testMovingBoxNeverSettlesAndMissedFrameIsTolerated() {
+        var w = CartWatcher()
+        let scene = Scene(items: [apple])
+        let thumb = scene.thumb
+        for i in 0..<20 {
+            let box = scene.box(item: 0).offsetBy(dx: CGFloat(i % 10) * 0.04 - 0.2, dy: 0)
+            XCTAssertEqual(triggers(w.observe(.init(time: Double(i) * 0.1, boxes: [box], handPresent: false, thumb: thumb))), [])
+        }
+        var w2 = CartWatcher()
+        let b = scene.box(item: 0)
+        var ds = feed(&w2, scene, [b], from: 0, seconds: 0.5)
+        ds += w2.observe(.init(time: 0.6, boxes: [], handPresent: false, thumb: thumb))
+        ds += feed(&w2, scene, [b], from: 0.7, seconds: 0.3)
+        XCTAssertEqual(triggers(ds), [b])
+    }
+
+    func testFastMotionResetsTracks() {
+        var (w, scene) = startWithCanAndApple()
+        var inverted = scene.thumb
+        inverted.pixels = inverted.pixels.map { 255 - $0 }
+        XCTAssertEqual(w.observe(.init(time: 2.6, boxes: [], handPresent: false, thumb: inverted)), [.motion])
+    }
+
+    // MARK: removal
+
+    func testItemTakenAwayIsRemovedOnceAfterTwoSeconds() {
+        var (w, scene) = startWithChips()
+        scene.items = [can]
+        let ds = feed(&w, scene, [scene.box(item: 0)], from: 2.6, seconds: 1.8)
+        XCTAssertEqual(removals(ds), [], "not before 2 s")
+        let later = feed(&w, scene, [scene.box(item: 0)], from: 4.5, seconds: 5)
+        XCTAssertEqual(removals(later), ["apple"])
+        XCTAssertEqual(triggers(ds + later), [], "the emptied spot is not a new item")
+    }
+
+    func testBoxFlickerWhileItemStaysNeverRemoves() {
+        var (w, scene) = startWithChips()
+        let a = scene.box(item: 0), b = scene.box(item: 1)
+        var all: [CartWatcher.Decision] = []
+        var t = 2.6
+        for c in [[a.union(b)], [a], [], [b.offsetBy(dx: 0.05, dy: 0)], []] {
+            all += feed(&w, scene, c, from: t, seconds: 2.5)
+            t += 2.6
+        }
+        XCTAssertEqual(removals(all), [])
+        XCTAssertEqual(triggers(all), [])
+    }
+
+    func testHandPausesTheRemovalClock() {
+        var (w, scene) = startWithChips()
+        scene.items = [can]
+        var ds = feed(&w, scene, [], from: 2.6, seconds: 1.5)
+        ds += feed(&w, scene, [], from: 4.2, seconds: 4, hand: true)
+        XCTAssertEqual(removals(ds), [])
+        // 1.5 s before the hand (2.6...4.1, plus the step into it) + 0.4 s after it = 2 s: the hand time does not count.
+        XCTAssertEqual(removals(feed(&w, scene, [], from: 8.3, seconds: 0.3)), [], "paused, not running")
+        XCTAssertEqual(removals(feed(&w, scene, [], from: 8.7, seconds: 0.2)), ["apple"])
+    }
+
+    func testCameraShiftDoesNotRemove() {
+        var (w, scene) = startWithChips()
+        scene.sx = 3
+        scene.sy = 2
+        let ds = feed(&w, scene, [], from: 2.6, seconds: 6)
+        XCTAssertEqual(removals(ds), [])
+        XCTAssertTrue(ds.contains(.cameraShift(dx: 3, dy: 2)))
+        XCTAssertEqual(w.items.first { $0.chipId == "apple" }?.box.minX ?? -1, scene.box(item: 1).minX, accuracy: 1e-9)
+    }
+
+    // MARK: moves
+
+    func testMovedItemIsNotAddedOrRemoved() {
+        var (w, scene) = startWithChips()
+        let appleItem = w.itemId(for: scene.box(item: 1))!
+        let movedApple = (x: 30, y: 72, w: 14, h: 14)
+        scene.items = [can, movedApple]
+        let newBox = scene.box(item: 1)
+        var distances: [Double] = []
+        let ds = feed(&w, scene, [scene.box(item: 0), newBox], from: 2.6, seconds: 6) { box, item in
+            let d = item == appleItem && box == newBox ? 0.2 : 1.5
+            distances.append(d)
+            return d
+        }
+        XCTAssertEqual(triggers(ds), [])
+        XCTAssertEqual(removals(ds), [])
+        XCTAssertEqual(moves(ds), [newBox])
+        XCTAssertTrue(ds.contains(.match(distance: 0.2, item: appleItem, chipId: "apple")))
+        XCTAssertEqual(w.items.first { $0.id == appleItem }?.box, newBox)
+    }
+
+    func testItemMovedAfterRemovalIsRestored() {
+        var (w, scene) = startWithChips()
+        scene.items = [can]
+        let gone = feed(&w, scene, [scene.box(item: 0)], from: 2.6, seconds: 2.5)
+        XCTAssertEqual(removals(gone), ["apple"])
+        scene.items = [can, (x: 30, y: 72, w: 14, h: 14)]
+        let back = feed(&w, scene, [scene.box(item: 0), scene.box(item: 1)], from: 5.2, seconds: 2) { _, _ in 0.1 }
+        XCTAssertEqual(triggers(back), [])
+        XCTAssertEqual(back.filter { if case .restored(chipId: "apple", _) = $0 { true } else { false } }.count, 1)
+    }
+
+    func testDifferentItemWhileAnotherIsRemovedIsAddPlusRemove() {
+        var (w, scene) = startWithChips()
+        scene.items = [can, milk]          // apple out, milk in
+        let ds = feed(&w, scene, [scene.box(item: 0), scene.box(item: 1)], from: 2.6, seconds: 4) { _, _ in 1.4 }
+        XCTAssertEqual(triggers(ds), [scene.box(item: 1)])
+        XCTAssertEqual(removals(ds), ["apple"])
+    }
+
+    func testTwoIdenticalCansAreTwoItems() {
+        var (w, scene) = startWithChips()
+        let secondCan = (x: 20, y: 66, w: 12, h: 24)
+        scene.items = [can, apple, secondCan]
+        let ds = feed(&w, scene, [scene.box(item: 0), scene.box(item: 1), scene.box(item: 2)], from: 2.6, seconds: 3) { _, _ in 0.05 }
+        XCTAssertEqual(triggers(ds), [scene.box(item: 2)], "the first can is not missing, so no move")
+        XCTAssertEqual(removals(ds), [])
+    }
+
+    // MARK: pixel helpers
+
+    func testAlignFindsShiftAndRegionChangeIgnoresIt() {
+        let a = Scene(items: [can]).thumb
+        var s = Scene(items: [can])
+        s.sx = 3; s.sy = 2
+        let al = SceneDiff.align(current: s.thumb, reference: a, maxShift: 5)
+        XCTAssertEqual(al.dx, 3)
+        XCTAssertEqual(al.dy, 2)
+        XCTAssertTrue(al.isShift)
+        let whole = SceneDiff.regionChange(current: s.thumb, reference: a, rect: nil, alignment: al, pixelDelta: 25)
+        XCTAssertLessThan(whole.fraction, 0.1)
+        XCTAssertFalse(SceneDiff.align(current: a, reference: a, maxShift: 5).isShift)
+    }
+
+    func testRegionChangeSeesNewItemOnly() {
+        let before = Scene(items: [can]).thumb
+        let afterScene = Scene(items: [can, milk])
+        let after = afterScene.thumb
+        let al = SceneDiff.align(current: after, reference: before, maxShift: 5)
+        XCTAssertFalse(al.isShift)
+        let inMilk = SceneDiff.regionChange(current: after, reference: before,
+                                            rect: SceneDiff.pixelRect(afterScene.box(item: 1), width: 54, height: 96), alignment: al, pixelDelta: 25)
+        XCTAssertGreaterThan(inMilk.mean, 12)
+        XCTAssertGreaterThan(inMilk.fraction, 0.15)
+        let inCan = SceneDiff.regionChange(current: after, reference: before,
+                                           rect: SceneDiff.pixelRect(afterScene.box(item: 0), width: 54, height: 96), alignment: al, pixelDelta: 25)
+        XCTAssertLessThan(inCan.mean, 3)
+    }
+
+    func testIoUAndEdges() {
         let a = CGRect(x: 0, y: 0, width: 1, height: 1)
         XCTAssertEqual(CartWatcher.iou(a, a), 1)
         XCTAssertEqual(CartWatcher.iou(a, CGRect(x: 2, y: 2, width: 1, height: 1)), 0)
         XCTAssertEqual(CartWatcher.iou(a, CGRect(x: 0.5, y: 0, width: 1, height: 1)), 1.0 / 3, accuracy: 1e-9)
-        XCTAssertEqual(CartWatcher.iou(a, .zero), 0)
-    }
-
-    func testSceneDiffChangeFraction() {
-        let base = [UInt8](repeating: 100, count: 1024)
-        XCTAssertEqual(SceneDiff.changeFraction(previous: nil, current: base), 0)
-        XCTAssertEqual(SceneDiff.changeFraction(previous: base, current: base), 0)
-        var cur = base
-        for i in 0..<512 { cur[i] = 131 }          // delta 31 > 30
-        for i in 512..<600 { cur[i] = 130 }        // delta 30, not counted
-        XCTAssertEqual(SceneDiff.changeFraction(previous: base, current: cur), 0.5)
-        XCTAssertEqual(SceneDiff.changeFraction(previous: [1, 2], current: base), 0, "size mismatch is no change")
+        XCTAssertEqual(CartWatcher.edgesTouched(CGRect(x: 0.004, y: 0.002, width: 0.194, height: 0.269), margin: 0.008), 2)
+        XCTAssertEqual(CartWatcher.edgesTouched(CGRect(x: 0, y: 0.354, width: 0.498, height: 0.633), margin: 0.008), 1)
     }
 }

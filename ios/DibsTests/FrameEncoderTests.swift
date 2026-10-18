@@ -65,15 +65,20 @@ final class FrameEncoderTests: XCTestCase {
         XCTAssertLessThan(meanGray(crop.data), 140, "mostly the dark square")
     }
 
-    func testThumbnailChangeFraction() {
+    func testThumbnailIs96TallAndRowsStartAtTheTop() {
         let enc = FrameEncoder()
         let empty = enc.thumbnail(frame(square: nil))
-        XCTAssertEqual(empty.count, 32 * 32)
-        XCTAssertEqual(SceneDiff.changeFraction(previous: empty, current: enc.thumbnail(frame(square: nil))), 0)
-        // A square covering a quarter of the frame changes roughly a quarter of the thumbnail.
+        XCTAssertEqual(empty.width, 54)
+        XCTAssertEqual(empty.height, 96)
+        // Dark top-left quarter (top-left pixel coordinates): thumbnail rows start at the top.
         let quarter = enc.thumbnail(frame(square: CGRect(x: 0, y: 0, width: 540, height: 960)))
+        XCTAssertLessThan(quarter.at(5, 5), 40)
+        XCTAssertGreaterThan(quarter.at(50, 90), 160)
+        XCTAssertGreaterThan(quarter.at(50, 5), 160)
+        XCTAssertEqual(SceneDiff.changeFraction(previous: empty, current: enc.thumbnail(frame(square: nil))), 0)
         XCTAssertEqual(SceneDiff.changeFraction(previous: empty, current: quarter), 0.25, accuracy: 0.05)
-        let all = enc.thumbnail(frame(square: CGRect(x: 0, y: 0, width: 1080, height: 1920)))
-        XCTAssertGreaterThan(SceneDiff.changeFraction(previous: empty, current: all), 0.6)
+        // The square's Vision box maps onto the dark thumbnail pixels.
+        let r = SceneDiff.pixelRect(CGRect(x: 0, y: 0.5, width: 0.5, height: 0.5), width: 54, height: 96)
+        XCTAssertTrue(r == (0, 0, 27, 48))
     }
 }

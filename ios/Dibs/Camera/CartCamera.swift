@@ -10,6 +10,8 @@ struct CartTrigger: Sendable {
     var jpeg: Data
     var cropSize: CGSize
     var frameSize: CGSize
+    /// The watcher's item for this crop; pass back through `attach(chipId:toItem:)` or `forget(item:)`.
+    var itemId: Int
 }
 
 /// The shopper's rear camera: AVCaptureSession with a preview, a video output processed on a serial
@@ -31,6 +33,10 @@ final class CartCamera: NSObject, @unchecked Sendable {
     /// Called on the video queue.
     var onStreamFrame: (@Sendable (Data, CGSize) -> Void)?
     var onTrigger: (@Sendable (CartTrigger) -> Void)?
+    /// An item left the cart: remove its chip.
+    var onRemoved: (@Sendable (_ chipId: String) -> Void)?
+    /// A removed item came back (it was moved): undo the removal.
+    var onRestored: (@Sendable (_ chipId: String) -> Void)?
 
     private let lock = NSLock()
     private var _streaming = false
@@ -51,7 +57,6 @@ final class CartCamera: NSObject, @unchecked Sendable {
     private var frameIndex = 0
     private var lastStreamAt: TimeInterval = -.infinity
     private var framesSent = 0
-    private var previousThumb: [UInt8]?
     private var watcher = CartWatcher()
     private var lastDecisionKind = ""
     private var loggedFrameSize = false
@@ -61,6 +66,8 @@ final class CartCamera: NSObject, @unchecked Sendable {
         r.maximumHandCount = 1
         return r
     }()
+    /// Feature prints of item crops, by watcher item id (video queue).
+    private var prints: [Int: VNFeaturePrintObservation] = [:]
     private var photoDelegates: [Int64: PhotoDelegate] = [:]
 
     init(triggerOnInitialScene: Bool = true) {
@@ -162,8 +169,6 @@ final class CartCamera: NSObject, @unchecked Sendable {
 
         guard watching, frameIndex % 3 == 0 else { return }
         let thumb = encoder.thumbnail(buffer)
-        let change = SceneDiff.changeFraction(previous: previousThumb, current: thumb)
-        previousThumb = thumb
 
         let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: .up, options: [:])
         do { try handler.perform([saliency, hands]) } catch {
@@ -175,43 +180,116 @@ final class CartCamera: NSObject, @unchecked Sendable {
             .map(\.boundingBox)
         let handPresent = (hands.results ?? []).contains { $0.confidence > 0.3 }
 
-        let decisions = watcher.observe(.init(time: t, boxes: boxes, handPresent: handPresent, changeFraction: change))
+        // Feature-print distance between a candidate box in this frame and a remembered item.
+        var candidatePrints: [String: VNFeaturePrintObservation] = [:]
+        let distance: (CGRect, Int) -> Double? = { [self] box, itemId in
+            guard let itemPrint = prints[itemId] else { return nil }
+            let key = Self.fmt(box)
+            let candidate = candidatePrints[key] ?? Self.featurePrint(buffer, box: box)
+            candidatePrints[key] = candidate
+            guard let candidate else { return nil }
+            var d: Float = 0
+            do { try candidate.computeDistance(&d, to: itemPrint) } catch { return nil }
+            return Double(d)
+        }
+        let decisions = watcher.observe(.init(time: t, boxes: boxes, handPresent: handPresent, thumb: thumb), distance: distance)
         for decision in decisions {
-            logDecision(decision, change: change, boxes: boxes.count)
-            guard case .trigger(let b) = decision else { continue }
-            let rect = ScanGeometry.cropRect(for: b, imageSize: size)
-            guard let crop = encoder.cropJPEG(buffer, rect: rect) else {
-                DibsLog.event("crop failed rect=\(Self.fmt(rect))")
-                continue
+            logDecision(decision, boxes: boxes.count)
+            switch decision {
+            case .trigger(let b):
+                guard let itemId = watcher.itemId(for: b) else { continue }
+                prints[itemId] = Self.featurePrint(buffer, box: b)
+                let rect = ScanGeometry.cropRect(for: b, imageSize: size)
+                guard let crop = encoder.cropJPEG(buffer, rect: rect) else {
+                    DibsLog.event("crop failed rect=\(Self.fmt(rect))")
+                    watcher.forget(item: itemId)
+                    continue
+                }
+                DibsLog.event("crop \(Int(crop.size.width))x\(Int(crop.size.height)) \(crop.data.count / 1024) KB from rect=\(Self.fmt(rect)) item=\(itemId)")
+                onTrigger?(CartTrigger(box: b, jpeg: crop.data, cropSize: crop.size, frameSize: size, itemId: itemId))
+            case .moved(let itemId, _, let b):
+                if let p = Self.featurePrint(buffer, box: b) { prints[itemId] = p }
+            case .removed(let chipId, _):
+                onRemoved?(chipId)
+            case .restored(let chipId, _):
+                onRestored?(chipId)
+            default:
+                break
             }
-            DibsLog.event("crop \(Int(crop.size.width))x\(Int(crop.size.height)) \(crop.data.count / 1024) KB from rect=\(Self.fmt(rect))")
-            onTrigger?(CartTrigger(box: b, jpeg: crop.data, cropSize: crop.size, frameSize: size))
+        }
+        // Forget prints of items the watcher no longer remembers.
+        let live = Set(watcher.items.map(\.id))
+        for id in prints.keys where !live.contains(id) { prints[id] = nil }
+    }
+
+    /// Links a watcher item to the chip its crop became (from any thread).
+    func attach(chipId: String, toItem itemId: Int) {
+        videoQueue.async { [self] in watcher.attach(chipId: chipId, toItem: itemId) }
+    }
+
+    /// Drops a watcher item whose add failed (from any thread).
+    func forget(item itemId: Int) {
+        videoQueue.async { [self] in
+            watcher.forget(item: itemId)
+            prints[itemId] = nil
         }
     }
 
-    /// Logs triggers, rebaselines and baselines always; other decisions only when the kind changes.
-    private func logDecision(_ d: CartWatcher.Decision, change: Double, boxes: Int) {
+    /// Vision feature print of a box (Vision-normalized) in the frame.
+    private static func featurePrint(_ buffer: CVPixelBuffer, box: CGRect) -> VNFeaturePrintObservation? {
+        let request = VNGenerateImageFeaturePrintRequest()
+        request.regionOfInterest = box.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: .up, options: [:])
+        do { try handler.perform([request]) } catch {
+            DibsLog.event("feature print failed: \(error.localizedDescription)")
+            return nil
+        }
+        return request.results?.first
+    }
+
+    /// Logs triggers, unchanged boxes, baselines, shifts and reference events always; status
+    /// decisions only when the kind changes.
+    private func logDecision(_ d: CartWatcher.Decision, boxes: Int) {
+        func gate() -> String {
+            guard let g = watcher.lastGate else { return "initial" }
+            return String(format: "mean=%.1f changed=%.0f%%", g.mean, g.fraction * 100)
+        }
         let kind: String
         switch d {
-        case .trigger(let b): DibsLog.event("watcher trigger box=\(Self.fmt(b)) change=\(Self.pct(change))"); lastDecisionKind = "trigger"; return
-        case .baselined(let b): DibsLog.event("watcher baselined box=\(Self.fmt(b))"); lastDecisionKind = "baselined"; return
-        case .rebaseline: kind = "rebaseline change=\(Self.pct(change))"
+        case .trigger(let b):
+            DibsLog.event("watcher trigger box=\(Self.fmt(b)) \(watcher.watching ? gate() : "initial")"); lastDecisionKind = "trigger"; return
+        case .unchanged(let b):
+            DibsLog.event("watcher unchanged box=\(Self.fmt(b)) \(gate())"); lastDecisionKind = "unchanged"; return
+        case .baselined(let b):
+            DibsLog.event("watcher baselined box=\(Self.fmt(b))"); lastDecisionKind = "baselined"; return
+        case .cameraShift(let dx, let dy):
+            DibsLog.event("watcher camera shift dx=\(dx) dy=\(dy)"); lastDecisionKind = "shift"; return
+        case .referenceTaken:
+            DibsLog.event("watcher reference taken"); lastDecisionKind = "reference"; return
+        case .removed(let chipId, let item):
+            DibsLog.event("watcher removed chip=\(chipId) item=\(item)"); lastDecisionKind = "removed"; return
+        case .restored(let chipId, let item):
+            DibsLog.event("watcher restored chip=\(chipId) item=\(item)"); lastDecisionKind = "restored"; return
+        case .moved(let item, let chipId, let b):
+            DibsLog.event("watcher moved chip=\(chipId ?? "pending") item=\(item) to box=\(Self.fmt(b))"); lastDecisionKind = "moved"; return
+        case .match(let d, let item, let chipId):
+            DibsLog.event(String(format: "watcher match d=%.3f vs chip=%@ item=%d", d, chipId ?? "pending", item)); return
+        case .rebaseline: kind = "rebaseline"
+        case .motion: kind = "motion"
         case .handPresent: kind = "hand present"
-        case .empty: kind = "empty (salient boxes=\(boxes))"
+        case .empty: kind = "empty"
         case .known: kind = "known"
         case .settling: kind = "settling"
         }
-        let head = kind.components(separatedBy: " change=")[0].components(separatedBy: " (")[0]
-        guard head != lastDecisionKind else { return }
-        lastDecisionKind = head
-        DibsLog.event("watcher \(kind)")
+        guard kind != lastDecisionKind else { return }
+        lastDecisionKind = kind
+        DibsLog.event("watcher \(kind)\(kind == "empty" ? " (salient boxes=\(boxes))" : "")")
     }
 
     static func fmt(_ r: CGRect) -> String {
         String(format: "(%.3f,%.3f %.3fx%.3f)", r.minX, r.minY, r.width, r.height)
     }
 
-    private static func pct(_ x: Double) -> String { String(format: "%.0f%%", x * 100) }
 }
 
 extension CartCamera: AVCaptureVideoDataOutputSampleBufferDelegate {
