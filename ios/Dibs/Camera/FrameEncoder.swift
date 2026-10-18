@@ -81,9 +81,13 @@ final class FrameEncoder: @unchecked Sendable {
             .transformed(by: CGAffineTransform(translationX: -out.extent.minX, y: -out.extent.minY))
             .clampedToExtent()
             .cropped(to: CGRect(x: 0, y: 0, width: w, height: h))
+        // CIContext fills bitmaps bottom-up (CI origin). SceneThumb / CartWatcher / Vision pixelRect
+        // all use top-left row-major, so flip once here.
+        let topDown = small.transformed(by: CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: CGFloat(h)))
         var bytes = [UInt8](repeating: 0, count: w * h)
+        let bounds = CGRect(x: 0, y: 0, width: w, height: h)
         bytes.withUnsafeMutableBytes { raw in
-            context.render(small, toBitmap: raw.baseAddress!, rowBytes: w, bounds: small.extent,
+            context.render(topDown, toBitmap: raw.baseAddress!, rowBytes: w, bounds: bounds,
                            format: .L8, colorSpace: grayColorSpace)
         }
         return SceneThumb(width: w, height: h, pixels: bytes)
