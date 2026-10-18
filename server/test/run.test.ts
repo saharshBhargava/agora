@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addChip, backToCart, checkout, claim, createRun, fixChip, join, leave, lock, putBack,
+  addChip, setChipLive, backToCart, checkout, claim, createRun, fixChip, join, leave, lock, putBack,
   removeChip, roomsFor, setAuthorization, setChipPrice, sharesFor, undoRemove, unclaimed, wish,
 } from '../src/run.js';
 import type { Chip, Run } from '../src/types.js';
@@ -266,5 +266,25 @@ describe('unclaimed', () => {
     expect(unclaimed(r).map((c) => c.id)).toEqual(['milk']);
     r = removeChip(r, 'milk', 3);
     expect(unclaimed(r)).toEqual([]);
+  });
+});
+
+describe('fix round 1', () => {
+  it('leave keeps a removed chip removed and undo restores remaining claims', () => {
+    let r = ok(claim(seeded(), 'eggs', 'a', 1));
+    r = ok(claim(r, 'eggs', 'b', 2));
+    r = removeChip(r, 'eggs', 1000);
+    r = ok(leave(r, 'eggs', 'a'));
+    expect(get(r, 'eggs')).toMatchObject({ state: 'removed', claimers: ['b'], removedAt: 1000 });
+    r = ok(leave(r, 'eggs', 'b'));
+    expect(get(r, 'eggs').state).toBe('removed');
+    r = ok(undoRemove(r, 'eggs', 2000));
+    expect(get(r, 'eggs').state).toBe('open');
+  });
+  it('late identification after lock leaves a dropped chip unchanged', () => {
+    let r = addChip(seeded(), chip('m', '', null), 400);
+    r = lock(checkout(r, 1000, 50), 1050);
+    expect(setChipLive(r, 'm', 'Butter', 599, 'web', 1100)).toBe(r);
+    expect(fixChip(r, 'm', 'Butter', 599, 1100)).toBe(r);
   });
 });

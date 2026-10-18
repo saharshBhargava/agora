@@ -135,7 +135,7 @@ export function setChipLive(
 ): Run {
   void now;
   const chip = run.chips.find((c) => c.id === chipId);
-  if (!chip) return run;
+  if (!chip || chip.dropped || !accepting(run)) return run;
   const live: Chip = {
     ...chip,
     name,
@@ -178,7 +178,7 @@ export function leave(run: Run, chipId: string, personId: string): Run | Err<'ca
   if (!chip.claimers.includes(personId)) return run;
   return mapChip(run, chipId, (c) => {
     const claimers = c.claimers.filter((id) => id !== personId);
-    return { ...c, claimers, state: claimers.length > 0 ? c.state : 'open', overCap: c.overCap.filter((id) => id !== personId) };
+    return { ...c, claimers, state: c.state === 'removed' ? 'removed' : claimers.length > 0 ? c.state : 'open', overCap: c.overCap.filter((id) => id !== personId) };
   });
 }
 
