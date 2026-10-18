@@ -187,11 +187,12 @@ deduplicated. A lower price can notify again after cooldown; an observed restock
 overnight out-of-stock suppression cannot mute the later in-stock alert. Push failure never removes the
 inbox entry. Membership changes, paused agents and stale criteria suppress delivery. Quiet hours defer
 delivery; delayed offers must be reverified before sending. A newer listing observation that is still
-eligible queues another bounded recheck instead of treating the deferred alert as gone; a completed recheck
-that finds the listing ineligible suppresses with `offer_no_longer_eligible`. A fresh qualifying price can
-update the existing pending alert without creating a duplicate. APNs sends use stable IDs, expiration and
-retries; APNs acceptance does not prove a user saw an alert. A successful delivery to one
-registered device completes the outbox item. User device tokens are never returned or logged.
+eligible, or an expired `valid_until`, queues another bounded recheck instead of treating the deferred
+alert as gone; a completed recheck that finds the listing ineligible suppresses with
+`offer_no_longer_eligible`. A fresh qualifying price can update the existing pending alert without creating
+a duplicate. APNs sends use stable IDs, expiration and retries; APNs acceptance does not prove a user saw
+an alert. A successful delivery to one registered device completes the outbox item. User device tokens are
+never returned or logged.
 
 The designated demo user's offers and delivery are simulated solely via `users.is_demo`; no ordinary account
 receives simulated results, and no demo account reaches search or APNs. Demo seed/backfill covers every new

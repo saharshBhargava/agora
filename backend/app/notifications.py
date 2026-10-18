@@ -304,15 +304,16 @@ class NotificationService:
                 until += timedelta(days=1)
             return {"suppress": False, "defer_until": until.astimezone(UTC), "devices": []}
         # A completed recheck that found the listing ineligible is terminal for this alert.
-        if (data["latest_eligible"] is not True or
-                (data["valid_until"] is not None and data["valid_until"] <= now)):
+        # Expired valid_until alone is not: queue a bounded recheck so a fresh price can coalesce.
+        if data["latest_eligible"] is not True:
             return {"suppress": True, "reason": "offer_no_longer_eligible", "devices": []}
         # Quiet hours can make a valid price observation old by morning. Recheck it before
         # delivery instead of either sending a stale price or permanently dropping the inbox item.
         if (data["observation_id"] != data["latest_observation_id"] or
                 data["match_observation_version"] != data["latest_observation_version"] or
                 data["observed_at"] != data["latest_observed_at"] or
-                now - data["latest_observed_at"] > MAX_PRICE_AGE):
+                now - data["latest_observed_at"] > MAX_PRICE_AGE or
+                (data["valid_until"] is not None and data["valid_until"] <= now)):
             return await self._revalidate(row)
         if data["last_notified_at"] is not None and now - data["last_notified_at"] < timedelta(
                 hours=data["cooldown_hours"]):
