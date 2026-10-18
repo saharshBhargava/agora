@@ -15,8 +15,22 @@ from app.db import Database
 from app.errors import Problem, handle_problem, handle_validation, problem_response
 from app.google_calendar import GoogleCalendar
 from app.jobs import Worker
+from app.payments import make_payment_provider
 from app.pipeline import Pipeline
-from app.routers import account, audit, calendar, events, inventory, scans
+from app.routers import (
+    account,
+    agent,
+    audit,
+    budgets,
+    calendar,
+    events,
+    forecasts,
+    inventory,
+    lists,
+    merchants,
+    scans,
+    wishlist,
+)
 from app.routers.events import Broadcaster
 from app.storage import make_storage
 from app.vision.providers import make_provider
@@ -25,11 +39,20 @@ from app.vision.service import VisionService
 log = logging.getLogger("agora.http")
 
 
+def _provider(kind: str, settings: Settings, client: httpx.AsyncClient):
+    """A provider whose API key is missing degrades to offline replay instead of crashing the deploy."""
+    try:
+        return make_provider(kind, settings, client)
+    except ValueError as error:
+        log.warning("vision provider %s unavailable (%s); using replay fixtures", kind, error)
+        return make_provider("replay", settings, client)
+
+
 def build_pipeline(settings: Settings, db: Database, client: httpx.AsyncClient) -> Pipeline:
-    primary = make_provider(settings.vision_provider, settings, client)
-    fallback = make_provider(settings.vision_fallback, settings, client)
+    primary = _provider(settings.vision_provider, settings, client)
+    fallback = _provider(settings.vision_fallback, settings, client)
     vision = VisionService(primary, fallback if fallback and fallback.name != primary.name else None)
-    return Pipeline(settings, db, make_storage(settings), vision)
+    return Pipeline(settings, db, make_storage(settings, db), vision)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -37,7 +60,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        db = Database(settings.database_url.get_secret_value(), settings.db_pool_min, settings.db_pool_max)
+        db = Database(settings.database_url.get_secret_value(), settings.db_pool_min, settings.db_pool_max,
+                      pgbouncer=settings.db_pgbouncer)
         await db.connect()
         client = httpx.AsyncClient(follow_redirects=False)
         pipeline = build_pipeline(settings, db, client)
@@ -46,9 +70,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.settings, app.state.db, app.state.pipeline = settings, db, pipeline
         app.state.storage, app.state.broadcaster = pipeline.storage, broadcaster
         app.state.calendar = GoogleCalendar(settings, db, client)
+        app.state.payments = make_payment_provider(settings)
         app.state.verifier = TokenVerifier(settings)
         app.state.worker = Worker(db, pipeline.handlers, settings.worker_concurrency)
-        worker_task = asyncio.create_task(app.state.worker.run()) if settings.run_worker_in_process else None
+        worker_task = None
+        if settings.run_worker_in_process:
+            await pipeline.forecaster.start()
+            worker_task = asyncio.create_task(app.state.worker.run())
         log.info("startup env=%s timescale=%s vision=%s/%s auth=%s", settings.env, db.timescale,
                  settings.vision_provider, settings.vision_fallback, settings.auth_mode)
         try:
@@ -107,7 +135,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await conn.fetchval("SELECT 1")
         return {"ok": True, "timescale": request.app.state.db.timescale, "version": app.version}
 
-    for router in (account.router, inventory.router, scans.router, events.router, audit.router, calendar.router):
+    for router in (account.router, inventory.router, merchants.router, scans.router, events.router,
+                   audit.router, calendar.router, wishlist.router, forecasts.router, lists.router,
+                   agent.router, budgets.router):
         app.include_router(router)
     return app
 

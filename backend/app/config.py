@@ -4,39 +4,57 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_DEV_SECRET = "dev-only-secret-change-me-0123456789abcdef"  # noqa: S105 - local-only default, refused in demo
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="AGORA_", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="AGORA_", extra="ignore", populate_by_name=True)
 
     # dev/test: local. demo: hosted hackathon deploy with dev auth limited to seeded users. prod: real IdP only.
     env: Literal["dev", "test", "demo", "prod"] = "dev"
-    database_url: SecretStr = SecretStr("postgresql://agora:agora-dev-only@127.0.0.1:5433/agora")
+    # AGORA_DATABASE_URL, or the plain DATABASE_URL that Render/Railway/Heroku-style hosts inject.
+    database_url: SecretStr = Field(default=SecretStr("postgresql://agora:agora-dev-only@127.0.0.1:5433/agora"),
+                                    validation_alias=AliasChoices("AGORA_DATABASE_URL", "DATABASE_URL"))
     db_pool_min: int = 1
     db_pool_max: int = 10
+    # Set when DATABASE_URL points at a transaction-mode pooler. Prefer the direct URL: live sync (LISTEN) needs it.
+    db_pgbouncer: bool = False
 
     # Auth: "dev" mints short-lived HMAC tokens for seeded demo users; "oidc" verifies an IdP's JWTs via JWKS.
     auth_mode: Literal["dev", "oidc", "google"] = "dev"
     dev_jwt_secret: SecretStr = SecretStr(DEFAULT_DEV_SECRET)
-    # In demo mode, dev login only works for these seeded handles.
-    demo_handles: list[str] = Field(default_factory=lambda: ["kedar", "saharsh"])
+    # In demo mode, dev login only works for these seeded handles. It stays available in demo even when
+    # AGORA_AUTH_MODE=google, so curl and clients without Google sign-in (e.g. desktop) can still sign in.
+    demo_handles: list[str] = Field(default_factory=lambda: ["kedar", "saharsh", "demo"])
+    # The demo account (app/demo_account.py): Google addresses that sign in to it (comma-separated), the password
+    # that dev login requires on demo deploys, and its visible name.
+    demo_google_emails: str = ""
+    demo_password: SecretStr | None = None
+    demo_display_name: str = "Alex Rivera"
     dev_token_ttl_s: int = 12 * 3600
     oidc_issuer: str | None = None
     oidc_audience: str | None = None
     oidc_jwks_url: str | None = None
 
-    # First-party Google OAuth (confidential web client; the phone never receives its secret).
+    # Native iOS sign-in: optional inventory API authentication, no Calendar credentials required.
+    google_ios_client_id: str | None = None
+
+    # Legacy server-side Google OAuth (confidential web client; the phone never receives its secret).
     google_client_id: str | None = None
     google_client_secret: SecretStr | None = None
     google_redirect_uri: str | None = None
     google_token_key: SecretStr | None = None  # base64-encoded 32-byte AES-GCM key
+    # The API's public origin. Render provides RENDER_EXTERNAL_URL automatically; when the Google redirect URI
+    # isn't set explicitly it defaults to <public_url>/v1/integrations/google/callback.
+    public_url: str | None = Field(default=None,
+                                   validation_alias=AliasChoices("AGORA_PUBLIC_URL", "RENDER_EXTERNAL_URL"))
 
-    # Media storage: "local" writes under storage_dir; "s3" targets any S3-compatible bucket (Cloudflare R2).
-    storage_backend: Literal["local", "s3"] = "local"
+    # Media storage: "db" keeps frames in Postgres (no extra account), "local" writes under storage_dir (needs a
+    # persistent disk), "s3" targets any S3-compatible bucket (R2, B2, Supabase Storage, MinIO...).
+    storage_backend: Literal["db", "local", "s3"] = "db"
     storage_dir: Path = Path(".data/media")
     s3_bucket: str | None = None
     s3_endpoint_url: str | None = None
@@ -67,7 +85,25 @@ class Settings(BaseSettings):
     auto_accept_confidence: float = 0.85
     auto_accept_match: float = 0.8
 
+    # Agora-native checkout: simulated payments apply only to users.is_demo accounts. Ordinary accounts get
+    # payments_unavailable until a real provider is implemented. Demo accounts always use simulation.
+    payment_provider: Literal["simulated"] = "simulated"
+
     cors_origins: list[str] = Field(default_factory=list)
+
+    # Demo only: give every newly created account the same sample history as the seeded users, so a judge who
+    # signs in with Google sees a populated fridge instead of an empty app.
+    seed_new_users: bool = False
+
+    @property
+    def dev_login_enabled(self) -> bool:
+        if self.env == "demo":  # hosted: only with a password, so the URL alone isn't enough to sign in
+            return bool(self.demo_password and self.demo_password.get_secret_value())
+        return self.auth_mode == "dev"
+
+    @property
+    def demo_email_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.demo_google_emails.split(",") if e.strip()}
 
     @model_validator(mode="after")
     def _guard_prod(self) -> "Settings":
@@ -76,8 +112,13 @@ class Settings(BaseSettings):
                 raise ValueError("AGORA_AUTH_MODE=dev is not allowed when AGORA_ENV=prod")
             if self.auth_mode == "oidc" and not (self.oidc_issuer and self.oidc_audience and self.oidc_jwks_url):
                 raise ValueError("OIDC issuer, audience and JWKS URL are required in prod")
+        if self.google_client_id and not self.google_redirect_uri and self.public_url:
+            self.google_redirect_uri = self.public_url.rstrip("/") + "/v1/integrations/google/callback"
         google = (self.google_client_id, self.google_client_secret, self.google_redirect_uri, self.google_token_key)
-        if any(google) or self.auth_mode == "google":
+        if self.auth_mode == "google" and not self.google_ios_client_id and not all(google):
+            raise ValueError("Set AGORA_GOOGLE_IOS_CLIENT_ID for native Google authentication")
+        # Legacy server-side web flow. A token key on its own (e.g. pre-generated by the host) doesn't enable it.
+        if self.google_client_id or self.google_client_secret:
             if not all(google):
                 raise ValueError("Google client ID, secret, redirect URI and token encryption key are required")
             try:
@@ -92,7 +133,11 @@ class Settings(BaseSettings):
                 raise ValueError("Google redirect URI must use HTTPS (localhost allowed in dev/test)")
             if uri.username or uri.password or uri.query or uri.fragment:
                 raise ValueError("Google redirect URI must not contain credentials, query or fragment")
-        if self.auth_mode == "dev":
+        if self.seed_new_users and self.env not in ("dev", "test"):
+            raise ValueError("AGORA_SEED_NEW_USERS is only for local dev; hosted demos use the demo account")
+        if self.demo_password is not None and 0 < len(self.demo_password.get_secret_value()) < 12:
+            raise ValueError("AGORA_DEMO_PASSWORD must be at least 12 characters")
+        if self.dev_login_enabled:
             secret = self.dev_jwt_secret.get_secret_value()
             if len(secret) < 32:
                 raise ValueError("AGORA_DEV_JWT_SECRET must be at least 32 characters")

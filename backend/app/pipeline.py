@@ -12,7 +12,8 @@ from app.config import Settings
 from app.core.detections import auto_accept, merge_frames
 from app.db import Database, audit, notify
 from app.errors import Problem
-from app.inventory_ops import commit_scan, match
+from app.forecasting import Forecaster, request_refresh
+from app.inventory_ops import commit_scan, match, sync_purchase_origins
 from app.jobs import PermanentJobError, enqueue
 from app.storage import Storage
 from app.vision.base import VisionError
@@ -35,10 +36,11 @@ def video_key(household_id: UUID, scan_id: UUID) -> str:
 class Pipeline:
     def __init__(self, settings: Settings, db: Database, storage: Storage, vision: VisionService):
         self.settings, self.db, self.storage, self.vision = settings, db, storage, vision
+        self.forecaster = Forecaster(db)
 
     @property
     def handlers(self) -> dict[str, Any]:
-        return {"scan.process": self.process_scan, "media.purge": self.purge_media}
+        return {"scan.process": self.process_scan, "media.purge": self.purge_media, **self.forecaster.handlers}
 
     async def _fail(self, scan_id: UUID, user_id: UUID, household_id: UUID, code: str) -> None:
         async with self.db.scoped(user_id) as conn:
@@ -129,9 +131,17 @@ class Pipeline:
 
     async def finalize(self, conn: asyncpg.Connection, scan: asyncpg.Record, user_id: UUID, *,
                        actor_type: str = "user") -> int:
-        """Commit accepted detections to inventory and schedule raw media deletion per the user's setting."""
+        """Commit accepted detections to inventory, queue a forecast refresh for the items it touched, and
+        schedule raw media deletion per the user's setting."""
         updated = await commit_scan(conn, scan, user_id)
+        touched = [r["inventory_item_id"] for r in await conn.fetch(
+            """SELECT DISTINCT inventory_item_id FROM scan_detections
+               WHERE scan_id = $1 AND review IN ('accepted', 'corrected') AND inventory_item_id IS NOT NULL""",
+            scan["id"])]
+        if touched and user_id is not None:
+            await request_refresh(conn, scan["household_id"], user_id, touched)
         await conn.execute("UPDATE scans SET status = 'confirmed', confirmed_at = now() WHERE id = $1", scan["id"])
+        await sync_purchase_origins(conn, scan["id"], user_id)
         retention = await conn.fetchval("SELECT media_retention FROM user_settings WHERE user_id = $1", user_id)
         delay = RETENTION.get(retention or "delete_after_review", timedelta(0))
         await enqueue(conn, "media.purge", {"scan_id": str(scan["id"])},

@@ -1,0 +1,6 @@
+// Public iOS OAuth credentials. Override locally in Config/Local.xcconfig.
+AGORA_GOOGLE_IOS_CLIENT_ID = 875535919816-pt11h5vsprq94mktf5of9ltfbu529evl.apps.googleusercontent.com
+AGORA_GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.875535919816-pt11h5vsprq94mktf5of9ltfbu529evl
+// Optional: inventory backend only. Calendar does not use this URL.
+AGORA_API_BASE_URL =
+#include? "Local.xcconfig"

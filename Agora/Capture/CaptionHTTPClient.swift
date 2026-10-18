@@ -38,7 +38,7 @@ final class URLSessionCaptionHTTPClient: CaptionHTTPClient {
         return http
     }
     func data(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let session = session(delegate: CaptionNetworkDelegate(), resourceTimeout: 40)
+        let session = session(delegate: CaptionNetworkDelegate(), resourceTimeout: max(40, request.timeoutInterval))
         defer { session.invalidateAndCancel() }
         return try await withTaskCancellationHandler {
             let (data, response) = try await session.data(for: request)

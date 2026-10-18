@@ -72,73 +72,78 @@ final class GeminiCaptionService: CaptionGenerating {
                  progress: @escaping @MainActor (CaptionProgress) -> Void,
                  text: @escaping @MainActor (String) -> Void,
                  cleanupNotice: @escaping @MainActor (String) -> Void) async throws -> String {
-        try await AppLog.measure(.caption, "caption") {
-            guard model.range(of: #"^[A-Za-z0-9._-]+$"#, options: .regularExpression) != nil else { throw BrowserError("invalid_model") }
-            guard instruction.utf8.count <= 2000 else { throw CaptionFailure(code: "instruction_limit", message: "Keep instructions under 2,000 bytes.") }
-            progress(.preparing)
-            var remote: GeminiUploadedFile?
-            var videoUploadAttempted = false
-            do {
-                let part: [String: Any]
-                switch kind {
-                case .image:
-                    let data = try await Task.detached(priority: .userInitiated) {
-                        guard let image = MediaLibrary.thumbnail(file, maxPixels: 2048), let data = image.jpegData(compressionQuality: 0.8), data.count <= 5_000_000 else {
-                            throw CaptionFailure(code: "image_preparation", message: "This image could not be prepared for Gemini. Try another photo.")
-                        }
-                        return data
-                    }.value
-                    try Task.checkCancellation()
-                    part = ["inlineData": ["mimeType": "image/jpeg", "data": data.base64EncodedString()]]
-                case .video:
-                    try await validateVideo(file)
-                    videoUploadAttempted = true
-                    remote = try await AppLog.measure(.caption, "upload") {
-                        try await self.bounded(300, stage: "Upload") { try await self.upload(file, progress: progress) }
-                    }
-                    guard let uploaded = remote else { throw CaptureFailure.missingFile }
-                    let ready = try await AppLog.measure(.caption, "processing") {
-                        try await self.bounded(self.processingLimit, stage: "Video processing") {
-                            try await self.waitUntilReady(uploaded, progress: progress)
-                        }
-                    }
-                    part = ["fileData": ["mimeType": ready.mimeType ?? "video/mp4", "fileUri": ready.uri]]
-                case .document:
-                    throw CaptionFailure(code: "unsupported_media", message: "Captioning currently supports photos and videos. Document scans stay in your gallery.")
-                }
-                try Task.checkCancellation()
-                let result = try await AppLog.measure(.caption, "generation") {
-                    try await self.bounded(180, stage: "Caption generation") {
-                        try await self.generate(part: part, style: style, instruction: instruction, progress: progress, text: text)
-                    }
-                }
-                if let uploaded = remote { await cleanup(uploaded, progress: progress, notice: cleanupNotice); remote = nil; videoUploadAttempted = false }
-                try Task.checkCancellation()
-                return result
-            } catch {
-                if let remote { await cleanup(remote, progress: progress, notice: cleanupNotice) }
-                else if videoUploadAttempted {
-                    cleanupNotice("The upload did not return a file reference, so removal cannot be confirmed. If it reached Google, Files API uploads automatically expire after 48 hours.")
-                }
-                throw error
+        guard instruction.utf8.count <= 2000 else { throw CaptionFailure(code: "instruction_limit", message: "Keep instructions under 2,000 bytes.") }
+        return try await withMedia(file: file, kind: kind, progress: progress, cleanupNotice: cleanupNotice) { part in
+            try await self.bounded(180, stage: "Caption generation") {
+                try await self.generate(part: part, style: style, instruction: instruction, progress: progress, text: text)
             }
+        }
+    }
+    // Shared direct-to-Google media lifecycle for captioning and inventory recognition.
+    func withMedia<T>(file: URL, kind: CaptureItem.Kind,
+                      progress: @escaping @MainActor (CaptionProgress) -> Void,
+                      cleanupNotice: @escaping @MainActor (String) -> Void,
+                      generate: ([String: Any]) async throws -> T) async throws -> T {
+        guard model.range(of: #"^[A-Za-z0-9._-]+$"#, options: .regularExpression) != nil else { throw BrowserError("invalid_model") }
+        progress(.preparing)
+        var remote: GeminiUploadedFile?
+        var videoUploadAttempted = false
+        do {
+            let part: [String: Any]
+            switch kind {
+            case .image:
+                let data = try await Task.detached(priority: .userInitiated) {
+                    guard let image = MediaLibrary.thumbnail(file, maxPixels: 2048), let data = image.jpegData(compressionQuality: 0.8), data.count <= 5_000_000 else {
+                        throw CaptionFailure(code: "image_preparation", message: "This image could not be prepared for Gemini. Try another photo.")
+                    }
+                    return data
+                }.value
+                try Task.checkCancellation()
+                part = ["inlineData": ["mimeType": "image/jpeg", "data": data.base64EncodedString()]]
+            case .video:
+                try await validateVideo(file)
+                videoUploadAttempted = true
+                remote = try await AppLog.measure(.caption, "upload") {
+                    try await self.bounded(300, stage: "Upload") { try await self.upload(file, progress: progress) }
+                }
+                guard let uploaded = remote else { throw CaptureFailure.missingFile }
+                let ready = try await AppLog.measure(.caption, "processing") {
+                    try await self.bounded(self.processingLimit, stage: "Video processing") {
+                        try await self.waitUntilReady(uploaded, progress: progress)
+                    }
+                }
+                part = ["fileData": ["mimeType": ready.mimeType ?? "video/mp4", "fileUri": ready.uri]]
+            case .document:
+                throw CaptionFailure(code: "unsupported_media", message: "Gemini currently supports photos and videos here. Document scans stay in your gallery.")
+            }
+            try Task.checkCancellation()
+            let result = try await generate(part)
+            if let uploaded = remote { await cleanup(uploaded, progress: progress, notice: cleanupNotice); remote = nil; videoUploadAttempted = false }
+            try Task.checkCancellation()
+            return result
+        } catch {
+            if let remote { await cleanup(remote, progress: progress, notice: cleanupNotice) }
+            else if videoUploadAttempted {
+                cleanupNotice("The upload did not return a file reference, so removal cannot be confirmed. If it reached Google, Files API uploads automatically expire after 48 hours.")
+            }
+            throw error
         }
     }
     private func validateVideo(_ file: URL) async throws {
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard size <= 100 * 1024 * 1024 else { throw CaptionFailure(code: "video_limit", message: "For captioning, choose a video smaller than 100 MB.") }
+        guard size <= 100 * 1024 * 1024 else { throw CaptionFailure(code: "video_limit", message: "Choose a video smaller than 100 MB.") }
         let duration = try await AVURLAsset(url: file).load(.duration).seconds
-        guard duration.isFinite, duration > 0, duration <= 300 else { throw CaptionFailure(code: "video_limit", message: "For captioning, choose a video up to 5 minutes long.") }
+        guard duration.isFinite, duration > 0, duration <= 300 else { throw CaptionFailure(code: "video_limit", message: "Choose a video up to 5 minutes long.") }
         guard let mime = UTType(filenameExtension: file.pathExtension)?.preferredMIMEType,
               ["video/mp4", "video/quicktime", "video/mpeg", "video/webm", "video/x-msvideo", "video/x-ms-wmv", "video/3gpp"].contains(mime) else {
-            throw CaptionFailure(code: "unsupported_media", message: "Use an MP4 or MOV video for captioning.")
+            throw CaptionFailure(code: "unsupported_media", message: "Use an MP4 or MOV video.")
         }
     }
     // Exposed internally for deterministic Files API lifecycle tests.
     func upload(_ file: URL, progress: @escaping @MainActor (CaptionProgress) -> Void) async throws -> GeminiUploadedFile {
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         let mime = UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "video/mp4"
-        var start = try request("upload/v1beta/files", method: "POST", body: ["file": ["display_name": "agora-caption-\(UUID().uuidString)"]])
+        var start = try request("upload/v1beta/files", method: "POST", body: ["file": ["display_name": "agora-capture-\(UUID().uuidString)"]])
         start.setValue("resumable", forHTTPHeaderField: "X-Goog-Upload-Protocol")
         start.setValue("start", forHTTPHeaderField: "X-Goog-Upload-Command")
         start.setValue(String(size), forHTTPHeaderField: "X-Goog-Upload-Header-Content-Length")

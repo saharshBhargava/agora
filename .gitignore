@@ -17,3 +17,5 @@ web/out/
 server/dist/
 server/.data/
 .env
+# Local public OAuth/client and optional backend configuration
+Config/Local.xcconfig

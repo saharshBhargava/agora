@@ -1,0 +1,45 @@
+# Render Blueprint (free plan, no credit card). New → Blueprint → pick this repo, then paste the database URL.
+# Free web services sleep after ~15 idle minutes and take about a minute to wake; see backend/README.md.
+services:
+  - type: web
+    name: agora-api
+    runtime: docker
+    plan: free
+    branch: main
+    rootDir: backend
+    dockerfilePath: ./Dockerfile        # both Docker paths are relative to rootDir (backend)
+    dockerContext: .
+    healthCheckPath: /readyz
+    autoDeployTrigger: checksPass       # deploy main only after its CI checks pass
+    envVars:
+      - key: AGORA_DATABASE_URL        # Tiger Cloud (or any Postgres) connection string
+        sync: false
+      - key: AGORA_ENV
+        value: demo
+      - key: AGORA_AUTH_MODE             # iOS signs in with Google; demo mode adds password-protected dev login
+        value: google
+      - key: AGORA_GOOGLE_IOS_CLIENT_ID  # public iOS client ID from Config/Agora.xcconfig; must match the app's
+        value: 875535919816-pt11h5vsprq94mktf5of9ltfbu529evl.apps.googleusercontent.com
+      - key: AGORA_DEMO_GOOGLE_EMAILS    # the Google address(es) that sign in to the demo account, comma-separated
+        sync: false
+      - key: AGORA_DEMO_PASSWORD         # password for /v1/dev/login {"handle": "demo"}; read it in Render's dashboard
+        generateValue: true
+      - key: AGORA_DEV_JWT_SECRET
+        generateValue: true
+      - key: AGORA_STORAGE_BACKEND
+        value: db
+      - key: AGORA_VISION_PROVIDER     # falls back to replay automatically if the key below is missing
+        value: gemini
+      - key: AGORA_VISION_FALLBACK
+        value: replay
+      - key: AGORA_GEMINI_API_KEY
+        sync: false
+      - key: AGORA_PERCEPTRON_API_KEY
+        sync: false
+      - key: AGORA_RUN_WORKER_IN_PROCESS
+        value: "true"
+      - key: AGORA_SEED_ON_BOOT          # idempotent: creates demo accounts once, never overwrites
+        value: "true"
+      - key: AGORA_SEED_NEW_USERS        # sample history belongs only to the designated demo account
+        value: "false"
+

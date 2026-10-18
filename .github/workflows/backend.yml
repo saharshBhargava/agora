@@ -3,9 +3,9 @@ name: backend
 on:
   push:
     branches: [main]
-    paths: ["backend/**", ".github/workflows/backend.yml"]
+    paths: ["backend/**", "render.yaml", ".github/workflows/backend.yml", ".github/scripts/build_render_image.py"]
   pull_request:
-    paths: ["backend/**", ".github/workflows/backend.yml"]
+    paths: ["backend/**", "render.yaml", ".github/workflows/backend.yml", ".github/scripts/build_render_image.py"]
 
 permissions:
   contents: read
@@ -39,3 +39,12 @@ jobs:
       - run: uv run pytest -q
         env:
           AGORA_TEST_DATABASE_URL: postgresql://agora:agora-ci@localhost:5432/agora
+
+  image:
+    # Build using the Blueprint paths, so CI catches Render root-directory mistakes too.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run --no-project --with 'pyyaml>=6,<7' python .github/scripts/build_render_image.py
+      - run: docker run --rm agora-api python -c "import app.main, app.worker, app.seed; print('ok')"

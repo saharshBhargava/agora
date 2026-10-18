@@ -16,10 +16,13 @@ log = logging.getLogger("agora.worker")
 
 async def main() -> None:
     settings = get_settings()
-    db = Database(settings.database_url.get_secret_value(), 1, settings.worker_concurrency + 2)
+    db = Database(settings.database_url.get_secret_value(), 1, settings.worker_concurrency + 2,
+                  pgbouncer=settings.db_pgbouncer)
     await db.connect()
     async with httpx.AsyncClient(follow_redirects=False) as client:
-        worker = Worker(db, build_pipeline(settings, db, client).handlers, settings.worker_concurrency)
+        pipeline = build_pipeline(settings, db, client)
+        await pipeline.forecaster.start()
+        worker = Worker(db, pipeline.handlers, settings.worker_concurrency)
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:
