@@ -26,6 +26,8 @@
     <string>$(AGORA_PUSH_ENVIRONMENT)</string>
     <key>GIDClientID</key>
     <string>$(AGORA_GOOGLE_IOS_CLIENT_ID)</string>
+    <key>DibsDefaultGeminiModel</key>
+    <string>$(DIBS_DEFAULT_GEMINI_MODEL)</string>
     <key>DibsDefaultGeminiKey</key>
     <string>$(DIBS_DEFAULT_GEMINI_KEY)</string>
     <key>DibsServerURL</key>

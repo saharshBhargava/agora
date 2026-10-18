@@ -23,10 +23,13 @@ final class SettingsStore: ObservableObject {
     /// A Gemini key built into this build (DIBS_DEFAULT_GEMINI_KEY in the gitignored Config/Local.xcconfig or on the
     /// build command line), used when none is saved on the device. Empty in the shared project.
     let bundledKey: String?
-    nonisolated static func infoPlistGeminiKey(_ bundle: Bundle = .main) -> String? {
-        let value = (bundle.object(forInfoDictionaryKey: "DibsDefaultGeminiKey") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    nonisolated static func infoPlistGeminiKey(_ bundle: Bundle = .main) -> String? { infoPlistString("DibsDefaultGeminiKey", bundle) }
+    nonisolated static func infoPlistString(_ key: String, _ bundle: Bundle = .main) -> String? {
+        let value = (bundle.object(forInfoDictionaryKey: key) as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         return value?.isEmpty == false && value?.hasPrefix("$(") == false ? value : nil
     }
+    /// The models the app has shipped as its Gemini default; a bundled model may replace these.
+    static let stockGeminiModels: Set<String> = ["gemini-flash-latest", "gemini-2.5-flash"]
     init(keychainService: String = "app.agora.gemini", defaults: UserDefaults = .standard, bundledKey: String? = SettingsStore.infoPlistGeminiKey()) {
         self.bundledKey = bundledKey
         self.defaults = defaults
@@ -46,6 +49,13 @@ final class SettingsStore: ObservableObject {
                 modelConfigurationIssue = "Saved model settings could not be read. Add a connection and model profile, then choose a default."
             }
         } else { modelConfiguration = .initial(geminiModel: initialModel) }
+        // A personal build can pick the Gemini model (DIBS_DEFAULT_GEMINI_MODEL, e.g. a lite model with more free quota).
+        // It replaces only the stock default on the built-in Gemini profile, never a model the person chose.
+        if let bundledModel = Self.infoPlistString("DibsDefaultGeminiModel"),
+           let index = modelConfiguration.profiles.firstIndex(where: { $0.id == ModelConfiguration.geminiProfileID }),
+           Self.stockGeminiModels.contains(modelConfiguration.profiles[index].model) {
+            modelConfiguration.profiles[index].model = bundledModel
+        }
         hasKey = (try? apiKey()) != nil
     }
     var policy: BrowserPolicy {
