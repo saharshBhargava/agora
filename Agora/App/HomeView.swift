@@ -87,7 +87,7 @@ struct HomeView: View {
                                 }
                             }
                             if let error = trips.error { Text(error).font(.caption).foregroundStyle(.secondary) }
-                            NavigationLink("Plan shopping trips") { tripsDestination }
+                            NavigationLink("Shopping lists & trips") { tripsDestination }
                                 .accessibilityIdentifier("homeShoppingTrips")
                         }
                     }

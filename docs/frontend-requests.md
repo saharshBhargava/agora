@@ -358,6 +358,12 @@ explains why it thinks so, and turns that into a shopping list per store in one 
 
 ### 4. Lists tab
 
+Implemented in the native **Home → Shopping lists & trips** screen: **New list** accepts a name and
+optional store using the shared store picker. Creating it opens the saved checklist; **Add item** accepts
+a name, positive quantity, optional unit and notes. These use the existing authenticated list APIs, and
+manual lists with unchecked items participate in reviewed trip planning. List history, editing and
+inventory autocomplete below remain follow-up work.
+
 - `GET /v1/lists` (open lists). Show **in the order returned** (most urgent trip first).
 - Each list card: `name`, store (`merchant.name` + locality), `open_count`, and "Needed by Thu" from
   `needed_by`. Generated lists can carry a small "Auto" tag (`source == "generated"`).

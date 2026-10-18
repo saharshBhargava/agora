@@ -36,13 +36,39 @@ struct TripList: Decodable, Identifiable {
     let status: String
     let source: String
     let neededBy: Date?
-    let openCount: Int
-    let items: [TripListItem]
+    var openCount: Int
+    var items: [TripListItem]
     // Preserve the server's complete precision for the approval/version precondition.
     let updatedAt: String
 
     var storeName: String { merchant?.label ?? name }
     var openItems: [TripListItem] { items.filter { !$0.checked } }
+}
+
+struct TripItemDraft {
+    var title = ""
+    var quantity = "1"
+    var unit = ""
+    var note = ""
+
+    func body(locale: Locale = .current) throws -> [String: Any] {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let unit = unit.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = quantity.trimmingCharacters(in: .whitespacesAndNewlines)
+        let separator = locale.decimalSeparator ?? "."
+        let normalized = text.replacingOccurrences(of: separator, with: ".")
+        guard !title.isEmpty, title.count <= 120,
+              normalized.range(of: #"^[0-9]+(?:\.[0-9]+)?$"#, options: .regularExpression) != nil,
+              let quantity = Double(normalized), quantity.isFinite, quantity > 0, quantity <= 1000,
+              unit.count <= 20, note.count <= 500 else {
+            throw BrowserError("invalid_list_item", "Enter an item name (up to 120 characters), a quantity greater than 0 and at most 1,000, a unit up to 20 characters, and notes up to 500 characters.")
+        }
+        var result: [String: Any] = ["title": title, "quantity": quantity, "added_by": "user"]
+        if !unit.isEmpty { result["unit"] = unit }
+        if !note.isEmpty { result["note"] = note }
+        return result
+    }
 }
 
 struct TripRecord: Decodable, Identifiable {

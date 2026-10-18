@@ -139,6 +139,25 @@ async def test_hosted_seed_keeps_non_demo_accounts_untouched(demo_app, monkeypat
         assert await conn.fetchval("SELECT count(*) FROM users WHERE NOT is_demo") == accounts_before
 
 
+async def test_manual_list_demo_preserves_user_edits_and_does_not_duplicate(demo_app):
+    app, client = demo_app
+    headers = await demo_headers(client)
+    lists = (await client.get("/v1/lists", headers=headers)).json()
+    manual = next(row for row in lists if row["name"] == "Household essentials")
+    assert manual["source"] == "user" and manual["merchant"]["name"] == "Target"
+    assert len(manual["items"]) == 2
+    assert all(item["unit"] and item["note"] and item["reason"] == "manual" for item in manual["items"])
+    response = await client.patch(f"/v1/lists/{manual['id']}", headers=headers,
+                                  json={"name": "Already picked up", "status": "archived"})
+    assert response.status_code == 200
+    await ensure_demo_account(app.state.db, app.state.settings)
+    await ensure_demo_account(app.state.db, app.state.settings)
+    lists = (await client.get("/v1/lists?status=open&status=archived", headers=headers)).json()
+    saved = next(row for row in lists if row["id"] == manual["id"])
+    assert saved["name"] == "Already picked up" and saved["status"] == "archived"
+    assert not any(row["name"] == "Household essentials" for row in lists)
+
+
 async def test_new_features_backfill_existing_demo_without_duplicates(demo_app):
     app, _ = demo_app
     user_id = await ensure_demo_account(app.state.db, app.state.settings)

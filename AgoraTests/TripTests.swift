@@ -112,6 +112,9 @@ private final class TripHTTP: URLProtocol {
 }
 
 private final class TripServer {
+    var manualList: [String: Any]?
+    var itemWrites = 0
+    var rejectListRead = false
     var record: [String: Any]?
     var event: [String: Any]?
     var createCount = 0
@@ -153,7 +156,15 @@ private final class TripServer {
                 generationKeys.append(request.value(forHTTPHeaderField: "Idempotency-Key")!)
                 XCTAssertEqual(body["within_days"] as? Int, 7)
                 return (200, ["lists": [], "added": 0, "skipped": []])
-            case "/v1/lists": return (200, [tripListJSON()])
+            case "/v1/lists":
+                if request.httpMethod == "POST" {
+                    var list = tripListJSON(id: UUID(), deadline: nil)
+                    list["name"] = body["name"]; list["source"] = "user"
+                    list["items"] = []; list["open_count"] = 0
+                    manualList = list
+                    return (201, list)
+                }
+                return (200, [tripListJSON()] + (manualList.map { [$0] } ?? []))
             case "/v1/trips":
                 if request.httpMethod == "POST" {
                     reservationCount += 1
@@ -166,6 +177,16 @@ private final class TripServer {
                 }
                 return (200, record.map { [$0] } ?? [])
             default:
+                if let manualList, path == "/v1/lists/\(manualList["id"]!)" {
+                    if rejectListRead { return (503, ["title": "unavailable"]) }
+                    return (200, manualList)
+                }
+                if let manualList, path == "/v1/lists/\(manualList["id"]!)/items", request.httpMethod == "POST" {
+                    itemWrites += 1
+                    var item = body; item["id"] = UUID().uuidString; item["checked"] = false
+                    self.manualList?["items"] = [item]; self.manualList?["open_count"] = 1
+                    return (201, item)
+                }
                 if path.hasSuffix("/outcome") {
                     if record?["status"] as? String == "scheduled", body["status"] as? String == "outcome_unknown" {
                         return (409, ["title": "trip_state_conflict"])
@@ -201,6 +222,36 @@ final class TripStoreTests: XCTestCase {
         http.invalidateAndCancel(); TripHTTP.fixture = nil
         store = nil; api = nil; inventory = nil; calendar = nil; http = nil; server = nil
     }
+    func testManualListSaveDoesNotRequireCalendarAvailabilityAndInvalidatesProposals() async throws {
+        await store.plan(options: options)
+        XCTAssertFalse(store.proposals.isEmpty)
+        let checks = server.checkCount
+        server.unknownAvailability = true
+        let id = try await store.createList(name: "  Errands  ", merchantID: nil)
+        XCTAssertEqual(store.lists.first?.name, "Errands")
+        XCTAssertTrue(store.proposals.isEmpty)
+        server.rejectListRead = true
+        try await store.addItem(listID: id, draft: TripItemDraft(title: "Soap", quantity: "2", unit: "bars"))
+        XCTAssertEqual(server.itemWrites, 1)
+        XCTAssertEqual(store.lists.first?.items.first?.title, "Soap")
+        XCTAssertEqual(store.lists.first?.openCount, 1)
+        XCTAssertNotNil(store.notice, "A failed refresh after a confirmed write must not ask for a second POST")
+        XCTAssertEqual(server.checkCount, checks)
+    }
+
+    func testManualItemValidationRejectsInvalidInputAndSupportsDecimalComma() throws {
+        for quantity in ["0", "-1", "1001", "NaN", "1,000", "1.2.3", "2 bottles", ""] {
+            XCTAssertThrowsError(try TripItemDraft(title: "Milk", quantity: quantity).body(locale: Locale(identifier: "en_US")))
+        }
+        XCTAssertThrowsError(try TripItemDraft(title: "  ").body())
+        XCTAssertThrowsError(try TripItemDraft(title: String(repeating: "a", count: 121)).body())
+        XCTAssertThrowsError(try TripItemDraft(title: "Milk", unit: String(repeating: "a", count: 21)).body())
+        let body = try TripItemDraft(title: " Apples ", quantity: "1,5", unit: " kg ").body(locale: Locale(identifier: "de_DE"))
+        XCTAssertEqual(body["quantity"] as? Double, 1.5)
+        XCTAssertEqual(body["title"] as? String, "Apples")
+        XCTAssertEqual(body["unit"] as? String, "kg")
+    }
+
     func testPlanningThenExplicitApprovalReservesCreatesAndReportsOutcome() async throws {
         await store.plan(options: options)
         XCTAssertNil(store.error); XCTAssertEqual(store.proposals.count, 1)

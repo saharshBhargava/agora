@@ -4,11 +4,13 @@ struct TripsView: View {
     @ObservedObject var store: TripStore
     @State private var options = TripPlanningOptions()
     @State private var reviewing: TripProposal?
+    @State private var creatingList = false
+    @State private var createdListID: UUID?
 
     var body: some View {
         List {
             Section {
-                Text("Turn the items running out into store lists, then find time to shop. Review each trip before adding it to your calendar.")
+                Text("Make a shopping list or generate one from items running out, then find time to shop. Review each trip before adding it to your calendar.")
                     .foregroundStyle(.secondary)
                 DisclosureGroup("Shopping times") {
                     Stepper("Look ahead \(options.days) days", value: $options.days, in: 1...14)
@@ -77,7 +79,7 @@ struct TripsView: View {
 
             Section("Shopping lists") {
                 if store.lists.isEmpty && !store.loading {
-                    Text("Find shopping times to make lists from your upcoming run-outs. If nothing is running out, no new list is needed.")
+                    Text("Create a list and add what you need, or find shopping times to generate lists from upcoming run-outs.")
                         .foregroundStyle(.secondary)
                 }
                 ForEach(store.lists) { list in
@@ -85,7 +87,8 @@ struct TripsView: View {
                         TripListView(store: store, listID: list.id)
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(list.storeName).font(.headline)
+                            Text(list.name).font(.headline)
+                            if let merchant = list.merchant { Text(merchant.label).font(.caption).foregroundStyle(.secondary) }
                             Text("\(list.openCount) items left").font(.subheadline).foregroundStyle(.secondary)
                             if let due = list.neededBy {
                                 Text("Needed by \(due.formatted(date: .abbreviated, time: .shortened))")
@@ -97,9 +100,27 @@ struct TripsView: View {
             }
         }
         .navigationTitle("Shopping trips")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("New list", systemImage: "plus") { creatingList = true }
+                    .disabled(!store.canUse || store.busy || store.loading)
+                    .accessibilityIdentifier("lists.create")
+            }
+        }
+        .sheet(isPresented: $creatingList) {
+            TripCreateListSheet(store: store) { id in
+                creatingList = false
+                createdListID = id
+            }
+        }
+        .navigationDestination(item: $createdListID) { id in
+            TripListView(store: store, listID: id)
+        }
         .refreshable { await store.refresh() }
         .task { await store.refresh() }
-        .onChange(of: store.context) { _, _ in reviewing = nil }
+        .onChange(of: store.context) { _, _ in
+            reviewing = nil; creatingList = false; createdListID = nil
+        }
         .onChange(of: store.proposals.map(\.reservationKey)) { _, keys in
             if let reviewing, !keys.contains(reviewing.reservationKey) { self.reviewing = nil }
         }
@@ -132,6 +153,131 @@ struct TripTimeLabel: View {
         .environment(\.timeZone, TimeZone(identifier: timezone) ?? .current)
         .font(.subheadline)
     }
+}
+
+struct TripCreateListSheet: View {
+    @ObservedObject var store: TripStore
+    let created: (UUID) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var merchant: InventoryMerchant?
+    @State private var choosingStore = false
+    @State private var saving = false
+    @State private var saveUnconfirmed = false
+    @State private var error: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("List details") {
+                    TextField("List name, e.g. Weekend groceries", text: $name)
+                        .accessibilityIdentifier("lists.name")
+                    Button { choosingStore = true } label: {
+                        LabeledContent("Store", value: merchant?.label ?? "Any store")
+                    }
+                    if merchant != nil { Button("Remove store") { merchant = nil } }
+                }
+                Section { Text("Add items after creating your list. You can use it without adding a Calendar trip.").foregroundStyle(.secondary) }
+                if let error { Text(error).foregroundStyle(.red) }
+                if saving { ProgressView("Creating list…") }
+            }
+            .disabled(saving)
+            .navigationTitle("New shopping list")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        saving = true; error = nil
+                        let context = store.context
+                        Task {
+                            defer { saving = false }
+                            do {
+                                let id = try await store.createList(name: name, merchantID: merchant?.id)
+                                guard store.context == context else { return }
+                                created(id)
+                            } catch {
+                                guard store.context == context else { return }
+                                self.error = manualListError(error)
+                                saveUnconfirmed = manualListSaveUnconfirmed(error)
+                            }
+                        }
+                    }
+                    .disabled(saving || saveUnconfirmed || store.busy || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name.count > 80)
+                    .accessibilityIdentifier("lists.save")
+                }
+            }
+            .interactiveDismissDisabled(saving)
+            .sheet(isPresented: $choosingStore) {
+                InventoryMerchantPicker(store: store.inventory, title: "Shopping at") { merchant = $0 }
+            }
+        }
+    }
+}
+
+struct TripAddItemSheet: View {
+    @ObservedObject var store: TripStore
+    let listID: UUID
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft = TripItemDraft()
+    @State private var saving = false
+    @State private var saveUnconfirmed = false
+    @State private var error: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Item") {
+                    TextField("Item name", text: $draft.title).accessibilityIdentifier("lists.itemName")
+                    TextField("Quantity", text: $draft.quantity).keyboardType(.decimalPad)
+                    TextField("Unit (optional), e.g. bottles", text: $draft.unit)
+                    TextField("Notes (optional)", text: $draft.note, axis: .vertical).lineLimit(2...4)
+                }
+                if let error { Text(error).foregroundStyle(.red) }
+                if saving { ProgressView("Adding item…") }
+            }
+            .disabled(saving)
+            .navigationTitle("Add item")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        saving = true; error = nil
+                        let context = store.context
+                        Task {
+                            defer { saving = false }
+                            do {
+                                try await store.addItem(listID: listID, draft: draft)
+                                guard store.context == context else { return }
+                                dismiss()
+                            } catch {
+                                guard store.context == context else { return }
+                                self.error = manualListError(error)
+                                saveUnconfirmed = manualListSaveUnconfirmed(error)
+                            }
+                        }
+                    }
+                    .disabled(saving || saveUnconfirmed || store.busy || (try? draft.body()) == nil)
+                    .accessibilityIdentifier("lists.saveItem")
+                }
+            }
+            .interactiveDismissDisabled(saving)
+        }
+    }
+}
+
+private func manualListSaveUnconfirmed(_ error: Error) -> Bool {
+    guard let error = error as? BrowserError else { return !(error is CancellationError) }
+    if ["invalid_list", "invalid_list_item", "list_unavailable"].contains(error.code) { return false }
+    return error.status.map { !(400..<500).contains($0) } ?? true
+}
+
+@MainActor private func manualListError(_ error: Error) -> String {
+    if !manualListSaveUnconfirmed(error) {
+        return InventoryStore.message(error)
+    }
+    return "Could not confirm the save. Close this form and refresh your lists before trying again; it may already have saved."
 }
 
 private struct TripReviewSheet: View {
@@ -237,13 +383,23 @@ private struct TripRecordRow: View {
     }
 }
 
-private struct TripListView: View {
+struct TripListView: View {
     @ObservedObject var store: TripStore
     let listID: UUID
+    @State private var addingItem = false
     private var list: TripList? { store.lists.first { $0.id == listID } }
     var body: some View {
         List {
             if let list {
+                if let merchant = list.merchant { Text(merchant.label).foregroundStyle(.secondary) }
+                if list.status == "open" {
+                    Button("Add item", systemImage: "plus") { addingItem = true }
+                        .disabled(store.busy || store.loading)
+                        .accessibilityIdentifier("lists.addItem")
+                }
+                if list.items.isEmpty {
+                    Text("Your list is empty. Add your first item to get started.").foregroundStyle(.secondary)
+                }
                 Section {
                     ForEach(list.items) { item in
                         HStack(alignment: .top, spacing: 12) {
@@ -273,8 +429,11 @@ private struct TripListView: View {
                 }
             }
             if let error = store.error { Text(error).foregroundStyle(.red) }
+            if let notice = store.notice { Text(notice).foregroundStyle(.secondary) }
         }
-        .navigationTitle(list?.storeName ?? "Shopping list")
+        .navigationTitle(list?.name ?? "Shopping list")
+        .sheet(isPresented: $addingItem) { TripAddItemSheet(store: store, listID: listID) }
+        .onChange(of: store.context) { _, _ in addingItem = false }
         .refreshable { await store.refresh() }
     }
 }

@@ -149,3 +149,18 @@ client, including the real local PostgreSQL/API flow (not skipped), Calendar rec
 shopping and watch regressions. The live-flow test verified explicit approval, one persisted Calendar
 event, session restoration, duplicate prevention and checklist updates. The trip client and tests match
 those in PR #27. This did not write to production or exercise real Google credentials.
+
+## Manual shopping-list creation — October 18, 2026 UTC
+
+Local implementation on top of the native trip client adds **Home → Shopping lists & trips → New list**.
+Users name a list, optionally choose a store, and add items with quantities, units and notes. Saved lists
+remain checkable and participate in reviewed Calendar planning. Creating lists and items uses the existing
+list APIs and makes no Calendar call. Forms preserve errors, clear on account/household changes, and block
+repeat submissions after an unconfirmed save until the user closes the form and checks the saved lists.
+
+The demo seed/backfill adds a realistic household-essentials list; an audit marker preserves renames and
+archiving across subsequent sign-ins. No migration or API contract change is needed. Verification passed:
+537 backend tests, Ruff, a disposable local CLI demo reset, and 37 selected simulator tests including both
+real local API/Postgres flows (manual lists and replenishment trips, neither skipped). Simulator captures
+were inspected for creation and checklist screens. This records local source validation, not a production
+deployment or distribution of a new iOS build. List editing, deletion and history remain follow-up work.
