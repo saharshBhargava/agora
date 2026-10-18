@@ -86,6 +86,22 @@ test('Camera sends a frame within 600 ms of mounting', async () => {
   expect(track.stop).toHaveBeenCalled();
 });
 
+test('Camera sends no frames while disabled', async () => {
+  vi.useFakeTimers();
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: { getUserMedia: vi.fn(async () => ({ getTracks: () => [] })) }, configurable: true,
+  });
+  Object.defineProperty(HTMLVideoElement.prototype, 'videoWidth', { value: 1280, configurable: true });
+  Object.defineProperty(HTMLVideoElement.prototype, 'videoHeight', { value: 720, configurable: true });
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,QUJD');
+  const send = vi.fn(() => true);
+  render(<Camera send={send} enabled={false} region={null} mockHref="?mock=1" />);
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+  expect(send).not.toHaveBeenCalled();
+});
+
 test('Camera shows a friendly message and demo link when permission is denied', async () => {
   Object.defineProperty(navigator, 'mediaDevices', {
     value: { getUserMedia: vi.fn(async () => { throw new Error('denied'); }) }, configurable: true,
@@ -133,10 +149,35 @@ test('Checkout calls the checkout route; last call shows a banner', async () => 
   expect(screen.getByText(/Last call/)).toBeInTheDocument();
 });
 
-test('identify failure shows the retry hint', () => {
-  setSock(baseRun(), { error: 'identify failed' });
-  render(<ShopperScreen />);
-  expect(screen.getByText("Couldn't identify. Tap it again or name it")).toBeInTheDocument();
+const HINT = "Couldn't identify. Tap it again or name it";
+test('identify failure shows the retry hint, hides after 4 s, and re-shows on an identical repeat', () => {
+  vi.useFakeTimers();
+  setSock(baseRun(), { errorEvent: { reason: 'identify failed', seq: 1 } });
+  const { rerender } = render(<ShopperScreen />);
+  expect(screen.getByText(HINT)).toBeInTheDocument();
+  act(() => { vi.advanceTimersByTime(4100); });
+  expect(screen.queryByText(HINT)).toBeNull();
+  const again = { reason: 'identify failed', seq: 2 };
+  setSock(baseRun(), { errorEvent: again });
+  rerender(<ShopperScreen />);
+  expect(screen.getByText(HINT)).toBeInTheDocument();
+  // A new identify attempt clears it.
+  setSock(baseRun(), { errorEvent: again, identifyingRegion: { x: 1, y: 1, w: 5, h: 5 } });
+  rerender(<ShopperScreen />);
+  expect(screen.queryByText(HINT)).toBeNull();
+});
+
+test('Reconnecting shows only while disconnected; other errors are transient', () => {
+  vi.useFakeTimers();
+  setSock(baseRun(), { connected: false, error: 'Reconnecting…' });
+  const { rerender } = render(<ShopperScreen />);
+  expect(screen.getByText('Reconnecting…')).toBeInTheDocument();
+  setSock(baseRun(), { connected: true, error: 'Reconnecting…', errorEvent: { reason: 'cart closed', seq: 1 } });
+  rerender(<ShopperScreen />);
+  expect(screen.queryByText('Reconnecting…')).toBeNull();
+  expect(screen.getByText('cart closed')).toBeInTheDocument();
+  act(() => { vi.advanceTimersByTime(4100); });
+  expect(screen.queryByText('cart closed')).toBeNull();
 });
 
 test('a duplicate chip offers Keep both / Remove one', () => {

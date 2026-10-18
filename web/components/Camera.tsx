@@ -66,8 +66,8 @@ export function Camera({ send, enabled, region, mockHref }: CameraProps) {
       const v = videoRef.current;
       if (!enabledRef.current || !v || !v.videoWidth) return;
       const h = frameHeight(v.videoWidth, v.videoHeight);
-      canvas.width = FRAME_W;
-      canvas.height = h;
+      if (canvas.width !== FRAME_W) canvas.width = FRAME_W;
+      if (canvas.height !== h) canvas.height = h;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.drawImage(v, 0, 0, FRAME_W, h);

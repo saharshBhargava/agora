@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Chip } from '@/lib/types';
 import { formatCents } from '@/lib/money';
 import { parseCents } from '@/lib/props';
@@ -16,6 +16,11 @@ export function FixChipSheet({
 }) {
   const [name, setName] = useState(chip.name);
   const [price, setPrice] = useState(chip.priceCents === null ? '' : formatCents(chip.priceCents).replace('$', ''));
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [onClose]);
   const cents = price.trim() === '' ? undefined : parseCents(price);
   const bad = cents === null;
 

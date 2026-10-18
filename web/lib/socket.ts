@@ -13,6 +13,8 @@ export type UseRun = {
   lastCallEndsAt: number | null;
   identifyingRegion: Box | null;
   error: string | null;
+  /** Every server {t:'error'} bumps seq, so identical repeats are distinguishable. */
+  errorEvent: { reason: string; seq: number } | null;
   connected: boolean;
 };
 
@@ -29,6 +31,7 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
   const [lastCallEndsAt, setLastCallEndsAt] = useState<number | null>(null);
   const [identifyingRegion, setIdentifyingRegion] = useState<Box | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorEvent, setErrorEvent] = useState<{ reason: string; seq: number } | null>(null);
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -38,6 +41,7 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
     setLastCallEndsAt(null);
     setIdentifyingRegion(null);
     setError(null);
+    setErrorEvent(null);
     if (!runId || !personId) return;
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -79,6 +83,7 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
             break;
           case 'error':
             setError(String(m.reason));
+            setErrorEvent((e) => ({ reason: String(m.reason), seq: (e?.seq ?? 0) + 1 }));
             break;
         }
       };
@@ -116,5 +121,5 @@ export function useRun(runId: string | null, personId: string | null): UseRun {
     return false;
   }, []);
 
-  return { run, send, lastFrame, lastCallEndsAt, identifyingRegion, error, connected };
+  return { run, send, lastFrame, lastCallEndsAt, identifyingRegion, error, errorEvent, connected };
 }

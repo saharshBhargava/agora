@@ -11,6 +11,7 @@ import { UndoToast } from '@/components/UndoToast';
 import type { Chip } from '@/lib/types';
 
 const UNDO_MS = 5000;
+const NOTICE_MS = 4000;
 
 function useCountdown(endsAt: number | null): number | null {
   const [now, setNow] = useState(() => Date.now());
@@ -28,7 +29,7 @@ export default function ShopperScreen() {
   const runId = params.get('run') ?? '';
   const personId = params.get('person') ?? '';
   const mock = params.get('mock') === '1';
-  const { run, send, connected, lastCallEndsAt, identifyingRegion, error } = useRun(runId || null, personId || null);
+  const { run, send, connected, lastCallEndsAt, identifyingRegion, errorEvent } = useRun(runId || null, personId || null);
 
   const [fixing, setFixing] = useState<Chip | null>(null);
   const [removed, setRemoved] = useState<{ key: number; chip: Chip } | null>(null);
@@ -40,11 +41,16 @@ export default function ShopperScreen() {
   const secs = useCountdown(run?.state === 'lastCall' ? endsAt : null);
   const dismissRemoved = useCallback(() => setRemoved(null), []);
 
-  // A new identify attempt clears the failure hint.
-  useEffect(() => setNotice(null), [identifyingRegion]);
+  // A new identify attempt (a region) after an error clears the hint. Declared before the error effect so an error wins a tie.
   useEffect(() => {
-    if (error === 'identify failed') setNotice("Couldn't identify. Tap it again or name it");
-  }, [error]);
+    if (identifyingRegion) setNotice(null);
+  }, [identifyingRegion]);
+  useEffect(() => {
+    if (!errorEvent) return;
+    setNotice(errorEvent.reason === 'identify failed' ? "Couldn't identify. Tap it again or name it" : errorEvent.reason);
+    const t = setTimeout(() => setNotice(null), NOTICE_MS);
+    return () => clearTimeout(t);
+  }, [errorEvent]);
 
   const chips = useMemo(() => (run?.chips ?? []).filter((c) => c.state !== 'removed' && !c.dropped), [run]);
 
@@ -75,7 +81,7 @@ export default function ShopperScreen() {
   const locked = run.state === 'locked';
   const dupes = chips.filter((c) => c.duplicateOf && !kept.has(c.id));
   const mockHref = `/shopper?run=${encodeURIComponent(runId)}&person=${encodeURIComponent(personId)}&mock=1`;
-  const hint = notice ?? (error && error !== 'identify failed' ? error : null);
+  const hint = !connected ? 'Reconnecting…' : notice;
 
   return (
     <>
@@ -140,7 +146,7 @@ export default function ShopperScreen() {
             onRemove={(chipId) => {
               const chip = chips.find((c) => c.id === chipId);
               if (!chip) return;
-              send({ t: 'remove', chipId });
+              if (!send({ t: 'remove', chipId })) return;
               setRemoved({ key: Date.now(), chip });
             }}
             onTap={(chipId) => setFixing(chips.find((c) => c.id === chipId) ?? null)}

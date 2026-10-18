@@ -81,6 +81,9 @@ test('handles lastCall and identifying', () => {
   expect(result.current.identifyingRegion).toEqual(region);
   act(() => last().push({ t: 'error', reason: 'nope' }));
   expect(result.current.error).toBe('nope');
+  expect(result.current.errorEvent).toEqual({ reason: 'nope', seq: 1 });
+  act(() => last().push({ t: 'error', reason: 'nope' }));
+  expect(result.current.errorEvent).toEqual({ reason: 'nope', seq: 2 });
 });
 
 test('does not reconnect after unmount', () => {
