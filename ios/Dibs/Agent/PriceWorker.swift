@@ -28,6 +28,8 @@ protocol PriceBrowsing: AnyObject {
     func restrict(to url: URL)
     /// Runs one browser tool (`browser_open`, `browser_observe`, ...) and returns its JSON result.
     func run(tool name: String, args: [String: Any]) async throws -> [String: Any]
+    /// Loads the store's home page so cookies, consent, scripts and caches are ready. Stops early when cancelled.
+    func warmUp(_ url: URL) async
     func close()
 }
 
@@ -85,12 +87,13 @@ struct PriceAPI {
     }
 }
 
-/// Finds store prices for the server's open price requests with an in-app browser.
+/// Finds store prices for the server's open price requests with in-app browsers.
 /// Runs on the shopper's phone while a run is open: `start(api:)` / `stop()`.
 ///
-/// Per request: open the store's search page, wait for "results", send the visible text to
-/// `/extract` (the server asks Gemini). If that finds nothing, fall back to the team's browser
-/// agent loop through `/agent-step` for up to 8 steps.
+/// A pool of 2 StoreBrowsers, warmed on the store's home page at start, takes one request each.
+/// Per request: open the store's search page, poll the page until it shows a price line for the
+/// item (or "results"), send the visible text to `/extract` (the server asks Gemini). If that finds
+/// nothing, fall back to the team's browser agent loop through `/agent-step`.
 @MainActor
 @Observable
 final class PriceWorker {
@@ -104,6 +107,12 @@ final class PriceWorker {
         var productName: String? = nil
     }
 
+    struct Lookup: Equatable, Sendable {
+        let requestId: String
+        let name: String
+        let phase: String
+    }
+
     static let maxAgentSteps = 12
     /// Prepended to the agent's first turn: QFC renders slowly, and the model used to reopen
     /// the page instead of waiting.
@@ -113,20 +122,36 @@ final class PriceWorker {
     static let contentsBudget = 56_000
 
     private(set) var isRunning = false
-    /// The item being looked up right now, or nil.
-    private(set) var currentName: String?
-    /// "Checking qfc.com…" while a lookup is in flight, else "".
-    private(set) var phase = ""
+    /// Lookups in flight, oldest first.
+    private(set) var active: [Lookup] = []
     private(set) var lastOutcome: Outcome?
     /// Every finished lookup, oldest first (tests and debugging).
     private(set) var outcomes: [Outcome] = []
 
+    /// The most recently started lookup's item, or nil.
+    var currentName: String? { active.last?.name }
+    /// "Checking qfc.com…" while a lookup is in flight, else "".
+    var phase: String { active.last?.phase ?? "" }
+    /// "Checking qfc.com…" while `name` is being looked up, else nil.
+    func status(for name: String) -> String? { active.last(where: { $0.name == name })?.phase }
+
+    @MainActor private final class Slot {
+        let browser: PriceBrowsing
+        var busy = false
+        var warm: Task<Void, Never>?
+        init(_ browser: PriceBrowsing) { self.browser = browser }
+    }
+
     @ObservationIgnored private let makeBrowser: @MainActor () -> PriceBrowsing
+    @ObservationIgnored private let poolSize: Int
+    @ObservationIgnored private let warmUpURL: URL?
     @ObservationIgnored private let pollInterval: Duration
+    @ObservationIgnored private let renderPoll: Duration
     @ObservationIgnored private let waitSeconds: Double
     @ObservationIgnored private let reloadWaitSeconds: Double
     @ObservationIgnored private let retryDelay: Duration
-    @ObservationIgnored private var browser: PriceBrowsing?
+    @ObservationIgnored private var slots: [Slot] = []
+    @ObservationIgnored private var inFlight: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var api: PriceAPI?
     @ObservationIgnored private var loop: Task<Void, Never>?
     /// Lookups started per request id; a request that ends without a price gets one retry.
@@ -134,10 +159,15 @@ final class PriceWorker {
     @ObservationIgnored private var retryAt: [String: ContinuousClock.Instant] = [:]
     @ObservationIgnored private var pollFailing = false
 
-    init(pollInterval: Duration = .seconds(2), waitSeconds: Double = 25, reloadWaitSeconds: Double = 20,
+    init(pollInterval: Duration = .milliseconds(500), poolSize: Int = 2,
+         warmUpURL: URL? = URL(string: "https://www.qfc.com/"),
+         renderPoll: Duration = .milliseconds(250), waitSeconds: Double = 25, reloadWaitSeconds: Double = 20,
          retryDelay: Duration = .seconds(20),
          makeBrowser: @escaping @MainActor () -> PriceBrowsing = { BrowserToolExecutor(session: StoreBrowser()) }) {
         self.pollInterval = pollInterval
+        self.poolSize = max(1, poolSize)
+        self.warmUpURL = warmUpURL
+        self.renderPoll = renderPoll
         self.waitSeconds = waitSeconds
         self.reloadWaitSeconds = reloadWaitSeconds
         self.retryDelay = retryDelay
@@ -149,6 +179,17 @@ final class PriceWorker {
         guard loop == nil else { return }
         isRunning = true
         PriceLog.event("price worker start \(api.base.absoluteString)")
+        while slots.count < poolSize { slots.append(Slot(makeBrowser())) }
+        if let warmUpURL {
+            for (i, slot) in slots.enumerated() where !slot.busy {
+                let browser = slot.browser
+                slot.warm = Task {
+                    let t0 = ContinuousClock.now
+                    await browser.warmUp(warmUpURL)
+                    PriceLog.event("price browser \(i) warm-up \(Self.ms(since: t0)) ms\(Task.isCancelled ? " (cut short)" : "")")
+                }
+            }
+        }
         let interval = pollInterval
         loop = Task { [weak self] in
             while !Task.isCancelled {
@@ -164,15 +205,22 @@ final class PriceWorker {
         loop?.cancel()
         loop = nil
         isRunning = false
-        browser?.close()
-        currentName = nil
-        phase = ""
+        inFlight.values.forEach { $0.cancel() }
+        inFlight = [:]
+        for slot in slots {
+            slot.warm?.cancel()
+            slot.warm = nil
+            slot.busy = false
+            slot.browser.close()
+        }
+        active = []
     }
 
     /// Sets the server without starting the poll loop (tests drive `pollOnce` directly).
     func use(api: DibsAPI) { self.api = PriceAPI(api: api) }
 
-    /// One poll: fetch open requests and handle each new one, one at a time.
+    /// One poll: fetch open requests and start each due one on a free browser. Returns without
+    /// waiting for the lookups (see `waitUntilIdle`).
     func pollOnce() async {
         guard let api else { return }
         let open: [PriceRequest]
@@ -187,22 +235,34 @@ final class PriceWorker {
         }
         for request in open where isDue(request.id) {
             if Task.isCancelled { return }
+            guard let slot = freeSlot() else { break }
             let attempt = (attempts[request.id] ?? 0) + 1
             attempts[request.id] = attempt
             retryAt[request.id] = nil
             if attempt > 1 { PriceLog.event("price \(request.id) retry \(attempt - 1)") }
-            let outcome = await handle(request, api: api)
-            lastOutcome = outcome
-            outcomes.append(outcome)
-            if outcome.cents == nil && attempt == 1 {
-                retryAt[request.id] = .now + retryDelay
-                PriceLog.event("price \(request.id) no price; retrying in \(retryDelay)")
+            slot.busy = true
+            inFlight[request.id] = Task { [weak self] in
+                await self?.lookUp(request, attempt: attempt, on: slot, api: api)
             }
         }
     }
 
+    /// Waits for every lookup in flight to finish.
+    func waitUntilIdle() async {
+        while let task = inFlight.values.first { await task.value }
+    }
+
+    private func freeSlot() -> Slot? {
+        if let slot = slots.first(where: { !$0.busy }) { return slot }
+        guard slots.count < poolSize else { return nil }
+        let slot = Slot(makeBrowser())
+        slots.append(slot)
+        return slot
+    }
+
     /// New requests, and a priceless first attempt once its retry delay has passed.
     private func isDue(_ id: String) -> Bool {
+        guard inFlight[id] == nil else { return false }
         switch attempts[id] ?? 0 {
         case 0: return true
         case 1: return retryAt[id].map { ContinuousClock.now >= $0 } ?? false
@@ -210,22 +270,54 @@ final class PriceWorker {
         }
     }
 
-    private func handle(_ request: PriceRequest, api: PriceAPI) async -> Outcome {
+    private func lookUp(_ request: PriceRequest, attempt: Int, on slot: Slot, api: PriceAPI) async {
+        defer {
+            slot.busy = false
+            inFlight[request.id] = nil
+        }
+        if let warm = slot.warm {
+            // The search page replaces the home page; cookies and caches are already warming.
+            warm.cancel()
+            await warm.value
+            slot.warm = nil
+        }
+        let outcome = await handle(request, browser: slot.browser, api: api)
+        if Task.isCancelled { return }
+        lastOutcome = outcome
+        outcomes.append(outcome)
+        if outcome.cents == nil && attempt == 1 {
+            retryAt[request.id] = .now + retryDelay
+            PriceLog.event("price \(request.id) no price; retrying in \(retryDelay)")
+        }
+    }
+
+    private struct Timing {
+        var open = 0, render = 0, extract = 0
+    }
+
+    private static func ms(since start: ContinuousClock.Instant) -> Int {
+        let d = ContinuousClock.now - start
+        return Int(d.components.seconds * 1000 + d.components.attoseconds / 1_000_000_000_000_000)
+    }
+
+    private func handle(_ request: PriceRequest, browser: PriceBrowsing, api: PriceAPI) async -> Outcome {
         guard let url = URL(string: request.searchUrl) else {
             PriceLog.event("price \(request.id) bad searchUrl")
             return Outcome(requestId: request.id, name: request.name, via: .failed)
         }
         let host = BrowserPolicy.domain(of: url) ?? "the store"
-        currentName = request.name
-        phase = "Checking \(host)…"
-        defer { currentName = nil; phase = "" }
-        let browser = self.browser ?? makeBrowser()
-        self.browser = browser
+        active.append(Lookup(requestId: request.id, name: request.name, phase: "Checking \(host)…"))
+        let start = ContinuousClock.now
+        var timing = Timing()
+        defer {
+            active.removeAll { $0.requestId == request.id }
+            PriceLog.event("price \(request.id) timing open=\(timing.open) render=\(timing.render) extract=\(timing.extract) total=\(Self.ms(since: start))")
+        }
         browser.restrict(to: url)
         PriceLog.event("price \(request.id) start \"\(request.name)\" at \(request.store)")
 
         do {
-            if let found = try await fastPath(request, browser: browser, api: api) { return found }
+            if let found = try await fastPath(request, browser: browser, api: api, timing: &timing) { return found }
         } catch let error as DibsError {
             PriceLog.event("price \(request.id) extract failed: \(error.localizedDescription); skipping")
             return Outcome(requestId: request.id, name: request.name, via: .failed)
@@ -242,28 +334,42 @@ final class PriceWorker {
         }
     }
 
-    /// open → wait for "results" → observe → /extract. Nil when the page had no match.
-    private func fastPath(_ request: PriceRequest, browser: PriceBrowsing, api: PriceAPI) async throws -> Outcome? {
+    /// The page is ready to read: it says "results", or it names the item's first word and shows
+    /// a price like "$1.10".
+    static func rendered(_ text: String, item: String) -> Bool {
+        let lower = text.lowercased()
+        if lower.contains("results") { return true }
+        guard let word = item.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).first,
+              lower.contains(word) else { return false }
+        return text.range(of: #"\$\s?\d+\.\d{2}"#, options: .regularExpression) != nil
+    }
+
+    /// open → poll until rendered (25 s, then one reload and 20 s more) → /extract.
+    /// Nil when the page had no match.
+    private func fastPath(_ request: PriceRequest, browser: PriceBrowsing, api: PriceAPI,
+                          timing: inout Timing) async throws -> Outcome? {
         PriceLog.event("price \(request.id) open \(BrowserPolicy.safeURL(URL(string: request.searchUrl)))")
+        var t0 = ContinuousClock.now
         _ = try await browser.run(tool: "browser_open", args: ["url": request.searchUrl])
-        var ready = await waitForResults(browser, seconds: waitSeconds)
-        if ready {
-            PriceLog.event("price \(request.id) results showing")
-        } else {
-            PriceLog.event("price \(request.id) no \"results\" text after \(Int(waitSeconds)) s; reloading")
+        timing.open = Self.ms(since: t0)
+        t0 = ContinuousClock.now
+        var (ready, text) = await waitRendered(browser, item: request.name, seconds: waitSeconds)
+        if !ready {
+            PriceLog.event("price \(request.id) not rendered after \(Int(waitSeconds)) s; reloading")
             _ = try await browser.run(tool: "browser_act", args: ["action": "reload"])
-            ready = await waitForResults(browser, seconds: reloadWaitSeconds)
-            PriceLog.event("price \(request.id) " + (ready ? "results showing after reload" : "still no \"results\" after reload"))
+            (ready, text) = await waitRendered(browser, item: request.name, seconds: reloadWaitSeconds)
         }
-        let observation = try await browser.run(tool: "browser_observe", args: [:])
-        let text = String((observation["text"] as? String ?? "").prefix(Self.pageTextLimit))
-        PriceLog.event("price \(request.id) observed \(text.count) chars")
+        timing.render = Self.ms(since: t0)
+        text = String(text.prefix(Self.pageTextLimit))
+        PriceLog.event("price \(request.id) \(ready ? "rendered" : "still not rendered"), \(text.count) chars")
         if !ready {
             let head = text.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(200)
             PriceLog.event("price \(request.id) page starts: \(head)")
         }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        t0 = ContinuousClock.now
         let reply = try await api.extract(id: request.id, pageText: text)
+        timing.extract = Self.ms(since: t0)
         if reply["found"] as? Bool == true, let cents = reply["priceCents"] as? Int {
             let product = reply["productName"] as? String
             PriceLog.event("price \(request.id) found \(Money.format(cents)) \"\(product ?? "")\" from page")
@@ -273,20 +379,18 @@ final class PriceWorker {
         return nil
     }
 
-    /// Waits for "results" in chunks of at most 20 s (the tool's limit). False on timeout or error.
-    private func waitForResults(_ browser: PriceBrowsing, seconds: Double) async -> Bool {
-        var left = seconds
-        while left > 0 {
-            let chunk = min(left, 20)
-            left -= chunk
-            do {
-                _ = try await browser.run(tool: "browser_wait_for", args: ["text": "results", "seconds": chunk])
-                return true
-            } catch {
-                if Task.isCancelled { return false }
+    /// Observes every `renderPoll` until `rendered` or `seconds` pass. Returns the last page text.
+    private func waitRendered(_ browser: PriceBrowsing, item: String, seconds: Double) async -> (Bool, String) {
+        let deadline = ContinuousClock.now + .milliseconds(Int(seconds * 1000))
+        var text = ""
+        while true {
+            if let observation = try? await browser.run(tool: "browser_observe", args: [:]) {
+                text = observation["text"] as? String ?? ""
+                if Self.rendered(text, item: item) { return (true, text) }
             }
+            if Task.isCancelled || ContinuousClock.now >= deadline { return (false, text) }
+            try? await Task.sleep(for: renderPoll)
         }
-        return false
     }
 
     /// The team's Gemini browser agent, with the model on the server: post the conversation,

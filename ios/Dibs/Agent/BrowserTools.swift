@@ -103,6 +103,16 @@ final class BrowserToolExecutor: PriceBrowsing {
 
     func close() { session.close() }
 
+    func warmUp(_ url: URL) async {
+        restrict(to: url)
+        guard (try? await session.open(url)) != nil else { return }
+        // open returns at commit; let the page finish loading (scripts, consent, caches).
+        let deadline = ContinuousClock.now + .seconds(10)
+        while session.webView.isLoading, ContinuousClock.now < deadline, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+    }
+
     func run(tool name: String, args: [String: Any]) async throws -> [String: Any] {
         try await execute(BrowserCall(name: name, arguments: args))
     }

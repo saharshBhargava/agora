@@ -19,6 +19,21 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     private var navigationFailure: String?
     private var activeNavigation: WKNavigation?
     private var hostWindow: UIWindow?
+    private var rulesAttached = false
+
+    /// Images, fonts and media are not needed to read prices; skipping them renders search pages faster.
+    static let lightRules = #"[{"trigger":{"url-filter":".*","resource-type":["image","font","media"]},"action":{"type":"block"}}]"#
+    private static var compiledRules: WKContentRuleList?
+
+    private func attachRules() async {
+        guard !rulesAttached else { return }
+        rulesAttached = true
+        if Self.compiledRules == nil {
+            Self.compiledRules = try? await WKContentRuleListStore.default().compileContentRuleList(
+                forIdentifier: "DibsLightPages", encodedContentRuleList: Self.lightRules)
+        }
+        if let rules = Self.compiledRules { webView.configuration.userContentController.add(rules) }
+    }
 
     static let viewport = CGRect(x: 0, y: 0, width: 390, height: 844)
 
@@ -119,11 +134,12 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         return result
     }
 
-    /// Loads `url` and observes once loading settles. A page that keeps loading trackers past
-    /// 15 s is observed anyway once it has committed.
+    /// Loads `url` and returns as soon as the new document commits (or loading ends), with a
+    /// first observation. The page keeps rendering; callers poll `observe` for the content.
     func open(_ url: URL) async throws -> [String: Any] {
         try policy.validate(url)
         attach()
+        await attachRules()
         isOpen = true
         privateMode = false
         navigationFailure = nil
@@ -131,14 +147,19 @@ final class StoreBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         webView.load(URLRequest(url: url))
         let deadline = ContinuousClock.now + .seconds(15)
         repeat {
-            try await Task.sleep(for: .milliseconds(200))
+            try await Task.sleep(for: .milliseconds(100))
             try Task.checkCancellation()
             guard epoch == savedEpoch else { throw BrowserError("stale_session") }
             if let navigationFailure { throw BrowserError("navigation_failed", navigationFailure) }
-            if !webView.isLoading { return try await observe() }
+            if documentEpoch != startDocument || !webView.isLoading {
+                do { return try await observe() } catch let error as BrowserError where !error.code.contains("user_action_required") {
+                    // Committed but not readable yet (redirect or empty body): report it as loading.
+                    return ["url": BrowserPolicy.safeURL(webView.url), "loading": true, "text": "",
+                            "note": "Page is loading. Call browser_wait_for or browser_observe."]
+                }
+            }
         } while ContinuousClock.now < deadline
-        guard documentEpoch != startDocument else { webView.stopLoading(); throw BrowserError("timeout") }
-        return try await observe()
+        webView.stopLoading(); throw BrowserError("timeout")
     }
 
     // MARK: WKNavigationDelegate
