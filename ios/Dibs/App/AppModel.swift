@@ -136,6 +136,21 @@ final class AppModel {
         store.connect(runId: ref.runId, personId: ref.personId)
     }
 
+    /// The shopper's way into the receipt flow after checkout ("I've paid · snap the receipt"): pushes
+    /// `Route.settle`, which shows the receipt camera while the run is locked, then the check, then Settle.
+    func openReceipt(_ ref: RunRef) {
+        intent += 1
+        if path.last != .settle(ref) { path.append(.settle(ref)) }
+    }
+
+    /// When the live run reaches settled or partly settled (or, for the shopper, a read receipt), a claim
+    /// or shopper screen on top is replaced by Settle.
+    func followRun() {
+        guard let run = store.run, store.runId == run.id,
+              let next = SettleLogic.follow(path: path, run: run) else { return }
+        path = next
+    }
+
     /// Home is showing: stop listening to any run.
     func leaveRun() {
         store.disconnect()
