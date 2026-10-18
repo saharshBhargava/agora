@@ -425,7 +425,8 @@ intent with `"status": "rejected", "decided_by": "user", "reject_reason": "not_n
   invalid_transition` ("…It needs approval first."). Reporting the same status twice is a no-op.
 - `succeeded` on a purchase records an order and a spend entry (at `final_amount_cents`, defaulting to
   `amount_cents`) and fills `order_id`. A final amount above what was approved is recorded as it happened and
-  flagged `over_authorization` in the audit trail.
+  flagged `over_authorization` in the audit trail. A final amount **below** the approved figure is rejected
+  with `422 under_authorization` so spend/mandate accounting cannot be zeroed out by the device.
 - `failed` and `outcome_unknown` take an optional `error_code` (`^[a-z0-9_]{1,40}$`). Never send page text.
 - `agora` intents report their own outcome: calling this on one is `409 server_executed`.
 
@@ -596,6 +597,7 @@ Audit `meta` holds codes and counts only: no titles, amounts or rationale.
 | 409 | `duplicate_request` | A concurrent request with the same key is still finishing; retry |
 | 409 | `budget_exists` | A second active budget for the same period and category |
 | 422 | `idempotency_key_reused` | Same key, different body |
+| 422 | `under_authorization` | Device reported `final_amount_cents` below the approved amount |
 | 422 | `invalid_expiry` | Mandate expiry in the past or more than a year out |
 | 422 | `invalid_request` | Validation failed (lists the fields, never the values) |
 | 503 | `payments_unavailable` | Ordinary-account Agora checkout has no real payment provider; nothing was charged |

@@ -352,6 +352,9 @@ async def report_outcome(intent_id: UUID, body: IntentOutcomeIn, request: Reques
         row = await _locked(conn, intent_id, user.user_id)
         if row["execution"] != "device":
             raise Problem(409, "server_executed", "Agora checkout reports its own outcome.")
+        # Same household lock as propose/approve: a succeeded purchase must serialize with concurrent
+        # policy decisions so under-reported finals cannot slip past budget/mandate accounting.
+        await _lock_household(conn, row["household_id"])
         if row["status"] == body.status:
             return await _load(conn, intent_id, user.user_id)
         if body.status not in DEVICE_TRANSITIONS.get(row["status"], set()):
@@ -362,6 +365,11 @@ async def report_outcome(intent_id: UUID, body: IntentOutcomeIn, request: Reques
         meta: dict = {"kind": row["kind"], "from": row["status"]}
         if body.status == "succeeded" and row["kind"] == "purchase":
             final = body.final_amount_cents if body.final_amount_cents is not None else row["amount_cents"]
+            # Reject under-auth: reporting $0 (or any amount below the approved figure) would skip
+            # spend_entries and count as $0 against mandates/budgets.
+            if final is None or row["amount_cents"] is None or final < row["amount_cents"]:
+                raise Problem(422, "under_authorization",
+                              "final_amount_cents cannot be below the approved amount.")
             fields["final_amount_cents"] = final
             order_id, _ = await record_order(conn, row, final, provider="merchant_site")
             meta["order_id"] = str(order_id)

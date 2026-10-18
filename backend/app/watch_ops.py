@@ -615,7 +615,11 @@ class WatchService:
             last_inbox = await conn.fetchval(
                 'SELECT max(created_at) FROM notifications WHERE user_id=$1 AND watch_id=$2',
                 sub['user_id'], watch['id'])
-            if last_inbox and now-last_inbox < timedelta(hours=sub['cooldown_hours']):
+            # Restocks must bypass cooldown: a deferred overnight alert may have been suppressed
+            # after an intermediate out-of-stock observation, and that inbox row would otherwise
+            # mute the later in-stock match the user was waiting for.
+            if (last_inbox and not restocked
+                    and now-last_inbox < timedelta(hours=sub['cooldown_hours'])):
                 continue
             local = now.astimezone(ZoneInfo(sub['timezone']))
             day_start = local.replace(hour=0, minute=0, second=0, microsecond=0)

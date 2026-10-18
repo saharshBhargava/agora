@@ -317,6 +317,36 @@ final class TripStoreTests: XCTestCase {
         await store.plan(options: options)
         XCTAssertEqual(store.proposals.count, 1)
     }
+    func testAbsentCalendarLookupOffersReleaseWithoutCreating() async throws {
+        await store.plan(options: options); server.unknownCreation = true
+        await store.schedule(try XCTUnwrap(store.proposals.first))
+        XCTAssertEqual(store.trips.first?.status, "outcome_unknown")
+        server.event = nil
+        await store.reconcile(try XCTUnwrap(store.trips.first))
+        XCTAssertEqual(store.trips.first?.status, "outcome_unknown")
+        XCTAssertEqual(server.createCount, 1)
+        XCTAssertTrue(store.notice?.contains("release") == true)
+        await store.release(try XCTUnwrap(store.trips.first))
+        XCTAssertNil(store.error); XCTAssertEqual(store.trips.first?.status, "failed")
+        XCTAssertEqual(server.createCount, 1)
+        await store.plan(options: options)
+        XCTAssertEqual(store.proposals.count, 1)
+    }
+    func testReservedPastSlotCanReleaseWithoutCreating() async throws {
+        await store.plan(options: options)
+        await store.schedule(try XCTUnwrap(store.proposals.first))
+        server.record?["status"] = "reserved"; server.event = nil; server.createCount = 0
+        await store.refresh()
+        let past = tripNow.addingTimeInterval(3600)
+        let pastStore = TripStore(api: api, inventory: inventory, calendar: calendar, now: { past })
+        await pastStore.refresh()
+        await pastStore.resume(try XCTUnwrap(pastStore.trips.first))
+        XCTAssertNotNil(pastStore.error); XCTAssertEqual(pastStore.trips.first?.status, "reserved")
+        XCTAssertEqual(server.createCount, 0)
+        await pastStore.release(try XCTUnwrap(pastStore.trips.first))
+        XCTAssertNil(pastStore.error); XCTAssertEqual(pastStore.trips.first?.status, "failed")
+        XCTAssertEqual(server.createCount, 0)
+    }
     func testExistingEventFingerprintMismatchBlocksReservedResume() async throws {
         await store.plan(options: options)
         await store.schedule(try XCTUnwrap(store.proposals.first))

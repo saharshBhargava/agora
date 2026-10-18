@@ -172,8 +172,14 @@ async def outcome(trip_id: UUID, body: TripOutcome, request: Request, user: Prin
             raise not_found("trip")
         if (row["status"], row["event_id"], row["event_url"]) == (body.status, body.event_id, body.event_url):
             return present(row, user.user_id)
-        if (row["status"] in ("scheduled", "failed") or
-                (row["status"] == "outcome_unknown" and body.status != "scheduled")):
+        # reserved → scheduled | outcome_unknown | failed
+        # outcome_unknown → scheduled (verified event) | failed (user confirmed absence / release)
+        # Terminal scheduled/failed only accept identical replays (handled above).
+        allowed = {
+            "reserved": {"scheduled", "outcome_unknown", "failed"},
+            "outcome_unknown": {"scheduled", "failed"},
+        }
+        if body.status not in allowed.get(row["status"], set()):
             raise Problem(409, "invalid_trip_transition", "This Calendar outcome cannot be changed to that status.")
         row = await conn.fetchrow(
             """UPDATE replenishment_trips SET status = $2, event_id = $3, event_url = $4, updated_at = now()

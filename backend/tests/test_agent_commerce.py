@@ -147,6 +147,28 @@ async def test_allow_within_mandate_device_checkout(client):
     assert listed["decision"] == "allow" and listed["reason_codes"] == ["autonomy_allows"]
 
 
+async def test_device_outcome_rejects_under_authorization(client):
+    """Reporting a final below the approved amount must not create a spend entry or succeed."""
+    h = await fresh(client)
+    await mandate(client, h)
+    intent = (await propose(client, h)).json()
+    assert intent["status"] == "approved" and intent["amount_cents"] == 899
+    assert (await outcome(client, h, intent["id"], "executing")).status_code == 200
+
+    for final in (0, 1, 898):
+        denied = await outcome(client, h, intent["id"], "succeeded", final_amount_cents=final)
+        assert denied.status_code == 422 and denied.json()["title"] == "under_authorization", denied.text
+    # No order/spend yet; the intent stays executing (still reserved against the mandate period).
+    assert (await client.get("/v1/spend", headers=h)).json()["total_cents"] == 0
+    assert (await client.get(f"/v1/agent/intents/{intent['id']}", headers=h)).json()["status"] == "executing"
+    assert (await client.get("/v1/agent/mandates", headers=h)).json()[0]["spent_this_period_cents"] == 899
+
+    paid = await outcome(client, h, intent["id"], "succeeded", final_amount_cents=899)
+    assert paid.status_code == 200 and paid.json()["final_amount_cents"] == 899
+    assert (await client.get("/v1/spend", headers=h)).json()["total_cents"] == 899
+    assert (await client.get("/v1/agent/mandates", headers=h)).json()[0]["spent_this_period_cents"] == 899
+
+
 async def test_escalates_over_cap_and_user_decides(client):
     h = await fresh(client)
     await mandate(client, h)
