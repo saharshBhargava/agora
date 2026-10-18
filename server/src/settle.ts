@@ -1,5 +1,5 @@
 // Receipt matching, tax allocation and the resumable settle sequence. All money is integer cents.
-import { allocateTax } from './money.js';
+import { allocateTax, splitChip } from './money.js';
 import type { PaymentsProvider } from './payments/provider.js';
 import { sharesFor } from './run.js';
 import type { Chip, PersonSettle, ReceiptLine, ReceiptState, Run } from './types.js';
@@ -31,38 +31,76 @@ function confidence(line: string, chipName: string): number {
   return hit / chipTokens.size;
 }
 
-const isLive = (c: Chip): boolean =>
+/** Chips a receipt line can pay for. */
+export const isLive = (c: Chip): boolean =>
   c.state !== 'wish' && c.state !== 'removed' && c.state !== 'identifying' && !c.putBack && !c.dropped;
 
-export function matchReceipt(run: Run, lines: ReceiptLine[]): ReceiptState {
+type Pair = { chipId: string; lineIndex: number; confidence: number };
+
+/** Only proposals naming a live chip, a real non-tax line and a confidence in [0.5, 1] survive. */
+function validProposals(proposals: readonly unknown[], lines: ReceiptLine[], chipIds: Set<string>): Pair[] {
+  const out: Pair[] = [];
+  for (const p of proposals) {
+    if (typeof p !== 'object' || p === null) continue;
+    const { lineIndex, chipId, confidence: conf } = p as Record<string, unknown>;
+    if (typeof lineIndex !== 'number' || !Number.isInteger(lineIndex) || lineIndex < 0 || lineIndex >= lines.length) continue;
+    if (lines[lineIndex].isTax) continue;
+    if (typeof chipId !== 'string' || !chipIds.has(chipId)) continue;
+    if (typeof conf !== 'number' || !Number.isFinite(conf) || conf < THRESHOLD || conf > 1) continue;
+    out.push({ chipId, lineIndex, confidence: conf });
+  }
+  return out;
+}
+
+/**
+ * Pairs receipt lines with live chips. `proposals` (a model's matches; untrusted) are validated and
+ * taken first, best confidence first; the token-overlap matcher fills whatever they left. Each chip
+ * gets at most one line, and a line covers at most `quantity` chips (one unless it says more).
+ */
+export function matchReceipt(run: Run, lines: ReceiptLine[], proposals?: readonly unknown[] | null): ReceiptState {
   const chips = run.chips.filter(isLive);
-  const pairs: { chipId: string; lineIndex: number; confidence: number }[] = [];
+  const usedChips = new Set<string>();
+  const lineUse = new Map<number, number>();
+  const matches: ReceiptState['matches'] = [];
+  const take = (pairs: Pair[], capacity: (lineIndex: number) => number): void => {
+    pairs.sort((a, b) => b.confidence - a.confidence || a.lineIndex - b.lineIndex);
+    for (const p of pairs) {
+      const used = lineUse.get(p.lineIndex) ?? 0;
+      if (usedChips.has(p.chipId) || used >= capacity(p.lineIndex)) continue;
+      usedChips.add(p.chipId);
+      lineUse.set(p.lineIndex, used + 1);
+      matches.push(p);
+    }
+  };
+
+  if (proposals) {
+    take(validProposals(proposals, lines, new Set(chips.map((c) => c.id))), (i) => Math.max(1, lines[i].quantity));
+  }
+  const overlap: Pair[] = [];
   lines.forEach((line, lineIndex) => {
-    if (line.isTax) return;
+    if (line.isTax || lineUse.has(lineIndex)) return;
     for (const c of chips) {
+      if (usedChips.has(c.id)) continue;
       const conf = confidence(line.text, c.name);
-      if (conf >= THRESHOLD) pairs.push({ chipId: c.id, lineIndex, confidence: conf });
+      if (conf >= THRESHOLD) overlap.push({ chipId: c.id, lineIndex, confidence: conf });
     }
   });
-  pairs.sort((a, b) => b.confidence - a.confidence || a.lineIndex - b.lineIndex);
-  const usedChips = new Set<string>();
-  const usedLines = new Set<number>();
-  const matches: ReceiptState['matches'] = [];
-  for (const p of pairs) {
-    if (usedChips.has(p.chipId) || usedLines.has(p.lineIndex)) continue;
-    usedChips.add(p.chipId);
-    usedLines.add(p.lineIndex);
-    matches.push(p);
-  }
+  take(overlap, () => 1);
+
   matches.sort((a, b) => a.lineIndex - b.lineIndex);
-  const unmatchedLines = lines.flatMap((l, i) => (l.isTax || usedLines.has(i) ? [] : [i]));
+  const unmatchedLines = lines.flatMap((l, i) => (l.isTax || lineUse.has(i) ? [] : [i]));
   return { lines, matches, unmatchedLines };
 }
 
 /** Prices matched chips from the receipt (line plus pro rata tax) and sets chip states. Claims are kept. */
 function priceFromReceipt(run: Run, receipt: ReceiptState): Run {
   const taxCents = receipt.lines.filter((l) => l.isTax).reduce((a, l) => a + l.cents, 0);
-  const lineCents = receipt.matches.map((m) => receipt.lines[m.lineIndex].cents);
+  // A line covering several chips (quantity > 1) splits its total among them.
+  const chipsByLine = new Map<number, string[]>();
+  for (const m of receipt.matches) chipsByLine.set(m.lineIndex, [...(chipsByLine.get(m.lineIndex) ?? []), m.chipId]);
+  const lineCents = receipt.matches.map(
+    (m) => splitChip(receipt.lines[m.lineIndex].cents, chipsByLine.get(m.lineIndex) ?? [m.chipId]).get(m.chipId) ?? 0,
+  );
   const tax = allocateTax(lineCents, taxCents);
   const priceByChip = new Map<string, number>();
   receipt.matches.forEach((m, i) => priceByChip.set(m.chipId, lineCents[i] + tax[i]));

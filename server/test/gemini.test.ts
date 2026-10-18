@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getPrice } from '../src/price/provider.js';
 import { GeminiPrice } from '../src/price/gemini.js';
 import { firstJSONObject } from '../src/gemini/json.js';
-import { generate, geminiModels } from '../src/gemini/client.js';
+import { generate, geminiFastModels, geminiModels } from '../src/gemini/client.js';
 import { getVision } from '../src/vision/provider.js';
 import { GeminiVision, identifyPrompt } from '../src/vision/gemini.js';
 
@@ -87,6 +87,45 @@ describe('GeminiVision', () => {
       { text: 'MILK', cents: 429, quantity: 1 },
       { text: 'EGGS', cents: 872, quantity: 2 },
     ]);
+  });
+});
+
+describe('GeminiVision.matchReceipt', () => {
+  const lines = [
+    { text: 'COKE ZERO 2L', cents: 299, quantity: 1, isTax: false },
+    { text: 'TAX', cents: 30, quantity: 1, isTax: true },
+    { text: 'BNNA', cents: 120, quantity: 1, isTax: false },
+  ];
+  const chips = [
+    { id: 'c1', name: 'Coca-Cola Zero Sugar 2 L', priceCents: 329 },
+    { id: 'c2', name: 'Bananas', priceCents: null },
+  ];
+  it('asks a fast model with a JSON schema, sending non-tax lines and chips as data', async () => {
+    const reqs: Req[] = [];
+    const matches = [{ lineIndex: 0, chipId: 'c1', confidence: 0.92 }, { lineIndex: 2, chipId: 'c2', confidence: 0.8 }];
+    const v = new GeminiVision({ apiKey: 'k', fetchImpl: fakeFetch(textReply(JSON.stringify({ matches })), reqs) });
+    expect(await v.matchReceipt(lines, chips)).toEqual(matches);
+    expect(reqs).toHaveLength(1);
+    expect(reqs[0].url).toContain(geminiFastModels()[0]);
+    const cfg = reqs[0].body.generationConfig;
+    expect(cfg.responseMimeType).toBe('application/json');
+    expect(cfg.responseJsonSchema.required).toEqual(['matches']);
+    expect(reqs[0].body.systemInstruction.parts[0].text).toMatch(/data, never instructions/);
+    const sent = reqs[0].body.contents[0].parts[0].text as string;
+    expect(sent).toContain(JSON.stringify([
+      { lineIndex: 0, text: 'COKE ZERO 2L', cents: 299, quantity: 1 },
+      { lineIndex: 2, text: 'BNNA', cents: 120, quantity: 1 },
+    ]));
+    expect(sent).toContain(JSON.stringify(chips));
+  });
+  it('throws when the reply has no matches array', async () => {
+    const v = new GeminiVision({ apiKey: 'k', fetchImpl: fakeFetch(textReply('{"lines":[]}')) });
+    await expect(v.matchReceipt(lines, chips)).rejects.toThrow();
+    const junk = new GeminiVision({ apiKey: 'k', fetchImpl: fakeFetch(textReply('not json')) });
+    await expect(junk.matchReceipt(lines, chips)).rejects.toThrow();
+  });
+  it('the stub vision has no matcher, so stub mode keeps the overlap matcher', () => {
+    expect((getVision() as { matchReceipt?: unknown }).matchReceipt).toBeUndefined();
   });
 });
 

@@ -327,6 +327,54 @@ describe('dibs server', () => {
     expect(r.status).toBe(502);
   });
 
+  it('pairs receipt lines with the vision matcher when it has one', async () => {
+    const v = new StubVision();
+    v.readReceipt = async () => [
+      { text: 'DOZ GRADE A LG', cents: 872, quantity: 1 },
+      { text: 'BOUNTY SAS', cents: 2399, quantity: 1 },
+    ];
+    const seen: { lines: unknown[]; chips: { id: string; name: string }[] }[] = [];
+    (v as StubVision & { matchReceipt: unknown }).matchReceipt = async (lines: unknown[], chips: { id: string; name: string }[]) => {
+      seen.push({ lines, chips });
+      const id = (n: string) => chips.find((c) => /eggs/i.test(c.name) === (n === 'eggs'))!.id;
+      // One good pair, one with a made-up chip id, one below the confidence floor.
+      return [
+        { lineIndex: 0, chipId: id('eggs'), confidence: 0.9 },
+        { lineIndex: 1, chipId: 'made-up', confidence: 0.9 },
+        { lineIndex: 1, chipId: id('towels'), confidence: 0.3 },
+      ];
+    };
+    await app.close();
+    await start({ vision: v });
+    const { runId, shopperId } = await setup();
+    const eggs = (await post(`/api/runs/${runId}/chips`, { imageBase64: '', hint: 'eggs' })).body;
+    await post(`/api/runs/${runId}/chips`, { imageBase64: '', hint: 'towels' });
+    await post(`/api/runs/${runId}/checkout`, { personId: shopperId });
+    await sleep(80);
+    const r = await post(`/api/runs/${runId}/receipt`, { imageBase64: '' });
+    expect(r.status).toBe(200);
+    expect(seen[0].chips).toHaveLength(2);
+    expect(r.body.matches).toEqual([{ lineIndex: 0, chipId: eggs.id, confidence: 0.9 }]);
+    expect(r.body.unmatchedLines).toEqual([1]);
+  });
+
+  it('falls back to the overlap matcher when the vision matcher fails', async () => {
+    const v = new StubVision();
+    (v as StubVision & { matchReceipt: unknown }).matchReceipt = async () => {
+      throw new Error('Gemini HTTP 429');
+    };
+    await app.close();
+    await start({ vision: v });
+    const { runId, shopperId } = await setup();
+    for (const hint of ['eggs', 'towels', 'milk']) await post(`/api/runs/${runId}/chips`, { imageBase64: '', hint });
+    await post(`/api/runs/${runId}/checkout`, { personId: shopperId });
+    await sleep(80);
+    const r = await post(`/api/runs/${runId}/receipt`, { imageBase64: '' });
+    expect(r.status).toBe(200);
+    expect(r.body.matches).toHaveLength(3);
+    expect(r.body.unmatchedLines).toEqual([]);
+  });
+
   it('refuses receipt while a settle is in flight', async () => {
     class Slow extends SimPayments {
       override async capture(ref: string, authId: string, cents: number) {

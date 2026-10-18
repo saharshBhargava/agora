@@ -72,6 +72,89 @@ describe('matchReceipt', () => {
   });
 });
 
+describe('matchReceipt with model proposals', () => {
+  // Abbreviations the token overlap can't pair with the chip names.
+  const terse = parseReceiptLines([
+    { text: 'DOZ GRADE A LG', cents: 872, quantity: 1 },
+    { text: 'BOUNTY SAS', cents: 2399, quantity: 1 },
+    { text: 'DAIRY RF 1GAL', cents: 429, quantity: 1 },
+    { text: 'SALES TAX', cents: 30, quantity: 1 },
+  ]);
+  it('the overlap matcher alone misses abbreviated lines', () => {
+    expect(matchReceipt(lockedRun(), terse).matches).toEqual([]);
+  });
+  it('uses valid proposals with their confidence', () => {
+    const m = matchReceipt(lockedRun(), terse, [
+      { lineIndex: 0, chipId: 'eggs', confidence: 0.9 },
+      { lineIndex: 1, chipId: 'towels', confidence: 0.8 },
+      { lineIndex: 2, chipId: 'milk', confidence: 0.7 },
+    ]);
+    expect(m.matches).toEqual([
+      { lineIndex: 0, chipId: 'eggs', confidence: 0.9 },
+      { lineIndex: 1, chipId: 'towels', confidence: 0.8 },
+      { lineIndex: 2, chipId: 'milk', confidence: 0.7 },
+    ]);
+    expect(m.unmatchedLines).toEqual([]);
+  });
+  it('drops proposals with unknown ids, bad indexes, tax lines, bad or low confidence', () => {
+    const run = putBack(lockedRun(), 'milk');
+    const m = matchReceipt(run, terse, [
+      { lineIndex: 0, chipId: 'nope', confidence: 0.9 },
+      { lineIndex: 9, chipId: 'eggs', confidence: 0.9 },
+      { lineIndex: 0.5, chipId: 'eggs', confidence: 0.9 },
+      { lineIndex: -1, chipId: 'eggs', confidence: 0.9 },
+      { lineIndex: 3, chipId: 'eggs', confidence: 0.9 },
+      { lineIndex: 0, chipId: 'eggs', confidence: 1.5 },
+      { lineIndex: 0, chipId: 'eggs', confidence: Number.NaN },
+      { lineIndex: 1, chipId: 'towels', confidence: 0.49 },
+      { lineIndex: 2, chipId: 'milk', confidence: 0.95 },
+      { lineIndex: '1', chipId: 'towels', confidence: 0.9 },
+      null,
+      'eggs',
+    ]);
+    expect(m.matches).toEqual([]);
+    expect(m.unmatchedLines).toEqual([0, 1, 2]);
+  });
+  it('gives each chip one line and each line one chip, best confidence first', () => {
+    const m = matchReceipt(lockedRun(), terse, [
+      { lineIndex: 0, chipId: 'eggs', confidence: 0.6 },
+      { lineIndex: 1, chipId: 'eggs', confidence: 0.9 },
+      { lineIndex: 1, chipId: 'towels', confidence: 0.8 },
+      { lineIndex: 2, chipId: 'milk', confidence: 0.7 },
+    ]);
+    // eggs takes line 1 (0.9); towels can't share line 1, so it is left for the overlap matcher (which misses).
+    expect(m.matches.map((x) => [x.lineIndex, x.chipId])).toEqual([[1, 'eggs'], [2, 'milk']]);
+    expect(m.unmatchedLines).toEqual([0]);
+  });
+  it('lets a line with quantity 2 cover two chips and splits its price', () => {
+    let run = lockedRun();
+    run = { ...run, state: 'open' };
+    run = addChip(run, chip('eggs2', 'Kirkland Eggs 24 ct', 872), 300);
+    run = lock(checkout(run, 2000, 0), 2000);
+    const lines = parseReceiptLines([
+      { text: '2 @ DOZ GRADE A', cents: 1745, quantity: 2 },
+      { text: 'BOUNTY SAS', cents: 2399, quantity: 1 },
+    ]);
+    const m = matchReceipt(run, lines, [
+      { lineIndex: 0, chipId: 'eggs', confidence: 0.9 },
+      { lineIndex: 0, chipId: 'eggs2', confidence: 0.9 },
+      { lineIndex: 0, chipId: 'milk', confidence: 0.6 },
+      { lineIndex: 1, chipId: 'towels', confidence: 0.9 },
+    ]);
+    expect(m.matches.map((x) => [x.lineIndex, x.chipId])).toEqual([[0, 'eggs'], [0, 'eggs2'], [1, 'towels']]);
+    const out = applyReceipt(run, m);
+    expect(get(out, 'eggs').priceCents! + get(out, 'eggs2').priceCents!).toBe(1745);
+    expect([get(out, 'eggs').priceCents, get(out, 'eggs2').priceCents].sort()).toEqual([872, 873]);
+    expect(get(out, 'milk').state).toBe('unmatched');
+  });
+  it('fills chips the model left out with the overlap matcher', () => {
+    const lines = parseReceiptLines([...terse.slice(0, 2), { text: '2% MILK', cents: 429, quantity: 1 }]);
+    const m = matchReceipt(lockedRun(), lines, [{ lineIndex: 0, chipId: 'eggs', confidence: 0.9 }]);
+    expect(m.matches.map((x) => [x.lineIndex, x.chipId])).toEqual([[0, 'eggs'], [2, 'milk']]);
+    expect(m.unmatchedLines).toEqual([1]);
+  });
+});
+
 describe('applyReceipt', () => {
   it('replaces the sticker price with the receipt price and keeps claims', () => {
     const run = lockedRun(850);

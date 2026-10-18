@@ -22,7 +22,7 @@ import {
   setAuthorization, undoRemove, wish,
 } from './run.js';
 import { seedRun } from './seed.js';
-import { applyReceipt, fixReceiptLine, matchReceipt, parseReceiptLines, settle } from './settle.js';
+import { applyReceipt, fixReceiptLine, isLive, matchReceipt, parseReceiptLines, settle } from './settle.js';
 import { createStore } from './store.js';
 import type { ServerMsg } from './protocol.js';
 import type { Run } from './types.js';
@@ -405,9 +405,22 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     } catch {
       return reply.code(502).send({ error: 'receipt read failed' });
     }
+    // A model's pairing (VISION=gemini) reads abbreviations the token overlap misses; any failure
+    // just leaves the overlap matcher on its own.
+    let proposals: unknown[] | null = null;
+    if (vision.matchReceipt) {
+      const chips = (store.get(run.id)?.chips ?? run.chips)
+        .filter(isLive)
+        .map((c) => ({ id: c.id, name: c.name, priceCents: c.priceCents }));
+      try {
+        if (chips.length > 0) proposals = await vision.matchReceipt(lines, chips);
+      } catch (e) {
+        req.log.warn({ err: e instanceof Error ? e.message : String(e) }, 'receipt match fell back to overlap');
+      }
+    }
     if (settling.has(run.id)) return fail(reply, 'settling');
     const res = store.update(run.id, (r) =>
-      r.state === 'locked' || r.state === 'receipt' ? applyReceipt(r, matchReceipt(r, lines)) : { error: 'not locked' },
+      r.state === 'locked' || r.state === 'receipt' ? applyReceipt(r, matchReceipt(r, lines, proposals)) : { error: 'not locked' },
     );
     return 'error' in res ? fail(reply, res.error) : res.run.receipt;
   });
