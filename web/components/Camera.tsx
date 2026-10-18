@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Box } from '@/lib/types';
 import { FRAME_W, frameBoxToDisplay, frameHeight, tapToFrame } from '@/lib/frame';
 import { propBase64, type PropName } from '@/lib/props';
+import { parkStream, takeParkedStream } from '@/lib/stream';
 
 const FRAME_MS = 500; // 2 fps
 const QUALITY = 0.6;
@@ -18,11 +19,17 @@ export type CameraProps = {
   pending?: boolean;
   /** Link target for the "Use sample items" fallback. */
   mockHref: string;
+  /** On unmount, park the stream for the next camera (cart to receipt) instead of stopping it. */
+  persist?: boolean;
+  /** Hide the "camera is off" fallback link (the receipt camera offers "From photos" instead). */
+  hideFallback?: boolean;
 };
 
 /** Rear camera preview. Streams a 640 px JPEG frame every 500 ms; tapping the preview sends identifyAt. No shutter. */
-export function Camera({ send, enabled, region, label, pending = true, mockHref }: CameraProps) {
+export function Camera({ send, enabled, region, label, pending = true, mockHref, persist = false, hideFallback = false }: CameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const persistRef = useRef(persist);
+  persistRef.current = persist;
   const boxRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
   const [denied, setDenied] = useState(false);
@@ -63,7 +70,7 @@ export function Camera({ send, enabled, region, label, pending = true, mockHref 
       if (stopped || acquiring) return;
       acquiring = true;
       try {
-        const next = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        const next = takeParkedStream() ?? (await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false }));
         if (stopped) {
           next.getTracks().forEach((t) => t.stop());
           return;
@@ -104,7 +111,10 @@ export function Camera({ send, enabled, region, label, pending = true, mockHref 
     return () => {
       stopped = true;
       document.removeEventListener('visibilitychange', onVisibility);
-      stream?.getTracks().forEach((t) => t.stop());
+      if (stream && persistRef.current) {
+        stream.getTracks().forEach((t) => { t.onended = null; });
+        parkStream(stream);
+      } else stream?.getTracks().forEach((t) => t.stop());
       void wake?.release().catch(() => undefined);
     };
   }, []);
@@ -137,8 +147,8 @@ export function Camera({ send, enabled, region, label, pending = true, mockHref 
   if (denied) {
     return (
       <div className="camera-denied">
-        <p>The camera is off. Allow camera access to stream the cart, or drop in sample items.</p>
-        <a className="btn btn-sm btn-secondary" href={mockHref}>Use sample items</a>
+        <p>The camera is off. Allow camera access{hideFallback ? ', or pick a photo instead.' : ' to stream the cart, or drop in sample items.'}</p>
+        {!hideFallback && <a className="btn btn-sm btn-secondary" href={mockHref}>Use sample items</a>}
       </div>
     );
   }

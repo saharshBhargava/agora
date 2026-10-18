@@ -32,7 +32,8 @@ vi.mock('@/lib/api', () => ({
   },
 }));
 let params = new URLSearchParams('run=r1&person=shop&mock=1');
-vi.mock('next/navigation', () => ({ useSearchParams: () => params }));
+const routerPush = vi.fn();
+vi.mock('next/navigation', () => ({ useSearchParams: () => params, useRouter: () => ({ push: routerPush, replace: routerPush }) }));
 
 import ShopperScreen from '@/app/shopper/ShopperScreen';
 import { Camera } from '@/components/Camera';
@@ -198,7 +199,7 @@ test('UnclaimedList shows Mine and Put back for the milk when locked', async () 
   expect(onPutBack).toHaveBeenCalledWith('milk');
   fireEvent.click(screen.getByRole('button', { name: 'Back to cart' }));
   expect(onBack).toHaveBeenCalled();
-  expect(screen.getByRole('link', { name: 'Go to settle' })).toHaveAttribute('href', '/settle?run=r1&person=shop');
+  expect(screen.getByRole('link', { name: "I've paid · snap the receipt" })).toHaveAttribute('href', '/settle?run=r1&person=shop');
 });
 
 test('after the receipt the shopper sees Go to settle instead of the board, keeping mock=1', () => {
@@ -212,9 +213,31 @@ test('after the receipt the shopper sees Go to settle instead of the board, keep
   }
 });
 
-test('UnclaimedList Go to settle keeps mock=1', () => {
-  render(<UnclaimedList run={baseRun({ state: 'locked' })} personId="shop" mock onPutBack={vi.fn()} onBack={vi.fn()} />);
-  expect(screen.getByRole('link', { name: 'Go to settle' })).toHaveAttribute('href', '/settle?run=r1&person=shop&mock=1');
+test('UnclaimedList settle link keeps mock=1 and navigates client-side when asked', () => {
+  const onGoSettle = vi.fn();
+  render(<UnclaimedList run={baseRun({ state: 'locked' })} personId="shop" mock onPutBack={vi.fn()} onBack={vi.fn()} onGoSettle={onGoSettle} />);
+  const link = screen.getByRole('link', { name: "I've paid · snap the receipt" });
+  expect(link).toHaveAttribute('href', '/settle?run=r1&person=shop&mock=1');
+  fireEvent.click(link);
+  expect(onGoSettle).toHaveBeenCalledWith('/settle?run=r1&person=shop&mock=1');
+});
+
+test('a put-back row is struck through with no Mine / Put back buttons', () => {
+  const run = baseRun({ state: 'locked', chips: [mk({ id: 'ch', name: 'Rotisserie chicken', priceCents: 499, state: 'locked', putBack: true })] });
+  render(<UnclaimedList run={run} personId="shop" onPutBack={vi.fn()} onBack={vi.fn()} />);
+  expect(screen.getByText('Putting back')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Put back' })).toBeNull();
+});
+
+test('last call shows the countdown band with Back to cart over the camera', () => {
+  vi.useFakeTimers();
+  const endsAt = Date.now() + 4000;
+  setSock(baseRun({ state: 'lastCall', lastCallEndsAt: endsAt }), { lastCallEndsAt: endsAt });
+  render(<ShopperScreen />);
+  expect(screen.getByText('0:04')).toBeInTheDocument();
+  expect(screen.getByText(/Then the cart locks/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Back to cart' }));
+  expect(back).toHaveBeenCalledWith('r1', 'shop');
 });
 
 test('Camera holds a wake lock and re-acquires the camera when visible again or when the track ends', async () => {

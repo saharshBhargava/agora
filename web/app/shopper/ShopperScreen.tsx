@@ -1,12 +1,13 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useRun } from '@/lib/socket';
 import { useCountdown } from '@/lib/countdown';
 import { useHighlight } from '@/lib/highlight';
 import { formatCents } from '@/lib/money';
 import { coverage, listNames, ringColor } from '@/lib/share';
+import { tileColor } from '@/lib/tile';
 import { Board } from '@/components/Board';
 import { Camera, MockProps } from '@/components/Camera';
 import { FixChipSheet } from '@/components/FixChipSheet';
@@ -17,9 +18,11 @@ import type { Chip } from '@/lib/types';
 const UNDO_MS = 5000;
 const NOTICE_MS = 4000;
 const TIP = 'Tap the item on the screen to identify it';
+const clock = (secs: number) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
 
 export default function ShopperScreen() {
   const params = useSearchParams();
+  const router = useRouter();
   const runId = params.get('run') ?? '';
   const personId = params.get('person') ?? '';
   const mock = params.get('mock') === '1';
@@ -35,6 +38,10 @@ export default function ShopperScreen() {
   const endsAt = lastCallEndsAt ?? run?.lastCallEndsAt ?? null;
   const secs = useCountdown(run?.state === 'lastCall' ? endsAt : null);
   const dismissRemoved = useCallback(() => setRemoved(null), []);
+  // Last call has no fixed length on the client: the first countdown value seen is the full bar.
+  const lastCallTotal = useRef(0);
+  if (secs !== null && secs > lastCallTotal.current) lastCallTotal.current = secs;
+  if (run?.state !== 'lastCall') lastCallTotal.current = 0;
 
   // A new identify attempt (a region) after an error clears the hint. Declared before the error effect so an error wins a tie.
   useEffect(() => {
@@ -80,13 +87,18 @@ export default function ShopperScreen() {
     }
   };
 
+  const settleHref = `/settle?run=${encodeURIComponent(runId)}&person=${encodeURIComponent(personId)}${mock ? '&mock=1' : ''}`;
   // After the receipt the cart is closed: the shopper only moves on to settle.
   if (run.state === 'receipt' || run.state === 'settled' || run.state === 'partlySettled') {
     return (
       <div className="card card-lg closed-panel" role="group" aria-label="Cart closed">
         <h2>The cart is closed</h2>
         <p className="muted">Settle is next: read the receipt, then everyone&apos;s share is captured from their hold.</p>
-        <a className="btn" href={`/settle?run=${encodeURIComponent(runId)}&person=${encodeURIComponent(personId)}${mock ? '&mock=1' : ''}`}>
+        <a
+          className="btn"
+          href={settleHref}
+          onClick={(e) => { e.preventDefault(); router.push(settleHref); }}
+        >
           Go to settle
         </a>
       </div>
@@ -107,8 +119,14 @@ export default function ShopperScreen() {
 
   return (
     <div className="shop bleed">
-      {!locked && (
-        <div className="shop-cam">
+      {locked && (
+        <div className="shop-band shop-band-static">
+          <span className="shop-band-eyebrow">Locked</span>
+          <p className="shop-band-title">Head to the register. Claims are final now.</p>
+        </div>
+      )}
+      {!(locked && mock) && (
+        <div className={`shop-cam${locked ? ' cam-hidden' : ''}`}>
           {mock ? (
             <MockProps
               busy={busy}
@@ -122,6 +140,7 @@ export default function ShopperScreen() {
               label={highlight?.label ?? null}
               pending={highlight?.pending ?? true}
               mockHref={mockHref}
+              persist
             />
           )}
           <div className="cam-bar">
@@ -137,19 +156,27 @@ export default function ShopperScreen() {
             </button>
           </div>
           {hint && <p className="live-notice" role="status">{hint}</p>}
+          {run.state === 'lastCall' && (
+            <div className="shop-band" role="status">
+              <div className="shop-band-top">
+                <span className="shop-band-eyebrow">Last call</span>
+                <span className="money shop-band-count">{clock(secs ?? 0)}</span>
+              </div>
+              <p className="shop-band-title">
+                {claimerNames.length ? `${listNames(claimerNames)} ${claimerNames.length === 1 ? 'sees' : 'see'} this too.` : 'Nobody else is in.'} Then the cart locks.
+              </p>
+              <div className="shop-band-bar" aria-hidden="true">
+                <span style={{ width: `${lastCallTotal.current ? ((secs ?? 0) / lastCallTotal.current) * 100 : 0}%` }} />
+              </div>
+              <button type="button" className="btn btn-pill btn-pill-dark" disabled={busy} onClick={() => act(() => api.back(runId, personId))}>
+                Back to cart
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      <div className={`shop-sheet${locked ? ' shop-sheet-flat' : ''}`}>
-        {run.state === 'lastCall' && (
-          <div className="banner banner-live" role="status">
-            <span>Last call · {secs ?? 0}s</span>
-            <button type="button" className="btn btn-sm btn-secondary" disabled={busy} onClick={() => act(() => api.back(runId, personId))}>
-              Back to cart
-            </button>
-          </div>
-        )}
-
+      <div className={`shop-sheet${locked ? ' shop-sheet-locked' : ''}`}>
         {locked ? (
           <UnclaimedList
             run={run}
@@ -157,6 +184,7 @@ export default function ShopperScreen() {
             mock={mock}
             onPutBack={(chipId) => void act(() => api.putBack(runId, chipId, personId))}
             onBack={() => void act(() => api.back(runId, personId))}
+            onGoSettle={(href) => router.push(href)}
           />
         ) : (
           <>
@@ -179,9 +207,20 @@ export default function ShopperScreen() {
 
             {dupes.map((c) => (
               <div key={c.id} className="card dupe" role="group" aria-label={`${c.name} may be a duplicate`}>
-                <span>Added twice? <strong>{c.name}</strong></span>
+                <div className="dupe-top">
+                  <span className="cart-thumb dupe-thumb" style={{ '--tile': tileColor(c.id) } as React.CSSProperties} aria-hidden="true">
+                    {c.photoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={c.photoUrl} alt="" />
+                    ) : c.name.charAt(0)}
+                  </span>
+                  <span className="dupe-text">
+                    <strong>Added twice?</strong>
+                    <span className="muted">{c.name} showed up again</span>
+                  </span>
+                </div>
                 <div className="dupe-actions">
-                  <button type="button" className="btn btn-sm btn-secondary" onClick={() => setKept((k) => new Set(k).add(c.id))}>Keep both</button>
+                  <button type="button" className="btn btn-sm btn-outline" onClick={() => setKept((k) => new Set(k).add(c.id))}>Keep both</button>
                   <button type="button" className="btn btn-sm" onClick={() => send({ t: 'remove', chipId: c.id })}>Remove one</button>
                 </div>
               </div>

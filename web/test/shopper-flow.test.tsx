@@ -18,7 +18,7 @@ let sock: Record<string, unknown>;
 vi.mock('@/lib/socket', () => ({ useRun: () => sock }));
 const fixChip = vi.fn(async () => ({}));
 vi.mock('@/lib/api', () => ({ api: { fixChip: (...a: unknown[]) => (fixChip as (...x: unknown[]) => unknown)(...a) } }));
-vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams('run=r1&person=shop&mock=1') }));
+vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams('run=r1&person=shop&mock=1'), useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 // jsdom cannot drag: stand in for Board and drive its remove/tap callbacks directly.
 vi.mock('@/components/Board', () => ({
   Board: (p: { onRemove: (id: string) => void; onTap: (id: string) => void }) => (
