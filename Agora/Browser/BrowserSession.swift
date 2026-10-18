@@ -142,7 +142,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         let observation = try await observe()
         guard state.presentation != .hidden, webView.bounds.width > 0 else { throw BrowserError("observation_unavailable", "Show Browser before taking a screenshot.") }
         let savedEpoch = epoch, savedLease = lease
-        let configuration = WKSnapshotConfiguration(); configuration.snapshotWidth = NSNumber(value: 720 / max(webView.traitCollection.displayScale, 1))
+        let configuration = WKSnapshotConfiguration()
+        configuration.snapshotWidth = NSNumber(value: 720.0 / max(Double(webView.traitCollection.displayScale), 1.0))
         let document = documentEpoch
         let captured: Any? = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
             let id = UUID()

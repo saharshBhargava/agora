@@ -97,12 +97,12 @@ Everything else is preset in `render.yaml`:
 
 If an optional blank value prevents Blueprint creation, remove that optional variable from the creation
 form and add it later under the service's **Environment** tab. Do not use made-up keys. Missing vision keys
-allow startup but only recorded replay photos can be processed. For an existing Blueprint, add new secret
+allow startup. The designated account uses built-in recognition; ordinary accounts can process only recorded replay photos until configured. For an existing Blueprint, add new secret
 variables directly in **Environment**: `sync: false` only prompts during initial creation.
 
-## 3. Google sign-in + Calendar (about 2 min)
+## 3. Google sign-in + Calendar (optional; ordinary accounts)
 
-The phone signs in with Google and talks to Google Calendar directly. The backend only checks the Google ID
+For ordinary accounts, the phone signs in with Google and talks to Google Calendar directly. The backend checks the Google ID
 token the phone sends for inventory calls. The Google Cloud project and iOS OAuth client already exist; their
 public IDs are in `Config/Agora.xcconfig`, and `render.yaml` uses the same client ID. While the OAuth app is in
 **Testing**, only listed accounts can sign in, so:
@@ -274,8 +274,9 @@ Open `<origin>/docs` to inspect request/response schemas. Protected endpoints cu
 Authorization header directly and do not expose a Swagger Authorize control; use the PowerShell example
 above for authenticated testing. `/v1/me` should identify Alex Rivera and `/v1/inventory` should contain
 seeded items. An unauthenticated request to `/v1/me` should return 401.
-Finally sign in on the phone with the demo Gmail and approve Calendar. Verify inventory, a real photo scan
-(requires the vision key), and a Calendar event. Calendar traffic goes directly from the phone to Google.
+Finally rebuild the phone app, enter username `demo` and the Render demo password, and tap **Sign in to demo**.
+Verify inventory, sample capture recognition, and an approved Agora Calendar event. Google and real model
+credentials are needed only when separately testing ordinary accounts.
 
 ## 8. Keep it alive until the demo
 

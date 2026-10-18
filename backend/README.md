@@ -187,10 +187,21 @@ Steps (the full walkthrough, including Google sign-in, is in [SETUP.md](../SETUP
 
 The database URL is read from `AGORA_DATABASE_URL`, or from `DATABASE_URL` when a host injects that name.
 
+## Demo access without Google or provider keys
+
+In iOS, use **Sign in to demo**, username `demo`, and the existing Render `AGORA_DEMO_PASSWORD` shared
+privately by the owner. This is also `POST /v1/dev/login`; returned `expires_at` is Unix seconds. The app
+stores only the session token in Keychain. No Gmail password or model key is needed. Google remains optional.
+
+Only the designated account gets built-in chat/caption/recognition, private Calendar events and simulated
+checkout. Scans bypass configured real vision providers for that account. Real users retain real providers.
+Migration `0013` adds calendar data with RLS and seed/backfill coverage. See [the API contract](../docs/api/demo-integrations.md).
+The native Google instructions below describe ordinary accounts.
+
 ## Native Google Calendar onboarding and model tools
 
 Calendar now runs directly in the iOS app using Google's **GoogleSignIn / GoogleSignInSwift 9.2.0 SDK**
-and Google Calendar REST API. Each user signs into Google and grants Calendar access during onboarding.
+and Google Calendar REST API. Ordinary users sign into Google and grant Calendar access during onboarding.
 A deployed Agora backend is **not required for Calendar or chat**. Google access/refresh tokens stay under
 SDK management on the device; they are never sent to model providers or the inventory backend.
 
