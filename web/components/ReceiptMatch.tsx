@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import type { Chip, Person, ReceiptState } from '@/lib/types';
 import { formatCents } from '@/lib/money';
-import { isLiveChip, listNames } from '@/lib/share';
+import { isLiveChip, listNames, nameWithQty, pairableChips } from '@/lib/share';
 import { tileColor } from '@/lib/tile';
 
 const plain = (cents: number) => formatCents(cents).replace('$', '');
@@ -40,8 +40,9 @@ export function ReceiptMatch({
   const [pairing, setPairing] = useState<number | null>(null);
   const matchedIds = new Set(receipt.matches.map((m) => m.chipId));
   // Live chips only: wishes, put-back, removed, dropped and still-identifying chips are never on a receipt.
-  const free = chips.filter((c) => !matchedIds.has(c.id) && isLiveChip(c));
-  const notOnReceipt = free;
+  const notOnReceipt = chips.filter((c) => !matchedIds.has(c.id) && isLiveChip(c));
+  // A line can also go to a chip counted more than once whose lines so far cover fewer items.
+  const free = pairableChips(receipt, chips);
   const { matched, items } = receiptCounts(receipt);
   const total = receipt.lines.reduce((s, l) => s + l.cents, 0);
   const nameOf = (id: string) => people.find((p) => p.id === id)?.name ?? '?';
@@ -91,7 +92,7 @@ export function ReceiptMatch({
                   )}
                   <span className="check-text">
                     <span className="mono check-line">{line.text}</span>
-                    {chip && <span className="check-sub">{chip.name} · {who}</span>}
+                    {chip && <span className="check-sub">{nameWithQty(chip)} · {who}</span>}
                     {mine && <span className="check-sub">Mine</span>}
                     {line.isTax && <span className="check-sub">Tax, spread across the lines</span>}
                     {unmatched && <span className="check-ask">{canFix ? 'Not in the cart. Whose is it?' : 'Unmatched'}</span>}

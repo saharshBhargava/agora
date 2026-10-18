@@ -145,13 +145,18 @@ p { margin: 0; }
 .btn-sm { min-height: var(--tap); border-radius: 14px; font-size: 15px; padding: 0 var(--space-2); }
 .btn-pill { width: auto; min-height: var(--tap); border-radius: 22px; padding: 0 16px; font-size: 14px; background: var(--card); color: var(--ink); border: 1px solid var(--ink); }
 .btn:focus-visible, .input:focus-visible, .chip:focus-visible, .tray-chip:focus-visible, .cart-row:focus-visible,
-.cam-icon-btn:focus-visible, .liveview-toggle:focus-visible, .camera:focus-visible, .toast-action:focus-visible {
+.cam-icon-btn:focus-visible, .liveview-toggle:focus-visible, .camera:focus-visible, .toast-action:focus-visible,
+.qty-btn:focus-visible {
   outline: 3px solid var(--me);
   outline-offset: 2px;
 }
 
 .field { display: flex; flex-direction: column; gap: 4px; }
-.field label { font-size: var(--fs-sm); color: var(--muted); }
+.field label, .field-label { font-size: var(--fs-sm); color: var(--muted); }
+.field-row { display: flex; gap: var(--space-2); align-items: flex-end; }
+.field-row > .field:first-child { flex: 1; min-width: 0; }
+.field-qty { flex: 0 0 auto; }
+.field-qty .qty-stepper { min-height: var(--tap); }
 .input {
   min-height: var(--tap);
   padding: 0 var(--space-2);
@@ -519,6 +524,25 @@ p { margin: 0; }
 .cart-row-price { flex: 0 0 auto; min-width: 56px; text-align: right; font-size: 14px; }
 .cart-row-tag { flex: 0 0 auto; font-size: 12px; color: var(--muted); }
 .cart-row .avatars { --avatar-ring: var(--card); }
+/* The shopper's − N + sits over the row's right padding, outside the row's own (draggable) button. */
+.cart-row-item { position: relative; }
+.cart-row-item-qty > .cart-row { padding-right: 100px; }
+.cart-row-item-qty > .qty-stepper { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); }
+/* The stepper takes width from the name, so a long name wraps to two lines instead of cutting off. */
+.cart-row-item-qty .cart-row-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* One capsule: − N +. Each button keeps a 44 px tall touch target beyond its 32 px look. */
+.qty-stepper {
+  display: inline-flex; align-items: center; flex: 0 0 auto; height: 32px;
+  border: 1px solid var(--line-strong); border-radius: 16px; background: var(--card);
+}
+.qty-btn {
+  appearance: none; position: relative; width: 28px; height: 30px; padding: 0; border: 0; border-radius: 15px;
+  display: grid; place-items: center; font: inherit; font-size: 18px; font-weight: 700; line-height: 1;
+  color: var(--ink); background: transparent; cursor: pointer; touch-action: manipulation;
+}
+.qty-btn::after { content: ''; position: absolute; inset: -7px -2px; }
+.qty-btn:disabled { color: var(--line-strong); cursor: default; }
+.qty-num { min-width: 22px; text-align: center; font-size: 15px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
 .cart-empty { color: var(--muted); font-size: 14px; padding: 4px; }
 .shop-spacer { flex: 1; }
 

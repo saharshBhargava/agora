@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useRun } from '@/lib/socket';
 import { formatCents, wholeCents } from '@/lib/money';
-import { coverage, isLiveChip, listNames } from '@/lib/share';
+import { coverage, isLiveChip, lineCents, listNames, nameWithQty } from '@/lib/share';
 import { ReceiptCamera } from '@/components/ReceiptCamera';
 import { ReceiptMatch, receiptCounts } from '@/components/ReceiptMatch';
 import { SettleLines } from '@/components/SettleLines';
@@ -14,7 +14,7 @@ import type { Run } from '@/lib/types';
 export function staysWith(run: Run, shopperName: string): string | null {
   const items: { name: string; cents: number | null }[] = run.chips
     .filter((c) => isLiveChip(c) && c.claimers.length === 0)
-    .map((c) => ({ name: c.name, cents: c.priceCents }));
+    .map((c) => ({ name: nameWithQty(c), cents: lineCents(c) }));
   for (const i of run.receipt?.mine ?? []) {
     const line = run.receipt?.lines[i];
     if (line) items.push({ name: line.text, cents: line.cents });

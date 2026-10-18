@@ -7,7 +7,7 @@ import { useRun } from '@/lib/socket';
 import { useCountdown } from '@/lib/countdown';
 import { useHighlight } from '@/lib/highlight';
 import { formatCents, wholeCents } from '@/lib/money';
-import { myShare, roomFor } from '@/lib/share';
+import { lineCents, myShare, nameWithQty, roomFor } from '@/lib/share';
 import { runTitle, tileColor } from '@/lib/tile';
 import { Board } from '@/components/Board';
 import { AvatarStack } from '@/components/Avatar';
@@ -81,8 +81,8 @@ export default function ClaimScreen() {
   const open = run.state === 'open' || run.state === 'lastCall';
   const cap = me.authorizedCents ?? 0;
   const mine = chips.filter((c) => c.claimers.includes(personId));
-  const trayTotal = mine.reduce((s, c) => s + myShare(c.priceCents, c.claimers, personId), 0);
-  const room = roomFor(mine.map((c) => c.priceCents ?? 0), cap, run.taxRate);
+  const trayTotal = mine.reduce((s, c) => s + myShare(lineCents(c), c.claimers, personId), 0);
+  const room = roomFor(mine.map((c) => lineCents(c) ?? 0), cap, run.taxRate);
   const settleHref = `/settle?run=${encodeURIComponent(runId)}&person=${encodeURIComponent(personId)}`;
   const others = run.people.filter((p) => p.id !== personId);
   const stack = [...others, me];
@@ -177,9 +177,9 @@ export default function ClaimScreen() {
                 ) : overCap.name.charAt(0)}
               </span>
               <span className="overcap-text">
-                <strong>{overCap.name}</strong>
+                <strong>{nameWithQty(overCap)}</strong>
                 <span className="muted">
-                  {overCap.priceCents === null ? 'Price not known yet' : formatCents(overCap.priceCents)} · more than your {formatCents(Math.max(0, room))} room
+                  {lineCents(overCap) === null ? 'Price not known yet' : formatCents(lineCents(overCap) as number)} · more than your {formatCents(Math.max(0, room))} room
                 </span>
               </span>
             </div>

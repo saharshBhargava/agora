@@ -53,6 +53,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ personId, ...fix }),
     }),
+  setQuantity: (runId: string, chipId: string, personId: string, quantity: number) =>
+    call<Run>(`${run(runId)}/chips/${encodeURIComponent(chipId)}/quantity`, {
+      method: 'POST',
+      body: JSON.stringify({ personId, quantity }),
+    }),
   putBack: (runId: string, chipId: string, personId: string) =>
     call<Run>(`${run(runId)}/chips/${encodeURIComponent(chipId)}/putback`, {
       method: 'POST',

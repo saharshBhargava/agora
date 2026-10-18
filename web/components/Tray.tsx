@@ -3,7 +3,7 @@ import { forwardRef, useCallback, useImperativeHandle, useState, type KeyboardEv
 import { useDndMonitor, useDraggable, useDroppable, type Active } from '@dnd-kit/core';
 import type { Chip as ChipT, Person } from '@/lib/types';
 import { formatCents } from '@/lib/money';
-import { listNames, myShare, roomFor } from '@/lib/share';
+import { lineCents, listNames, myShare, nameWithQty, roomFor } from '@/lib/share';
 import { tileColor } from '@/lib/tile';
 import { UndoToast } from './UndoToast';
 
@@ -37,7 +37,8 @@ function liftedOf(active: Active): Lifted | null {
 
 export const TrayChipView = forwardRef<HTMLButtonElement, { chip: ChipT; me: string; people?: Person[] } & React.ButtonHTMLAttributes<HTMLButtonElement>>(function TrayChipView({ chip, me, people = [], className, style, ...rest }, ref) {
   const n = chip.claimers.length;
-  const share = chip.priceCents === null ? null : myShare(chip.priceCents, chip.claimers, me);
+  const line = lineCents(chip);
+  const share = line === null ? null : myShare(line, chip.claimers, me);
   const others = chip.claimers.filter((id) => id !== me).map((id) => people.find((p) => p.id === id)?.name ?? 'someone');
   return (
     <button
@@ -45,7 +46,7 @@ export const TrayChipView = forwardRef<HTMLButtonElement, { chip: ChipT; me: str
       type="button"
       className={`tray-chip${className ? ` ${className}` : ''}`}
       style={{ '--tile': tileColor(chip.id), ...style } as React.CSSProperties}
-      aria-label={`${chip.name}, your share ${share === null ? 'not known yet' : formatCents(share)}${n > 1 ? `, split ${n} ways` : ''}`}
+      aria-label={`${nameWithQty(chip)}, your share ${share === null ? 'not known yet' : formatCents(share)}${n > 1 ? `, split ${n} ways` : ''}`}
       {...rest}
     >
       <span className="tray-thumb" aria-hidden="true">
@@ -55,7 +56,7 @@ export const TrayChipView = forwardRef<HTMLButtonElement, { chip: ChipT; me: str
         ) : chip.name.charAt(0)}
       </span>
       <span className="tray-chip-text">
-        <span className="tray-chip-name">{chip.name}</span>
+        <span className="tray-chip-name">{nameWithQty(chip)}</span>
         <span className="tray-chip-with">{others.length ? `Split with ${listNames(others)}` : 'Just you'}</span>
         {chip.overCap.includes(me) && <span className="tray-overcap">Raise your cap or leave</span>}
       </span>
@@ -101,9 +102,10 @@ export function Tray({ chips, me, people, authorizedCents, taxRate, expanded, on
     lifted && lifted.from === 'grid' && !inTray(lifted.chip.id)
       ? [...chips, { ...lifted.chip, claimers: [...lifted.chip.claimers, me] }]
       : chips;
-  const shareOf = (c: ChipT) => myShare(c.priceCents, c.claimers, me);
+  const shareOf = (c: ChipT) => myShare(lineCents(c), c.claimers, me);
   const totalShare = preview.reduce((s, c) => s + shareOf(c), 0);
-  const room = authorizedCents === null ? null : roomFor(preview.map((c) => c.priceCents ?? 0), authorizedCents, taxRate);
+  // Room counts each chip's full line total (unit price × quantity), like the server's cap check.
+  const room = authorizedCents === null ? null : roomFor(preview.map((c) => lineCents(c) ?? 0), authorizedCents, taxRate);
   const overCapPreview = room !== null && room < 0;
   const isExpanded = !!expanded || lifted !== null;
 
@@ -112,7 +114,7 @@ export function Tray({ chips, me, people, authorizedCents, taxRate, expanded, on
   const claim = (chip: ChipT) => {
     if (inTray(chip.id)) return;
     if (authorizedCents !== null) {
-      const after = roomFor([...chips, chip].map((c) => c.priceCents ?? 0), authorizedCents, taxRate);
+      const after = roomFor([...chips, chip].map((c) => lineCents(c) ?? 0), authorizedCents, taxRate);
       if (after < 0) {
         onOverCap?.(chip);
         return;

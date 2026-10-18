@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import type { Box, Chip } from './types';
-import { formatCents } from './money';
+import { nameWithQty, priceLabel } from './share';
 
 const SHOW_MS = 8000;
 
@@ -9,7 +9,7 @@ export type Highlight = { region: Box; label: string; pending: boolean };
 
 /**
  * What to outline over the live picture: the region being identified right now, or else the newest chip
- * that came with a region, labelled "<name> · $price", for a few seconds after it lands.
+ * that came with a region, labelled "<name> ×N · $line total", for a few seconds after it lands.
  */
 export function useHighlight(chips: Chip[], identifyingRegion: Box | null): Highlight | null {
   const newest = chips
@@ -27,8 +27,7 @@ export function useHighlight(chips: Chip[], identifyingRegion: Box | null): High
 
   if (identifyingRegion) return { region: identifyingRegion, label: 'Identifying…', pending: true };
   if (newest?.region && now - newest.addedAt < SHOW_MS) {
-    const price = newest.priceCents === null ? '~$?' : formatCents(newest.priceCents);
-    return { region: newest.region, label: `${newest.name} · ${price}`, pending: false };
+    return { region: newest.region, label: `${nameWithQty(newest)} · ${priceLabel(newest)}`, pending: false };
   }
   return null;
 }

@@ -1,7 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes, type CSSProperties } from 'react';
 import type { Chip as ChipT, Person } from '@/lib/types';
 import { formatCents } from '@/lib/money';
-import { chipBorder, ringColor } from '@/lib/share';
+import { chipBorder, lineCents, nameWithQty, priceLabel, ringColor } from '@/lib/share';
 import { tileColor } from '@/lib/tile';
 import { Avatar } from './Avatar';
 
@@ -17,15 +17,16 @@ export function isLiftable(chip: ChipT): boolean {
   return chip.state !== 'wish' && chip.state !== 'identifying';
 }
 
-/** Accessible name shared by the shelf chip and the shopper's cart row. */
+/** Accessible name shared by the shelf chip and the shopper's cart row: "Apple ×2, $2.20, claimed by P". */
 export function chipLabel(chip: ChipT, people: Person[]): string {
   const initialOf = (id: string) => people.find((p) => p.id === id)?.initial ?? '?';
   if (chip.state === 'wish') return `Wish: ${chip.name}, wished by ${initialOf(chip.wishedBy ?? '')}`;
   if (chip.state === 'identifying') return `${chip.name || 'Item'}, identifying`;
-  const price = chip.priceCents === null ? 'price not known yet' : formatCents(chip.priceCents);
+  const line = lineCents(chip);
+  const price = line === null ? 'price not known yet' : formatCents(line);
   const who = chip.claimers.map(initialOf);
   const claimed = who.length === 0 ? 'not claimed' : `claimed by ${who.length > 1 ? `${who.slice(0, -1).join(', ')} and ${who[who.length - 1]}` : who[0]}`;
-  return `${chip.name}, ${price}, ${claimed}`;
+  return `${nameWithQty(chip)}, ${price}, ${claimed}`;
 }
 
 /**
@@ -106,7 +107,7 @@ export const Chip = forwardRef<HTMLButtonElement, ChipProps>(function Chip(
         </span>
         <span className="chip-name">{chip.name || 'Identifying'}</span>
         <span className="chip-meta">
-          <span className="chip-price">{identifying ? '…' : chip.priceCents === null ? '~$?' : formatCents(chip.priceCents)}</span>
+          <span className="chip-price">{identifying ? '…' : priceLabel(chip)}</span>
           {tag && (
             <span className={`chip-tag${tag.color ? '' : ' chip-tag-open'}`} style={tag.color ? { color: tag.color } : undefined} aria-hidden="true">
               {tag.text}

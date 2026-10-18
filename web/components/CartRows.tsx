@@ -3,14 +3,15 @@ import { forwardRef, type ButtonHTMLAttributes, type CSSProperties, type Keyboar
 import { useDndMonitor, useDraggable } from '@dnd-kit/core';
 import type { Chip as ChipT, Person } from '@/lib/types';
 import { formatCents } from '@/lib/money';
-import { ringColor } from '@/lib/share';
+import { priceLabel, ringColor } from '@/lib/share';
 import { tileColor } from '@/lib/tile';
 import { Avatar, AvatarStack } from './Avatar';
 import { chipLabel, isLiftable } from './Chip';
+import { QuantityStepper } from './QuantityStepper';
 
 type RowProps = { chip: ChipT; me: string; people: Person[] } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'>;
 
-/** One cart line for the shopper: thumb, name, who is in, price. Unclaimed lines are dashed. */
+/** One cart line for the shopper: thumb, name, who is in, line total ("×2 · $1.10 each" under the name). Unclaimed lines are dashed. */
 export const CartRowView = forwardRef<HTMLButtonElement, RowProps>(function CartRowView({ chip, me, people, className, style, ...rest }, ref) {
   const wish = chip.state === 'wish';
   const identifying = chip.state === 'identifying';
@@ -44,13 +45,15 @@ export const CartRowView = forwardRef<HTMLButtonElement, RowProps>(function Cart
         {wish && <span className="cart-row-sub" style={{ color: wishColor }}>{wisher ? `${wisher.name} wants this` : 'Someone wants this'}</span>}
         {open && <span className="cart-row-sub">Nobody yet · stays yours</span>}
         {identifying && <span className="cart-row-sub">Identifying… tap to name it</span>}
-        {chip.quantity > 1 && <span className="cart-row-sub">×{chip.quantity}</span>}
+        {chip.quantity > 1 && (
+          <span className="cart-row-sub">×{chip.quantity}{chip.priceCents !== null ? ` · ${formatCents(chip.priceCents)} each` : ''}</span>
+        )}
       </span>
       {claimers.length > 0 && <AvatarStack list={claimers} people={people} me={me} size="xs" />}
       {wish ? (
         <span className="cart-row-tag">wish</span>
       ) : (
-        <span className="cart-row-price">{identifying ? '…' : chip.priceCents === null ? '~$?' : formatCents(chip.priceCents)}</span>
+        <span className="cart-row-price">{identifying ? '…' : priceLabel(chip)}</span>
       )}
     </button>
   );
@@ -81,16 +84,32 @@ function CartRow({ chip, me, people, onTap, onRemoveKey }: { chip: ChipT; me: st
   );
 }
 
-/** The shopper's cart as rows. Hold a row to lift it (the remove zone appears); tap to fix it. */
-export function CartRows({ chips, me, people, onTap, onRemoveKey }: { chips: ChipT[]; me: string; people: Person[]; onTap?: (id: string) => void; onRemoveKey?: (id: string) => void }) {
+/**
+ * The shopper's cart as rows. Hold a row to lift it (the remove zone appears); tap to fix it. With
+ * `onQuantity`, every item row (not wishes) has a − N + stepper beside it, outside the row's own button.
+ */
+export function CartRows({ chips, me, people, onTap, onRemoveKey, onQuantity }: {
+  chips: ChipT[];
+  me: string;
+  people: Person[];
+  onTap?: (id: string) => void;
+  onRemoveKey?: (id: string) => void;
+  onQuantity?: (id: string, quantity: number) => Promise<unknown>;
+}) {
   const ordered = [...chips].sort((a, b) => Number(b.state === 'wish') - Number(a.state === 'wish') || b.addedAt - a.addedAt);
   useDndMonitor({ onDragStart() { navigator.vibrate?.(10); } });
   if (ordered.length === 0) return <p className="cart-empty">Nothing in the cart yet.</p>;
   return (
     <ul className="cart-rows" aria-label="In the cart">
-      {ordered.map((c) => (
-        <li key={c.id}><CartRow chip={c} me={me} people={people} onTap={onTap} onRemoveKey={onRemoveKey} /></li>
-      ))}
+      {ordered.map((c) => {
+        const adjustable = !!onQuantity && isLiftable(c);
+        return (
+          <li key={c.id} className={adjustable ? 'cart-row-item cart-row-item-qty' : 'cart-row-item'}>
+            <CartRow chip={c} me={me} people={people} onTap={onTap} onRemoveKey={onRemoveKey} />
+            {adjustable && <QuantityStepper name={c.name} quantity={c.quantity} onChange={(q) => onQuantity(c.id, q)} />}
+          </li>
+        );
+      })}
     </ul>
   );
 }

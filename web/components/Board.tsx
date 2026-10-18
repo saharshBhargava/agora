@@ -22,6 +22,8 @@ export type BoardExtras = {
   onTap?: (chipId: string) => void;
   /** 'shelf' (claimers: one scrolling row of chips plus the tray) or 'rows' (shopper: cart rows, no tray). */
   layout?: 'shelf' | 'rows';
+  /** Rows only: the shopper's − N + stepper on each item row (a server call). */
+  onQuantity?: (chipId: string, quantity: number) => Promise<unknown>;
 };
 
 export function Board({
@@ -31,6 +33,7 @@ export function Board({
   onRemove,
   onTap,
   layout = 'shelf',
+  onQuantity,
   ...tray
 }: { chips: ChipT[]; people: Person[] } & Omit<TrayProps, 'chips' | 'people'> & { trayChips?: ChipT[] } & BoardExtras) {
   const sensors = useSensors(
@@ -57,7 +60,7 @@ export function Board({
     >
       {removeZone && active && <RemoveZone />}
       {layout === 'rows' ? (
-        <CartRows chips={chips} me={tray.me} people={people} onTap={onTap} onRemoveKey={onRemove} />
+        <CartRows chips={chips} me={tray.me} people={people} onTap={onTap} onRemoveKey={onRemove} onQuantity={onQuantity} />
       ) : (
         <Grid
           onTap={onTap}

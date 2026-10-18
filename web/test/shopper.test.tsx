@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { Chip, Run } from '@/lib/types';
 
@@ -22,6 +22,7 @@ vi.mock('@/lib/socket', () => ({ useRun: () => sock }));
 const addChip = vi.fn(async () => ({}));
 const putBack = vi.fn(async () => ({}));
 const back = vi.fn(async () => ({}));
+const setQuantity = vi.fn(async () => ({}));
 vi.mock('@/lib/api', () => ({
   api: {
     addChip: (...a: unknown[]) => (addChip as (...x: unknown[]) => unknown)(...a),
@@ -29,6 +30,7 @@ vi.mock('@/lib/api', () => ({
     back: (...a: unknown[]) => (back as (...x: unknown[]) => unknown)(...a),
     checkout: vi.fn(async () => ({})),
     fixChip: vi.fn(async () => ({})),
+    setQuantity: (...a: unknown[]) => (setQuantity as (...x: unknown[]) => unknown)(...a),
   },
 }));
 let params = new URLSearchParams('run=r1&person=shop&mock=1');
@@ -52,6 +54,7 @@ beforeEach(() => {
   addChip.mockClear();
   putBack.mockClear();
   back.mockClear();
+  setQuantity.mockClear();
   params = new URLSearchParams('run=r1&person=shop&mock=1');
   setSock(baseRun());
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer })));
@@ -226,6 +229,33 @@ test('a duplicate chip offers Keep both / Remove one', () => {
   render(<ShopperScreen />);
   fireEvent.click(screen.getByRole('button', { name: 'Remove one' }));
   expect(sendMock).toHaveBeenCalledWith({ t: 'remove', chipId: 'm2' });
+});
+
+test('each cart row has a − N + stepper that sets the quantity; wishes have none', async () => {
+  setSock(baseRun({ chips: [mk({ id: 'ap', name: 'Apple', priceCents: 110 }), mk({ id: 'w', name: 'Bagels', state: 'wish', priceCents: null })] }));
+  render(<ShopperScreen />);
+  expect(screen.getByRole('button', { name: 'One fewer Apple' })).toBeDisabled();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'One more Apple' })); });
+  expect(setQuantity).toHaveBeenCalledWith('r1', 'ap', 'shop', 2);
+  expect(screen.queryByRole('button', { name: 'One more Bagels' })).toBeNull();
+});
+
+test('the same item seen twice shows as one row with ×2 and the line total, no Added twice card', () => {
+  setSock(baseRun({ chips: [mk({ id: 'ap', name: 'Apple', priceCents: 110, quantity: 2 })] }));
+  render(<ShopperScreen />);
+  expect(screen.getByText('$2.20')).toBeTruthy();
+  expect(screen.getByText('×2 · $1.10 each')).toBeTruthy();
+  expect(screen.queryByText('Added twice?')).toBeNull();
+});
+
+test('saving a new quantity in the fix sheet sets it', async () => {
+  setSock(baseRun({ chips: [mk({ id: 'ap', name: 'Apple', priceCents: 110 })] }));
+  render(<ShopperScreen />);
+  fireEvent.click(screen.getByLabelText(/^Apple, \$1\.10/));
+  const sheet = screen.getByRole('dialog', { name: 'Fix chip' });
+  fireEvent.click(within(sheet).getByRole('button', { name: 'One more Apple' }));
+  await act(async () => { fireEvent.click(within(sheet).getByRole('button', { name: 'Save' })); });
+  expect(setQuantity).toHaveBeenCalledWith('r1', 'ap', 'shop', 2);
 });
 
 test('UnclaimedList shows Mine and Put back for the milk when locked', async () => {

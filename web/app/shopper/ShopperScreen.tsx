@@ -246,6 +246,11 @@ export default function ShopperScreen() {
                 setRemoved({ key: Date.now(), chip });
               }}
               onTap={(chipId) => setFixing(chips.find((c) => c.id === chipId) ?? null)}
+              onQuantity={(chipId, quantity) =>
+                api.setQuantity(runId, chipId, personId, quantity).catch((e: unknown) => {
+                  setActionError(e instanceof Error ? e.message : 'Something went wrong');
+                  throw e;
+                })}
             />
 
             <div className="shop-spacer" />
@@ -277,10 +282,14 @@ export default function ShopperScreen() {
         <FixChipSheet
           chip={fixing}
           onClose={() => setFixing(null)}
-          onSave={(fix) => {
+          onSave={({ quantity, ...fix }) => {
             const id = fixing.id;
             setFixing(null);
-            if (Object.keys(fix).length > 0) void act(() => api.fixChip(runId, id, personId, fix));
+            if (Object.keys(fix).length === 0 && quantity === undefined) return;
+            void act(async () => {
+              if (Object.keys(fix).length > 0) await api.fixChip(runId, id, personId, fix);
+              if (quantity !== undefined) await api.setQuantity(runId, id, personId, quantity);
+            });
           }}
         />
       )}

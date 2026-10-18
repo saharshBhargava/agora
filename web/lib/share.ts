@@ -1,8 +1,44 @@
 // Display-only previews. Same algorithms as server/src/money.ts; the server is the authority.
 // All money is integer cents.
-import type { Chip, Person } from './types';
+import { formatCents } from './money';
+import type { Chip, Person, ReceiptState } from './types';
 
 const sum = (xs: number[]): number => xs.reduce((a, b) => a + b, 0);
+
+/** The shopper's stepper runs 1 to 20 (server MAX_QUANTITY). */
+export const MAX_QUANTITY = 20;
+
+/**
+ * A chip's line total: the receipt's exact total once read, else unit price × quantity; null while
+ * unpriced. Same as `lineCents` in server/src/money.ts: every share, room and total uses it.
+ */
+export function lineCents(chip: Pick<Chip, 'priceCents' | 'quantity' | 'receiptTotalCents'>): number | null {
+  if (chip.receiptTotalCents !== undefined && chip.receiptTotalCents !== null) return chip.receiptTotalCents;
+  return chip.priceCents === null ? null : chip.priceCents * (chip.quantity ?? 1);
+}
+
+/** "×2" for more than one, "" for one. */
+export function qtyText(quantity: number): string {
+  return quantity > 1 ? `×${quantity}` : '';
+}
+
+/** "Cosmic Crisp Apple ×2", or just the name for one. */
+export function nameWithQty(chip: Pick<Chip, 'name' | 'quantity'>): string {
+  const q = qtyText(chip.quantity);
+  return q ? `${chip.name} ${q}` : chip.name;
+}
+
+/** The line total, or "~$?" while unpriced. */
+export function priceLabel(chip: Pick<Chip, 'priceCents' | 'quantity' | 'receiptTotalCents'>): string {
+  const cents = lineCents(chip);
+  return cents === null ? '~$?' : formatCents(cents);
+}
+
+/** The stepper's next count, or null when it would leave 1 to 20 (that button is disabled). */
+export function stepQuantity(quantity: number, delta: 1 | -1): number | null {
+  const next = quantity + delta;
+  return next < 1 || next > MAX_QUANTITY ? null : next;
+}
 
 /** Split a price among claimers: floor share, leftover cents one each to the earliest claimers. */
 export function splitChip(priceCents: number, claimerIdsByClaimTime: string[]): Map<string, number> {
@@ -20,7 +56,7 @@ export function roomFor(trayFullPricesCents: number[], authorizedCents: number, 
   return authorizedCents - Math.ceil((sum(trayFullPricesCents) * (10000 + Math.round(taxRate * 10000))) / 10000);
 }
 
-/** My share of one chip; a chip with no price yet counts 0. */
+/** My share of one chip's line total (`lineCents`); a chip with no price yet counts 0. */
 export function myShare(priceCents: number | null, claimers: string[], me: string): number {
   if (priceCents === null) return 0;
   return splitChip(priceCents, claimers).get(me) ?? 0;
@@ -67,20 +103,21 @@ export function isLiveChip(c: Chip): boolean {
 export type Coverage = {
   /** Sum of every housemate's share (the shopper's own claims are not covered). */
   coveredCents: number;
-  /** Sum of live chip prices. */
+  /** Sum of live chip line totals. */
   totalCents: number;
   /** One per housemate with a share, in join order. */
   segments: { id: string; name: string; cents: number }[];
 };
 
-/** Shopper preview: how much of the cart the housemates cover. Chips without a price count 0. */
+/** Shopper preview: how much of the cart the housemates cover, by line totals. Chips without a price count 0. */
 export function coverage(people: Person[], chips: Chip[]): Coverage {
   const by = new Map<string, number>();
   let totalCents = 0;
   for (const c of chips) {
-    if (!isLiveChip(c) || c.priceCents === null) continue;
-    totalCents += c.priceCents;
-    for (const [id, cents] of splitChip(c.priceCents, c.claimers)) by.set(id, (by.get(id) ?? 0) + cents);
+    const line = lineCents(c);
+    if (!isLiveChip(c) || line === null) continue;
+    totalCents += line;
+    for (const [id, cents] of splitChip(line, c.claimers)) by.set(id, (by.get(id) ?? 0) + cents);
   }
   const segments = people
     .filter((p) => !p.isShopper && (by.get(p.id) ?? 0) > 0)
@@ -92,4 +129,16 @@ export function coverage(people: Person[], chips: Chip[]): Coverage {
 export function listNames(names: string[]): string {
   if (names.length <= 1) return names[0] ?? '';
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/**
+ * Live chips a receipt line can still be paired with: chips with no line yet, and chips counted more
+ * than once whose lines so far cover fewer items than their cart count (the server's rule).
+ */
+export function pairableChips(receipt: ReceiptState, chips: Chip[]): Chip[] {
+  const covered = new Map<string, number>();
+  for (const m of receipt.matches) {
+    covered.set(m.chipId, (covered.get(m.chipId) ?? 0) + Math.max(1, receipt.lines[m.lineIndex]?.quantity ?? 1));
+  }
+  return chips.filter((c) => isLiveChip(c) && (covered.get(c.id) ?? 0) < (receipt.cartQuantities?.[c.id] ?? c.quantity));
 }

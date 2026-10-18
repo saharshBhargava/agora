@@ -1,7 +1,7 @@
 'use client';
 import type { CSSProperties, MouseEvent } from 'react';
 import type { Run } from '@/lib/types';
-import { formatCents } from '@/lib/money';
+import { nameWithQty, priceLabel } from '@/lib/share';
 import { tileColor } from '@/lib/tile';
 
 /** After lock: chips nobody claimed. Mine is the default; Put back drops the chip from the run. */
@@ -52,10 +52,10 @@ export function UnclaimedList({
                 ) : c.name.charAt(0)}
               </span>
               <span className="unclaimed-text">
-                <span className="unclaimed-name">{c.name}</span>
+                <span className="unclaimed-name">{nameWithQty(c)}</span>
                 {c.putBack && <span className="muted">Putting back</span>}
               </span>
-              <span>{c.priceCents === null ? '~$?' : formatCents(c.priceCents)}</span>
+              <span>{priceLabel(c)}</span>
             </div>
             {!c.putBack && (
               <div className="unclaimed-actions">
