@@ -98,9 +98,14 @@ async function identifyLive(
       .filter((c) => c.id !== id && c.state !== 'removed' && c.state !== 'identifying' && c.name)
       .map((c) => c.name);
     found = await vision.identify(frameBase64, opts.hint, region ?? undefined, { runId, cartNames });
-  } catch {
-    if (opts.removeOnFail) store.update(runId, (r) => ({ ...r, chips: r.chips.filter((c) => c.id !== id) }));
-    return { chipId: id, error: 'identify failed' };
+  } catch (e) {
+    // "Nothing there" (empty counter, a hand, a merged blob) never leaves an "Identifying…" row behind;
+    // other failures (network, rate limits) keep the row so a tap can retry it.
+    // A failed identification never leaves a row behind: the chip is dropped at once and the camera
+    // (or a tap) simply tries again. Clients only show chips once they are named and priced.
+    void e;
+    store.update(runId, (r) => ({ ...r, chips: r.chips.filter((c) => c.id !== id) }));
+    return { chipId: null, error: 'identify failed' };
   }
   if (process.env.MERGE_DUPLICATES === '1') {
     const cur = store.get(runId);

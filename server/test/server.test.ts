@@ -566,7 +566,7 @@ describe('dibs server', () => {
       expect(chip.region).toMatchObject({ x: 0, y: 0, w: 200, h: 200 });
     });
 
-    it('retries a failed chip by tapping inside its region, once', async () => {
+    it('drops a failed chip, and a tap identifies the item once', async () => {
       await app.close();
       const stub = new StubVision();
       let calls = 0;
@@ -589,19 +589,14 @@ describe('dibs server', () => {
         await sleep(80); // paced so the bounded detector queue does not coalesce frames
       }
       await shopper.waitFor((m) => m.t === 'error' && m.reason === 'identify failed');
-      const [stuck] = (await getRun(runId)).chips;
-      expect(stuck.state).toBe('identifying');
-      const r = stuck.region!;
+      expect((await getRun(runId)).chips).toEqual([]);
       mode = 'slow';
       calls = 0;
-      const tap = { t: 'identifyAt', x: r.x + r.w / 2, y: r.y + r.h / 2 };
+      const tap = { t: 'identifyAt', x: 320, y: 240 };
       shopper.send(tap);
-      await sleep(50);
-      shopper.send(tap); // in flight: ignored
-      for (let i = 0; i < 200 && (await getRun(runId)).chips[0].state !== 'open'; i++) await sleep(10);
+      for (let i = 0; i < 200 && (await getRun(runId)).chips[0]?.state !== 'open'; i++) await sleep(10);
       const chips = (await getRun(runId)).chips;
       expect(chips).toHaveLength(1);
-      expect(chips[0].id).toBe(stuck.id);
       expect(chips[0].state).toBe('open');
       expect(calls).toBe(1);
     });

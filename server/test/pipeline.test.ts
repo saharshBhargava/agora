@@ -61,7 +61,7 @@ describe('identifyPipeline', () => {
     expect(chip.priceSource).toBe('web');
   });
 
-  it('leaves a failed identify identifying, then a retry opens it', async () => {
+  it('drops a failed identify at once; the next detection adds it fresh', async () => {
     const stub = new StubVision();
     let fail = true;
     const flaky: VisionProvider = {
@@ -74,11 +74,10 @@ describe('identifyPipeline', () => {
     const { store, run, deps, errors } = setup(flaky);
     const ev = await eggs();
     await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
-    const [stuck] = store.get(run.id)!.chips;
-    expect(stuck.state).toBe('identifying');
+    expect(store.get(run.id)!.chips).toEqual([]);
     expect(errors).toEqual([{ t: 'error', reason: 'identify failed' }]);
     fail = false;
-    await identifyPipeline(deps, run.id, ev.frameBase64, ev.region, stuck.id);
+    await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
     const chips = store.get(run.id)!.chips;
     expect(chips).toHaveLength(1);
     expect(chips[0].state).toBe('open');
@@ -135,6 +134,17 @@ describe('identifyPipeline', () => {
     } finally {
       delete process.env.MERGE_DUPLICATES;
     }
+  });
+
+  it('drops the chip when vision finds no clear item, instead of leaving it identifying', async () => {
+    const spy: VisionProvider = {
+      identify: async () => { throw new Error('identify: no clear item'); },
+      readReceipt: async () => [],
+    };
+    const { store, run, deps } = setup(spy);
+    const ev = await eggs();
+    await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+    expect(store.get(run.id)!.chips).toEqual([]);
   });
 });
 

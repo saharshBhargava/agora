@@ -144,6 +144,19 @@ describe('AgentPrice', () => {
     expect(text.length).toBe('Item: "apple". Store: QFC. Page text:\n'.length + 20000);
   });
 
+  it('extract prefers the each price over the per-pound rate', async () => {
+    const agent = new AgentPrice();
+    const a = await start({
+      agent,
+      fetchImpl: fakeFetch(geminiReply({ found: true, productName: 'Large Cosmic Crisp Apple', priceCents: 219, unit: 'lb', eachPriceCents: 110, perPoundCents: 219 }), 200, []),
+    });
+    const p = agent.lookup('Cosmic Crisp Apple', 'QFC');
+    const id = agent.open()[0].id;
+    const r = await a.inject({ method: 'POST', url: `/api/price-requests/${id}/extract`, payload: { pageText: 'about $1.10 each $2.19/lb' } });
+    expect(r.json().priceCents).toBe(110);
+    expect((await p)?.cents).toBe(110);
+  });
+
   it('extract found:false leaves the request open', async () => {
     const agent = new AgentPrice();
     const a = await start({ agent, fetchImpl: fakeFetch(geminiReply({ found: false, productName: '', priceCents: 0, unit: '' })) });
