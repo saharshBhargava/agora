@@ -211,3 +211,15 @@ Publication validation: the exact chat-only changes on current main (`8292694`) 
 simulator tests, including chat rendering/browser state, authentication/Calendar boundaries and both
 provider transports. This final run excludes the unrelated local IP-validation change mentioned above.
 The Gemini schema correction and compact composer/tab spacing are included.
+
+## Broad item image search — October 18, 2026
+
+Prepared backend release adds migrations 0017/0018, household image bindings, private photos, demo-only
+illustrations and bounded product-page discovery. Every item name is searchable without requiring brand,
+model or barcode. Relevant ambiguous images are returned as titled choices and require confirmation;
+only supported product matches auto-display. Search uses the existing web router independently of whether
+a reasoning model is configured. Optional model tools and visual vetoes remain available.
+
+The native implementation is local source work; this backend release does not distribute an iOS build.
+Live deployment verification and final test results will be recorded after release. The shared workspace's
+earlier exact-only search/fallback notes are superseded by [this contract](api/item-images.md).

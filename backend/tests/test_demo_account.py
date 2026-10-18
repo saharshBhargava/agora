@@ -46,7 +46,8 @@ def google_token(key, **claims):
 
 @pytest.fixture(scope="module")
 async def demo_app(database_url, tmp_path_factory, signing_key):
-    settings = Settings(env="demo", auth_mode="google", google_ios_client_id=CLIENT_ID, database_url=database_url,
+    settings = Settings(watch_search_providers=[], watch_search_api_key=None, gemini_api_key=None,
+                        env="demo", auth_mode="google", google_ios_client_id=CLIENT_ID, database_url=database_url,
                         storage_dir=tmp_path_factory.mktemp("demo-media"), run_worker_in_process=False,
                         dev_jwt_secret="a-real-random-secret-for-the-demo-0123456789",
                         demo_password=PASSWORD, demo_google_emails=f" {DEMO_EMAIL.upper()} ,other@example.com")

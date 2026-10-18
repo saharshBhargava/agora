@@ -29,6 +29,7 @@ from app.core.wishlist import title_key
 from app.db import Database, audit
 from app.forecasting import refresh
 from app.inventory_ops import sync_purchase_origins
+from app.item_images import seed_demo_images
 from app.seed import seed_catalog, seed_household
 
 DEMO_SUBJECT = "demo:primary"
@@ -57,6 +58,7 @@ async def ensure_demo_account(db: Database, settings: Settings) -> UUID:
         await _trips(db, existing)
         await _shopping_refresh(db, existing)
         await _price_watches(db, existing)
+        await seed_demo_images(db, existing)
         return existing
     user_id = await ensure_user(db, DEMO_SUBJECT, VISIBLE_HANDLE, settings.demo_display_name)
     async with db.system() as conn:
@@ -135,6 +137,7 @@ async def _seed(db: Database, user_id: UUID) -> None:
     await _trips(db, user_id)
     await _shopping_refresh(db, user_id)
     await _price_watches(db, user_id)
+    await seed_demo_images(db, user_id)
 
 
 async def _commerce(db: Database, user_id: UUID) -> None:
