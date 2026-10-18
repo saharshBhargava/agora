@@ -17,7 +17,10 @@ export function createStore(dataDir: string) {
 
   if (existsSync(file)) {
     try {
-      for (const r of Object.values(JSON.parse(readFileSync(file, 'utf8')) as Record<string, Run>)) runs.set(r.id, r);
+      for (const r of Object.values(JSON.parse(readFileSync(file, 'utf8')) as Record<string, Run>)) {
+        // An identification in flight when the server stopped will never finish: drop it.
+        runs.set(r.id, { ...r, chips: r.chips.filter((c) => c.state !== 'identifying') });
+      }
     } catch {
       // A corrupt snapshot starts empty rather than blocking the server.
     }
