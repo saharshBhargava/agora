@@ -57,3 +57,9 @@ describe('personTotals', () => {
     expect(obj(totals)).toEqual({ a: 436, b: 2835 });
   });
 });
+
+describe('roomFor regression', () => {
+  it('keeps tax in integer basis points', () => {
+    expect(roomFor([100], 1000, 0.1)).toBe(890);
+  });
+});
