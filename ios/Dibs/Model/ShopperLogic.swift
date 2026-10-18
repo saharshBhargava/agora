@@ -96,8 +96,6 @@ enum ShopperLogic {
     static let showUnpricedAfter: TimeInterval = 5
     /// How long a row waits for a price before offering "Add price" (fallback when the price worker
     /// hasn't said it gave up).
-    // TODO(price worker): also show "Add price" at once when `priceWorker.gaveUp(for: chip.name)` is true,
-    // once the price-worker agent commits it (pass it in like `checking`).
     static let noPriceAfter: TimeInterval = 20
     static let noPriceText = "No price found"
     static let addPriceText = "Add price"
@@ -105,7 +103,8 @@ enum ShopperLogic {
     /// The line under a row's name. `checking` is the price worker's status for this item
     /// (`priceWorker.status(for: chip.name)`, "Checking qfc.com…"), nil when it isn't looking it up.
     /// `now` enables "No price found" for a row still unpriced `noPriceAfter` after it was added.
-    static func subline(_ chip: Chip, people: [Person], checking: String?, now: Date? = nil) -> Subline? {
+    /// `gaveUp` (`priceWorker.gaveUp(for: chip.name)`) shows "No price found" at once, without waiting.
+    static func subline(_ chip: Chip, people: [Person], checking: String?, now: Date? = nil, gaveUp: Bool = false) -> Subline? {
         switch chip.state {
         case .wish:
             let wisher = people.first { $0.id == chip.wishedBy }
@@ -115,6 +114,7 @@ enum ShopperLogic {
         default:
             if chip.priceCents == nil {
                 if let checking { return .muted(checking.isEmpty ? "Checking qfc.com…" : checking) }
+                if gaveUp { return .noPrice }
                 if let now, now.timeIntervalSince1970 - chip.addedAt / 1000 >= noPriceAfter { return .noPrice }
                 return .muted("Finding price…")
             }

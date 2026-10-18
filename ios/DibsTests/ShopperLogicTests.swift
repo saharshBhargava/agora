@@ -113,6 +113,15 @@ final class ShopperLogicTests: XCTestCase {
         XCTAssertFalse(run.chip("nameless")!.isOnFeed(at: at(600)))
     }
 
+    func testGaveUpShowsAddPriceAtOnce() {
+        let chip = Chip(id: "o", name: "Lawry's Casero Onion Powder", state: .open, addedAt: 1_792_293_590_000)
+        let added = Date(timeIntervalSince1970: 1_792_293_590)
+        XCTAssertEqual(ShopperLogic.subline(chip, people: [], checking: nil, now: added.addingTimeInterval(8)), .muted("Finding price…"))
+        XCTAssertEqual(ShopperLogic.subline(chip, people: [], checking: nil, now: added.addingTimeInterval(8), gaveUp: true), .noPrice)
+        // While the worker is still checking, that status wins.
+        XCTAssertEqual(ShopperLogic.subline(chip, people: [], checking: "Checking qfc.com…", now: added.addingTimeInterval(8), gaveUp: true), .muted("Checking qfc.com…"))
+    }
+
     func testTickerRunsOnlyWhileAnUnpricedNamedItemIsYoung() throws {
         let added = 1_792_293_590_000.0
         let t0 = Date(timeIntervalSince1970: added / 1000)

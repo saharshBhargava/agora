@@ -306,6 +306,7 @@ struct ShopperView: View {
         let removable = ShopperLogic.isRemovable(chip)
         let view = CartRowView(chip: chip, people: run?.people ?? [], me: personId,
                                checking: priceWorker.status(for: chip.name), now: clock,
+                               gaveUp: priceWorker.gaveUp(for: chip.name),
                                onAddPrice: { fixing = FixTarget(chip: chip, focusPrice: true) })
             .opacity(dragActive && dragged?.id == chip.id ? 0.3 : 1)
             .onTapGesture { if chip.state != .wish { fixing = FixTarget(chip: chip) } }

@@ -11,6 +11,8 @@ struct CartRowView: View {
     var checking: String?
     /// The clock for "No price found" (nil never shows it).
     var now: Date?
+    /// The price worker finished without a price for this item.
+    var gaveUp = false
     /// "Add price" on a row whose lookup gave up.
     var onAddPrice: (() -> Void)?
 
@@ -33,7 +35,7 @@ struct CartRowView: View {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color.ink)
                     .lineLimit(2)
-                switch ShopperLogic.subline(chip, people: people, checking: checking, now: now) {
+                switch ShopperLogic.subline(chip, people: people, checking: checking, now: now, gaveUp: gaveUp) {
                 case .wish(let text, _):
                     Text(text).font(.system(size: 13, weight: .medium)).foregroundStyle(wishColor)
                 case .muted(let text):
@@ -82,7 +84,7 @@ struct CartRowView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Self.label(chip, people: people))
         .accessibilityActions {
-            if ShopperLogic.subline(chip, people: people, checking: checking, now: now) == .noPrice {
+            if ShopperLogic.subline(chip, people: people, checking: checking, now: now, gaveUp: gaveUp) == .noPrice {
                 Button(ShopperLogic.addPriceText) { onAddPrice?() }
             }
         }
