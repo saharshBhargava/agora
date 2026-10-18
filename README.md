@@ -21,6 +21,10 @@ pnpm -r test
 
 Web screens work without the server at `?mock=1` (props in `web/public/props/`).
 
+### Camera demo: drop order matters
+
+With `VISION=stub`, the camera path uses a deterministic stub. When a dropped item does not clearly match a prop photo, the stub names the next prop in drop order for that run: eggs, then towels, then milk, then eggs again. Drop the eggs, the towels and the milk in that order. A whole-frame lighting or exposure change re-baselines the detector and adds no chip. If the camera misbehaves, switch the shopper to `?mock=1` (the "Use demo props" link) and tap the props instead.
+
 ### Replacing the placeholder props
 
 The prop images are generated placeholders. To use real photos: put `eggs.jpg`, `towels.jpg`, `milk.jpg` in `server/assets/props/` (and copy them to `web/public/props/`), then regenerate frame fixtures with `pnpm -C server exec tsx scripts/make-frames.ts`. Skip `scripts/make-props.ts`, which only draws the placeholders.
@@ -35,7 +39,8 @@ The prop images are generated placeholders. To use real photos: put `eggs.jpg`, 
 | `PAYMENTS` | `sim` | Payments provider. `sim` is the simulator (approval code 888888). |
 | `LAST_CALL_MS` | `5000` | Length of last call after Checkout (default 10000). |
 | `PORT` | `3000` | Listen port. Railway sets it. |
-| `PUBLIC_URL` | none | Public origin used in the join QR code (`/api/runs/:id/qr`). Set to the Railway HTTPS URL. |
+| `PUBLIC_URL` | none | Public origin used in the join QR code (`/api/runs/:id/qr`). When unset, the QR uses the request's `x-forwarded-proto` and `host`. |
+| `DATA_DIR` | `server/.data` | Where runs (`runs.json`) and the payments simulator's authorizations (`sim-payments.json`) are kept, so a restart can still settle. |
 | `RAISE_CAP` | on | Set `off` to disable raising a cap. |
 
 ## Deploy to Railway
@@ -61,8 +66,8 @@ State is in memory with a JSON snapshot; a redeploy loses runs, so create the ru
 HTTPS is required for the camera, which Railway provides.
 
 1. Create a run: `curl -X POST https://<domain>/api/runs` returns `runId` and `shopperId`.
-2. Shopper phone: open `https://<domain>/shopper?run=<runId>&person=<shopperId>` in Safari, Share, Add to Home Screen, then open it from the home screen and allow the camera. Clip it above the basket.
-3. Judge B phone: open `https://<domain>/join?run=<runId>&name=B`, tap Join (cap $40), then Add to Home Screen.
+2. Shopper phone: open `https://<domain>/shopper?run=<runId>&person=<shopperId>` in Safari, Share, Add to Home Screen, then open it from the home screen and allow the camera. On this phone set Settings → Display & Brightness → Auto-Lock → Never (the page also holds a screen wake lock where Safari allows it). Clip it above the basket.
+3. Judge B phone: open `https://<domain>/join?run=<runId>&name=B`, tap Join (cap $40), then Start claiming, then Add to Home Screen.
 4. Judge A phone: leave it on the Join screen. Claimers scan the QR from `https://<domain>/api/runs/<runId>/qr` (open it on the laptop) to land on `/join?run=<runId>`.
 5. Run the full loop on the real devices over a real basket before the demo.
 
@@ -70,7 +75,7 @@ HTTPS is required for the camera, which Railway provides.
 
 Props: a basket with the shopper phone clipped above it; two team-owned iPhones for judges with the web app on the home screen, one on the Join screen (cap preset to $40) and one pre-joined as B; a printed receipt that matches the props exactly (eggs $8.72, paper towels $23.99, milk $4.29, tax included, total $37.00); three real items with our own price stickers; a laptop running the price worker in the iOS Simulator and mirroring the phones. Last call set to 5 seconds for the demo. The run is seeded with the shopper only; B joins before the judges arrive; A joins on camera.
 
-- 0:00 Hand judge A the Join phone. "Tap Join." "$40 held · approval 888888" appears (the simulator's code; in real mode, the sandbox's own). "That authorization is live on the Visa Acceptance sandbox. Everything you claim comes out of it."
+- 0:00 Hand judge A the Join phone. "Tap Join." "$40 held · approval 888888" appears (the simulator's code; in real mode, the sandbox's own). "That authorization is live on the Visa Acceptance sandbox. Everything you claim comes out of it." Judge A taps Start claiming; the held badge stays in the claim header.
 - 0:10 Teammate drops the eggs into the basket under the clipped phone. Both judge phones show the basket live; two seconds later a chip appears with the eggs' photo and "$8.72". "Nobody scanned anything. The cart is being watched."
 - 0:20 Judge A lifts the eggs into their tray. Ring: full with a notch. "Your share $8.72 · $31.28 room."
 - 0:30 Judge B lifts the same eggs. Ring splits into two initials. Both phones: "$4.36". "That's the split. It happened before Jake paid, and it's backed by two authorizations."
@@ -97,4 +102,4 @@ See `.env.example`. If the incremental is rejected, keep `RAISE_CAP=off` in real
 - Detection: frame differencing on three fixed props, not a trained detector.
 - Identification, receipt reading and prices: stubs keyed to the three props and `server/assets/receipt.json`.
 - Payout to the shopper: simulated Visa Direct; production would push through a licensed partner.
-- Storage: in memory with a JSON snapshot, no database.
+- Storage: in memory with a JSON snapshot, no database. The payments simulator keeps its authorizations in the same data dir, and a restart reschedules any run's last-call lock.
