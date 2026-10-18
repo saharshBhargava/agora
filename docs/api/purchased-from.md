@@ -8,7 +8,7 @@ the running server (IDs shortened only where marked).
 
 **Base URL.** Set `AGORA_API_BASE_URL` in `Config/Local.xcconfig` (gitignored; copy it from
 `Config/Local.xcconfig.example`), for example `AGORA_API_BASE_URL = https:/$()/agora-api.onrender.com`.
-`AgoraAPIClient` reads it from `Info.plist` and only accepts **HTTPS** origins:
+`AgoraClient` reads it from `Info.plist` and only accepts **HTTPS** origins:
 
 | Environment | Base URL |
 |---|---|
@@ -18,7 +18,7 @@ the running server (IDs shortened only where marked).
 To run the backend locally, see `backend/README.md` → "Run locally". If you'd rather skip Docker, point
 `AGORA_DATABASE_URL` at a free Tiger Cloud service.
 
-**Sign-in from iOS: nothing to add.** `AgoraAPIClient` already sends the Google ID token from native Google
+**Sign-in from iOS: nothing to add.** `AgoraClient` already sends the Google ID token from native Google
 Sign-In as `Authorization: Bearer <id token>`. The deployed backend (`AGORA_AUTH_MODE=google`) verifies it against
 the iOS client ID and maps it to the user's Agora account. On `401`, refresh the ID token and retry once.
 

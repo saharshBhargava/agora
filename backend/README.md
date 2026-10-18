@@ -202,8 +202,9 @@ server scheduling are not implemented. Settings provides reconnect, local sign-o
 
 ### Optional inventory backend
 
-The Home screen's inventory feature uses `AgoraAPIClient`, separately from `CalendarConnection`.
-Leaving the backend unconfigured displays an inventory availability message and does not block Calendar.
+The Home screen's inventory feature uses shared `AgoraClient` (Google ID token auth), separate from
+Calendar's Google access-token calls. Leaving the backend unconfigured displays an availability message
+and does not block Calendar.
 To enable inventory, deploy the existing FastAPI/Postgres service and configure:
 
 ```dotenv
