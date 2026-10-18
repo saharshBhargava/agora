@@ -104,7 +104,10 @@ final class PriceWorker {
         var productName: String? = nil
     }
 
-    static let maxAgentSteps = 8
+    static let maxAgentSteps = 12
+    /// Prepended to the agent's first turn: QFC renders slowly, and the model used to reopen
+    /// the page instead of waiting.
+    static let agentWaitInstruction = "After browser_open, call browser_wait_for with text \"results\" (up to 20 seconds) before reading the page. Do not reopen the same URL more than once."
     static let pageTextLimit = 16_000
     /// The server refuses agent-step contents over 60 000 JSON chars.
     static let contentsBudget = 56_000
@@ -121,16 +124,23 @@ final class PriceWorker {
     @ObservationIgnored private let makeBrowser: @MainActor () -> PriceBrowsing
     @ObservationIgnored private let pollInterval: Duration
     @ObservationIgnored private let waitSeconds: Double
+    @ObservationIgnored private let reloadWaitSeconds: Double
+    @ObservationIgnored private let retryDelay: Duration
     @ObservationIgnored private var browser: PriceBrowsing?
     @ObservationIgnored private var api: PriceAPI?
     @ObservationIgnored private var loop: Task<Void, Never>?
-    @ObservationIgnored private var attempted: Set<String> = []
+    /// Lookups started per request id; a request that ends without a price gets one retry.
+    @ObservationIgnored private var attempts: [String: Int] = [:]
+    @ObservationIgnored private var retryAt: [String: ContinuousClock.Instant] = [:]
     @ObservationIgnored private var pollFailing = false
 
-    init(pollInterval: Duration = .seconds(2), waitSeconds: Double = 12,
+    init(pollInterval: Duration = .seconds(2), waitSeconds: Double = 25, reloadWaitSeconds: Double = 20,
+         retryDelay: Duration = .seconds(20),
          makeBrowser: @escaping @MainActor () -> PriceBrowsing = { BrowserToolExecutor(session: StoreBrowser()) }) {
         self.pollInterval = pollInterval
         self.waitSeconds = waitSeconds
+        self.reloadWaitSeconds = reloadWaitSeconds
+        self.retryDelay = retryDelay
         self.makeBrowser = makeBrowser
     }
 
@@ -175,12 +185,28 @@ final class PriceWorker {
             pollFailing = true
             return
         }
-        for request in open where !attempted.contains(request.id) {
+        for request in open where isDue(request.id) {
             if Task.isCancelled { return }
-            attempted.insert(request.id)
+            let attempt = (attempts[request.id] ?? 0) + 1
+            attempts[request.id] = attempt
+            retryAt[request.id] = nil
+            if attempt > 1 { PriceLog.event("price \(request.id) retry \(attempt - 1)") }
             let outcome = await handle(request, api: api)
             lastOutcome = outcome
             outcomes.append(outcome)
+            if outcome.cents == nil && attempt == 1 {
+                retryAt[request.id] = .now + retryDelay
+                PriceLog.event("price \(request.id) no price; retrying in \(retryDelay)")
+            }
+        }
+    }
+
+    /// New requests, and a priceless first attempt once its retry delay has passed.
+    private func isDue(_ id: String) -> Bool {
+        switch attempts[id] ?? 0 {
+        case 0: return true
+        case 1: return retryAt[id].map { ContinuousClock.now >= $0 } ?? false
+        default: return false
         }
     }
 
@@ -220,15 +246,22 @@ final class PriceWorker {
     private func fastPath(_ request: PriceRequest, browser: PriceBrowsing, api: PriceAPI) async throws -> Outcome? {
         PriceLog.event("price \(request.id) open \(BrowserPolicy.safeURL(URL(string: request.searchUrl)))")
         _ = try await browser.run(tool: "browser_open", args: ["url": request.searchUrl])
-        do {
-            _ = try await browser.run(tool: "browser_wait_for", args: ["text": "results", "seconds": waitSeconds])
+        var ready = await waitForResults(browser, seconds: waitSeconds)
+        if ready {
             PriceLog.event("price \(request.id) results showing")
-        } catch {
-            PriceLog.event("price \(request.id) no \"results\" text after \(Int(waitSeconds)) s")
+        } else {
+            PriceLog.event("price \(request.id) no \"results\" text after \(Int(waitSeconds)) s; reloading")
+            _ = try await browser.run(tool: "browser_act", args: ["action": "reload"])
+            ready = await waitForResults(browser, seconds: reloadWaitSeconds)
+            PriceLog.event("price \(request.id) " + (ready ? "results showing after reload" : "still no \"results\" after reload"))
         }
         let observation = try await browser.run(tool: "browser_observe", args: [:])
         let text = String((observation["text"] as? String ?? "").prefix(Self.pageTextLimit))
         PriceLog.event("price \(request.id) observed \(text.count) chars")
+        if !ready {
+            let head = text.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(200)
+            PriceLog.event("price \(request.id) page starts: \(head)")
+        }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let reply = try await api.extract(id: request.id, pageText: text)
         if reply["found"] as? Bool == true, let cents = reply["priceCents"] as? Int {
@@ -240,14 +273,31 @@ final class PriceWorker {
         return nil
     }
 
+    /// Waits for "results" in chunks of at most 20 s (the tool's limit). False on timeout or error.
+    private func waitForResults(_ browser: PriceBrowsing, seconds: Double) async -> Bool {
+        var left = seconds
+        while left > 0 {
+            let chunk = min(left, 20)
+            left -= chunk
+            do {
+                _ = try await browser.run(tool: "browser_wait_for", args: ["text": "results", "seconds": chunk])
+                return true
+            } catch {
+                if Task.isCancelled { return false }
+            }
+        }
+        return false
+    }
+
     /// The team's Gemini browser agent, with the model on the server: post the conversation,
     /// run the model's browser calls here, append both turns, repeat.
     private func agentLoop(_ request: PriceRequest, browser: PriceBrowsing, api: PriceAPI) async throws -> Outcome {
-        // The server seeds this same turn when contents is empty; sending it ourselves keeps
-        // the task in the conversation on later steps, which must carry the whole history.
+        // The server seeds the Item/Store line when contents is empty; sending the turn ourselves
+        // keeps the task (and the wait instruction) in the history every later step must carry.
+        // 12 steps make 23 entries, under the server's 24.
         var contents: [[String: Any]] = [[
             "role": "user",
-            "parts": [["text": "Item: \"\(request.name)\". Store: \(request.store). Start at \(request.searchUrl)."]],
+            "parts": [["text": "\(Self.agentWaitInstruction)\nItem: \"\(request.name)\". Store: \(request.store). Start at \(request.searchUrl)."]],
         ]]
         for step in 1...Self.maxAgentSteps {
             try Task.checkCancellation()

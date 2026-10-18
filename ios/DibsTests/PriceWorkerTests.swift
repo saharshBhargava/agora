@@ -76,6 +76,8 @@ final class FakeBrowser: PriceBrowsing {
     var closed = false
     var pageText = "308 results about $1.10 each Large Cosmic Crisp® Apple – Each"
     var failOpen = false
+    /// How many browser_wait_for calls time out before one succeeds.
+    var waitFailures = 0
 
     func restrict(to url: URL) { restrictedTo = url }
     func close() { closed = true }
@@ -83,6 +85,7 @@ final class FakeBrowser: PriceBrowsing {
     func run(tool name: String, args: [String: Any]) async throws -> [String: Any] {
         calls.append((name, args))
         if name == "browser_open" && failOpen { throw BrowserError("navigation_failed") }
+        if name == "browser_wait_for" && waitFailures > 0 { waitFailures -= 1; throw BrowserError("timeout") }
         return ["documentId": "d1", "observationId": "d1:\(calls.count)", "title": "Search", "text": pageText,
                 "elements": [["id": "e0", "role": "a", "name": "Large Cosmic Crisp Apple"]]]
     }
@@ -104,7 +107,7 @@ final class PriceWorkerTests: XCTestCase {
         PriceStub.reset()
         browser = FakeBrowser()
         let fake = browser!
-        worker = PriceWorker(pollInterval: .milliseconds(20), waitSeconds: 12, makeBrowser: { fake })
+        worker = PriceWorker(pollInterval: .milliseconds(20), retryDelay: .seconds(60), makeBrowser: { fake })
         worker.use(api: api)
     }
 
@@ -126,6 +129,67 @@ final class PriceWorkerTests: XCTestCase {
         XCTAssertEqual(worker.lastOutcome, .init(requestId: "r1", name: "cosmic crisp apple", via: .page,
                                                  cents: 110, productName: "Large Cosmic Crisp Apple"))
         XCTAssertNil(worker.currentName)
+    }
+
+    func testMissingResultsReloadsOnceThenObserves() async throws {
+        browser.waitFailures = 2   // 25 s wait = 20 s + 5 s chunks, both time out
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
+        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":110}"#))
+
+        await worker.pollOnce()
+
+        XCTAssertEqual(browser.calls.map(\.name),
+                       ["browser_open", "browser_wait_for", "browser_wait_for", "browser_act", "browser_wait_for", "browser_observe"])
+        XCTAssertEqual(browser.calls.filter { $0.name == "browser_wait_for" }.map { ($0.args["seconds"] as? NSNumber)?.doubleValue },
+                       [20, 5, 20])
+        XCTAssertEqual(browser.calls[3].args["action"] as? String, "reload")
+        XCTAssertEqual(worker.lastOutcome?.cents, 110)
+    }
+
+    func testResultsStillMissingAfterReloadStillObservesAndExtracts() async throws {
+        browser.waitFailures = 3
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
+        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":110}"#))
+        await worker.pollOnce()
+        XCTAssertEqual(browser.calls.filter { $0.name == "browser_act" }.count, 1, "reload only once")
+        XCTAssertEqual(browser.calls.last?.name, "browser_observe")
+        XCTAssertEqual(PriceStub.requests("POST /api/price-requests/r1/extract").count, 1)
+    }
+
+    func testNoPriceIsRetriedOnceAfterTheDelay() async throws {
+        let fake = browser!
+        worker = PriceWorker(pollInterval: .milliseconds(20), retryDelay: .zero, makeBrowser: { fake })
+        worker.use(api: api)
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
+        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, notFound))
+        PriceStub.route("POST /api/price-requests/r1/agent-step",
+                        .json(200, #"{"parts":[{"functionCall":{"name":"report_price","args":{"found":false}}}]}"#))
+
+        await worker.pollOnce()
+        await worker.pollOnce()
+        await worker.pollOnce()
+
+        XCTAssertEqual(PriceStub.requests("POST /api/price-requests/r1/extract").count, 2, "one retry, no more")
+        XCTAssertEqual(worker.outcomes.map(\.via), [.notFound, .notFound])
+    }
+
+    func testRetryWaitsForTheDelayAndFoundIsNotRetried() async throws {
+        // Default delay in setUp is 60 s: the next poll must not retry yet.
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
+        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, notFound), .json(200, #"{"found":true,"priceCents":110}"#))
+        PriceStub.route("POST /api/price-requests/r1/agent-step",
+                        .json(200, #"{"parts":[{"functionCall":{"name":"report_price","args":{"found":false}}}]}"#))
+        await worker.pollOnce()
+        await worker.pollOnce()
+        XCTAssertEqual(PriceStub.requests("POST /api/price-requests/r1/extract").count, 1)
+
+        let fake = browser!
+        worker = PriceWorker(pollInterval: .milliseconds(20), retryDelay: .zero, makeBrowser: { fake })
+        worker.use(api: api)
+        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":110}"#))
+        await worker.pollOnce()
+        await worker.pollOnce()
+        XCTAssertEqual(PriceStub.requests("POST /api/price-requests/r1/extract").count, 2, "a found price is never retried")
     }
 
     func testPageTextIsCappedAt16000Chars() async throws {
@@ -153,7 +217,9 @@ final class PriceWorkerTests: XCTestCase {
         XCTAssertEqual(first.count, 1)
         XCTAssertEqual(first[0]["role"] as? String, "user")
         let seed = (first[0]["parts"] as? [[String: Any]])?.first?["text"] as? String
-        XCTAssertEqual(seed, #"Item: "cosmic crisp apple". Store: QFC. Start at https://www.qfc.com/search?query=cosmic%20crisp%20apple."#)
+        XCTAssertEqual(seed, PriceWorker.agentWaitInstruction + "\n" +
+                       #"Item: "cosmic crisp apple". Store: QFC. Start at https://www.qfc.com/search?query=cosmic%20crisp%20apple."#)
+        XCTAssertTrue(seed?.hasPrefix(#"After browser_open, call browser_wait_for with text "results" (up to 20 seconds) before reading the page. Do not reopen the same URL more than once."#) ?? false)
 
         let second = steps[1].json["contents"] as? [[String: Any]] ?? []
         XCTAssertEqual(second.map { $0["role"] as? String }, ["user", "model", "user"])
