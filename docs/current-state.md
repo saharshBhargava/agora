@@ -292,3 +292,19 @@ Local validation: the prior combined checkout passed 649 backend tests, 70 selec
 24 focused browser/watch tests, including a real disposable API/Postgres flow. The additive migration and
 old/new API compatibility rehearsal passed. This isolated release is being checked separately before merge;
 production availability must be established from its deploy run and `/readyz`, not this preparation entry.
+
+
+## Chat additions released — October 18, 2026
+
+[PR #33](https://github.com/saharshBhargava/agora/pull/33) merged as
+`7c6603066d9071e8f3b92542b4f64dafed2a68c8`, including current main's automatic wishlist-price checks
+and automatic item-image selection. All PR checks passed: Postgres, TimescaleDB, Docker image,
+upgrade/rollback rehearsal and the iOS simulator. The isolated chat source passed 613 local backend tests
+and 69 selected iOS tests, including real local chat/API/Postgres persistence without skips; after
+integrating automatic watches, all 48 focused chat/wishlist/watch/demo tests passed again.
+
+Post-merge backend CI and the [managed deployment](https://github.com/saharshBhargava/agora/actions/runs/39116019921)
+succeeded. Read-only production `/readyz` verification reported that exact merge commit, TimescaleDB
+enabled, migration `0019_watch_browser_fallback.sql` and no pending migrations. Chat adds no migration
+of its own. No production reset or test writes were performed. The native tools require a rebuilt iOS app;
+this verifies the backend release, not distribution of an iOS build or live credentialed model inference.
