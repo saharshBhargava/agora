@@ -16,7 +16,7 @@ DEV_ISSUER = "agora-dev"
 DEV_AUDIENCE = "agora-api"
 # Must match app.demo_account.DEMO_SUBJECT and the handle pattern on DevLoginIn.
 # Kept here (not imported) because demo_account imports this module.
-_DEMO_TOKEN_SUBJECT = "demo:primary"
+_DEMO_TOKEN_SUBJECT = "demo:primary"  # noqa: S105 - auth subject namespace, not a password
 _DEV_HANDLE = re.compile(r"^[a-z0-9_]{3,32}$")
 
 
