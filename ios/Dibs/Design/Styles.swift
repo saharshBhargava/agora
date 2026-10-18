@@ -17,17 +17,24 @@ struct DibsButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: fontSize, weight: .bold))
-            .foregroundStyle(kind == .secondary ? Color.ink : Color.white)
+            .foregroundStyle(foreground)
             .frame(maxWidth: .infinity, minHeight: Metrics.buttonHeight)
             .padding(.horizontal, Metrics.space3)
-            .background(background, in: RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous))
+            // Disabled (also "Joining…"): only the fill fades, so the label stays readable (white on ~#555).
+            .background(background.opacity(isEnabled || kind == .secondary ? 1 : 0.7),
+                        in: RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous))
             .overlay {
                 if kind == .secondary {
                     RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous).strokeBorder(Color.line)
                 }
             }
-            .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : 0.5)
+            .opacity(configuration.isPressed ? 0.85 : 1)
             .contentShape(RoundedRectangle(cornerRadius: Metrics.radius, style: .continuous))
+    }
+
+    private var foreground: Color {
+        guard kind == .secondary else { return .white }
+        return isEnabled ? .ink : Color.ink.opacity(0.55)
     }
 
     private var background: Color {
