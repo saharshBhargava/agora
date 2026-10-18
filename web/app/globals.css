@@ -138,3 +138,190 @@ p { margin: 0; }
   outline: 3px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ---- lift and drop ---- */
+:root {
+  --shadow-lift: 0 14px 28px rgba(23, 20, 15, 0.28), 0 4px 8px rgba(23, 20, 15, 0.18);
+  --shadow-tray: 0 -6px 20px rgba(23, 20, 15, 0.12);
+  --toast-bg: #17140f;
+  --toast-ink: #fbf8f3;
+  --chip-w: 128px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --shadow-lift: 0 14px 28px rgba(0, 0, 0, 0.6), 0 4px 8px rgba(0, 0, 0, 0.4);
+    --shadow-tray: 0 -6px 20px rgba(0, 0, 0, 0.5);
+    --toast-bg: #f5f1ea;
+    --toast-ink: #17140f;
+  }
+}
+
+.grid-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--space-1) var(--space-2);
+  margin: 0 calc(var(--space-2) * -1);
+  overscroll-behavior-x: contain;
+}
+.grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, auto);
+  grid-auto-columns: var(--chip-w);
+  gap: var(--space-1);
+  width: max-content;
+}
+.grid-cell { min-width: 0; }
+
+.chip {
+  appearance: none;
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: pan-x pan-y;
+  transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+}
+.chip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.chip-mine { background: var(--accent-soft); border-color: var(--accent); }
+.chip-wish { background: var(--released-soft); border-style: dashed; color: var(--text-muted); cursor: default; }
+.chip-identifying { opacity: 0.5; cursor: default; }
+.chip-lifted { transform: scale(1.08); box-shadow: var(--shadow-lift); z-index: 5; cursor: grabbing; }
+.chip-photo {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.chip-wish .chip-photo { background: var(--released-soft); filter: grayscale(1); }
+.chip-photo img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.chip-photo-fallback { font-size: var(--fs-xl); font-weight: 700; color: var(--text-muted); }
+.chip-ring { position: absolute; top: 2px; left: 2px; line-height: 0; }
+.chip-name { font-size: var(--fs-sm); font-weight: 600; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.chip-price { font-size: var(--fs-sm); color: var(--text-muted); }
+.chip-badge {
+  position: absolute;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+}
+.chip-qty { top: 4px; right: 4px; }
+.chip-overcap { bottom: 4px; right: 4px; background: var(--danger); color: #fff; }
+.chip-new { animation: chip-pulse 600ms ease-out; }
+@keyframes chip-pulse {
+  0% { transform: scale(0.85); box-shadow: 0 0 0 0 var(--accent); }
+  50% { transform: scale(1.06); box-shadow: 0 0 0 8px transparent; }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 transparent; }
+}
+
+.ring-initial { font-size: 14px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+.ring-initial-seg { font-size: 9px; }
+.ring-count { font-size: 16px; }
+
+.tray {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-width: 480px;
+  margin: 0 auto;
+  height: calc(152px + env(safe-area-inset-bottom));
+  padding: var(--space-1) var(--space-2) env(safe-area-inset-bottom);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: var(--shadow-tray);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+  z-index: 10;
+  transition: height 220ms cubic-bezier(0.2, 0.8, 0.2, 1), background 160ms ease;
+}
+.tray-expanded { height: 40dvh; }
+.tray-over { background: var(--accent-soft); }
+.tray-handle { align-self: center; width: 36px; height: 4px; border-radius: 2px; background: var(--border); }
+.tray-header { margin: 0; font-size: var(--fs-sm); font-weight: 650; }
+.tray-header-over { color: var(--danger); }
+.tray-summary { margin: 0; font-size: var(--fs-sm); color: var(--text-muted); }
+.tray-warn { margin: 0; font-size: var(--fs-sm); font-weight: 650; color: var(--danger); }
+.tray-chips { display: flex; gap: var(--space-1); overflow-x: auto; padding: 4px 0; flex: 1; align-items: flex-start; }
+.tray-empty { align-self: center; }
+.tray-chip {
+  appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 96px;
+  min-height: var(--tap);
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--accent-soft);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: pan-x pan-y;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.tray-chip-share { font-size: var(--fs-lg); font-weight: 750; }
+.tray-chip-name { font-size: var(--fs-sm); color: var(--text-muted); max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tray-split { position: static; align-self: flex-start; margin-top: 2px; }
+
+.toast {
+  position: fixed;
+  left: var(--space-2);
+  right: var(--space-2);
+  bottom: calc(168px + env(safe-area-inset-bottom));
+  max-width: 448px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  min-height: var(--tap);
+  border-radius: var(--radius);
+  background: var(--toast-bg);
+  color: var(--toast-ink);
+  overflow: hidden;
+  z-index: 20;
+  animation: toast-in 200ms ease-out;
+}
+.toast-action {
+  appearance: none; border: 0; background: transparent; color: var(--accent);
+  font: inherit; font-weight: 700; min-height: var(--tap); padding: 0 var(--space-1); cursor: pointer;
+}
+.toast-bar { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--accent); transform-origin: left; animation: toast-bar linear forwards; }
+@keyframes toast-in { from { transform: translateY(12px); opacity: 0; } }
+@keyframes toast-bar { to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .chip, .tray, .tray-chip { transition: none; }
+  .chip-new, .toast { animation: none; }
+}

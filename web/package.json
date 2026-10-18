@@ -9,6 +9,7 @@
     "sync-types": "tsx scripts/sync-types.ts"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
     "next": "^15.5.28",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
