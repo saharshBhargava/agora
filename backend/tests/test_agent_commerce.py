@@ -5,8 +5,19 @@ import asyncio
 import uuid
 
 import asyncpg
+import pytest
 
 from tests.conftest import login
+
+
+@pytest.fixture(autouse=True)
+async def restore_demo_flags(app):
+    async with app.state.db.system() as conn:
+        original = await conn.fetch("SELECT id FROM users WHERE is_demo")
+    yield
+    async with app.state.db.system() as conn:
+        await conn.execute("UPDATE users SET is_demo = false WHERE is_demo AND NOT (id = ANY($1::uuid[]))",
+                           [row["id"] for row in original])
 
 
 def idem() -> dict[str, str]:
@@ -23,6 +34,22 @@ async def fresh(client, autonomy: str = "buy_within_mandate") -> dict[str, str]:
 
 async def household(client, headers) -> str:
     return (await client.get("/v1/me", headers=headers)).json()["households"][0]["id"]
+
+
+async def flag_demo(app, client, headers):
+    """Only explicit simulated-checkout test accounts receive the server-only marker."""
+    user_id = uuid.UUID((await client.get("/v1/me", headers=headers)).json()["id"])
+    async with app.state.db.system() as conn:
+        await conn.execute("UPDATE users SET is_demo = true WHERE id = $1", user_id)
+
+
+async def test_real_account_checkout_never_simulates_payments(client):
+    headers = await fresh(client)
+    await mandate(client, headers)
+    result = await propose(client, headers, execution="agora")
+    assert result.status_code == 503 and result.json()["title"] == "payments_unavailable"
+    assert (await client.get("/v1/spend", headers=headers)).json()["total_cents"] == 0
+    assert (await client.get("/v1/agent/intents", headers=headers)).json() == []
 
 
 async def mandate(client, headers, **fields) -> dict:
@@ -149,8 +176,9 @@ async def test_escalates_over_cap_and_user_decides(client):
     assert never["decision"] == "deny" and never["status"] == "rejected"
 
 
-async def test_agora_checkout_after_approval(client):
+async def test_agora_checkout_after_approval(client, app):
     h = await fresh(client, autonomy="buy_with_approval")
+    await flag_demo(app, client, h)
     intent = (await propose(client, h, "Sourdough loaf", execution="agora", amount_cents=750,
                             category="bakery")).json()
     assert intent["status"] == "proposed" and intent["order_id"] is None
@@ -176,6 +204,7 @@ async def test_agora_checkout_after_approval(client):
     assert ("order.placed", "user") in actions and ("agent.intent_outcome_unknown", "user") in actions
 
     other = await fresh(client, autonomy="buy_with_approval")
+    await flag_demo(app, client, other)
     declined = (await propose(client, other, "Croissants", execution="agora", payment_method_ref="sim_visa_declined",
                               category="bakery")).json()
     declined = (await client.post(f"/v1/agent/intents/{declined['id']}/approve", headers=other)).json()
@@ -233,8 +262,9 @@ async def test_pause_revokes_cancels_and_denies(client):
     assert first_pause["meta"] == {"mandates_revoked": 1, "intents_cancelled": 2, "in_flight": 1}
 
 
-async def test_idempotent_retries_never_double_charge(client, database_url):
+async def test_idempotent_retries_never_double_charge(client, database_url, app):
     h = await fresh(client)
+    await flag_demo(app, client, h)
     await mandate(client, h)
     key = idem()
     first = await propose(client, h, "Butter", key=key, execution="agora")

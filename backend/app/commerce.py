@@ -88,7 +88,7 @@ async def policy_inputs(conn: asyncpg.Connection, user_id: UUID, household_id: U
 
 async def record_order(conn: asyncpg.Connection, intent: asyncpg.Record, total_cents: int, *, provider: str,
                        payment_ref: str | None = None, brand: str | None = None,
-                       last4: str | None = None) -> tuple[UUID, bool]:
+                       last4: str | None = None, placed_at: datetime | None = None) -> tuple[UUID, bool]:
     """Record the order and its spend for a completed purchase intent. Returns (order_id, created).
 
     ``orders.agent_intent_id`` is unique, so however often this runs for one intent there is one order and one
@@ -97,18 +97,19 @@ async def record_order(conn: asyncpg.Connection, intent: asyncpg.Record, total_c
     order_id = await conn.fetchval(
         """INSERT INTO orders (household_id, user_id, merchant_id, merchant_name, title, category, channel,
                                total_cents, currency, payment_provider, payment_ref, payment_brand, payment_last4,
-                               agent_intent_id)
-           VALUES ($1, $2, $3, $4, $5, $6, 'agent', $7, $8, $9, $10, $11, $12, $13)
+                               agent_intent_id, placed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'agent', $7, $8, $9, $10, $11, $12, $13, coalesce($14, now()))
            ON CONFLICT (agent_intent_id) DO NOTHING RETURNING id""",
         intent["household_id"], intent["user_id"], intent["merchant_id"], intent["merchant_name"], intent["title"],
-        intent["category"], total_cents, intent["currency"], provider, payment_ref, brand, last4, intent["id"])
+        intent["category"], total_cents, intent["currency"], provider, payment_ref, brand, last4, intent["id"],
+        placed_at)
     if order_id is None:
         return await conn.fetchval("SELECT id FROM orders WHERE agent_intent_id = $1", intent["id"]), False
     if total_cents > 0:
         await conn.execute(
             """INSERT INTO spend_entries (time, household_id, user_id, amount_cents, currency, category, merchant_id,
                                           order_id)
-               VALUES (now(), $1, $2, $3, $4, $5, $6, $7)""",
+               VALUES (coalesce($8, now()), $1, $2, $3, $4, $5, $6, $7)""",
             intent["household_id"], intent["user_id"], total_cents, intent["currency"], intent["category"],
-            intent["merchant_id"], order_id)
+            intent["merchant_id"], order_id, placed_at)
     return order_id, True

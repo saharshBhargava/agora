@@ -19,11 +19,13 @@ from app.commerce import agent_settings, policy_inputs, record_order
 from app.core.policy import COMMITTED, ProposedIntent, decide, period_start, zone
 from app.core.wishlist import category_key, title_key
 from app.db import audit, notify
+from app.demo_account import is_demo_user
 from app.errors import Problem, not_found
 from app.payments import (
     SIMULATED_DEFAULT_METHOD,
     ChargeRequest,
     PaymentOutcomeUnknown,
+    SimulatedPaymentProvider,
     charge_key,
 )
 from app.routers.account import require_household
@@ -102,6 +104,10 @@ async def _execute_checkout(request: Request, conn: asyncpg.Connection, intent: 
     """Agora-native checkout through the configured PaymentProvider. Runs once per intent: the intent row is
     locked, the provider key is derived from the intent ID, and orders are unique per intent."""
     provider = request.app.state.payments
+    if await is_demo_user(conn, user_id):
+        provider = SimulatedPaymentProvider()
+    elif provider.name == "simulated":
+        raise Problem(503, "payments_unavailable", "Checkout is not available yet. No payment was taken.")
     intent = await _set_status(conn, intent["id"], "executing")
     charge = ChargeRequest(idempotency_key=charge_key(intent["id"]), amount_cents=intent["amount_cents"],
                            currency=intent["currency"], description=intent["title"],

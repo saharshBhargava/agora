@@ -85,8 +85,8 @@ class Settings(BaseSettings):
     auto_accept_confidence: float = 0.85
     auto_accept_match: float = 0.8
 
-    # Agora-native checkout. "simulated" records orders and spend with no real money; Stripe test mode and the
-    # Visa Intelligent Commerce sandbox plug in behind the same interface (app/payments.py).
+    # Agora-native checkout: simulated payments apply only to users.is_demo accounts. Ordinary accounts get
+    # payments_unavailable until a real provider is implemented. Demo accounts always use simulation.
     payment_provider: Literal["simulated"] = "simulated"
 
     cors_origins: list[str] = Field(default_factory=list)

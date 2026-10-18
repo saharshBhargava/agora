@@ -161,9 +161,10 @@ async def main() -> None:
     await db.connect()
     try:
         await seed_catalog(db)
-        for handle, name in DEMO_USERS:
-            created = await seed_history(db, handle, name)
-            print(f"{handle}: {'seeded' if created else 'already had data'}")
+        if settings.env in ("dev", "test"):
+            for handle, name in DEMO_USERS:
+                created = await seed_history(db, handle, name)
+                print(f"{handle}: {'seeded' if created else 'already had data'}")
         from app.demo_account import ensure_demo_account  # imports this module
 
         await ensure_demo_account(db, settings)

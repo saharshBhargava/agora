@@ -117,7 +117,7 @@ CREATE TABLE orders (
 CREATE INDEX orders_household_time ON orders (household_id, placed_at DESC);
 
 -- Time series: one row per order (per category, once orders have line items). Converted to a hypertable by
--- 0008 when TimescaleDB is available. Corrections and refunds are new (negative) rows, never updates.
+-- 0012 when TimescaleDB is available. Corrections and refunds are new (negative) rows, never updates.
 CREATE TABLE spend_entries (
   id            uuid NOT NULL DEFAULT gen_random_uuid(),
   time          timestamptz NOT NULL,
