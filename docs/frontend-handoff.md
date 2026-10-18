@@ -5,12 +5,14 @@ Pending UI work: [frontend-requests.md](frontend-requests.md).
 
 ## Current deployment record
 
-As of October 17, 2026, the Tiger database is created and initialized through migration `0010` with only
-the designated demo account. Connectivity, TimescaleDB, and the privileges needed to create the request
-role were verified. In-process API checks against that database passed for readiness, profile, inventory,
-lists and forecasts; unauthenticated profile access returned 401. This does not verify a public endpoint
-or native Google sign-in. Render service setup remains pending; no live API URL is available yet.
-After the commerce merge, hosted boot applies migrations `0011`/`0012` and backfills its demo data.
+As of October 17, 2026, the Tiger database is created and initialized through migrations `0011`/`0012` with
+only the designated demo account. Connectivity, TimescaleDB, and request-role permissions were verified.
+The commerce demo data was backfilled without resetting earlier inventory/history. In-process API checks
+against that hosted database passed for readiness, profile, inventory, lists, forecasts, agent state,
+mandates, intents, budgets and spend (all HTTP 200); unauthenticated profile access returned 401.
+These checks used temporary process-only test credentials and did not make payments. They do not verify a
+public endpoint or native Google sign-in. Render service setup remains pending; no live API URL is
+available yet. Normal hosted boot checks for pending migrations and ensures demo data idempotently.
 Replace the fields below after deploying; examples are not working hosts.
 
 | Field | Actual value |
@@ -20,7 +22,7 @@ Replace the fields below after deploying; examples are not working hosts.
 | Health / database readiness | `<origin>/healthz` / `<origin>/readyz` |
 | Interactive docs / OpenAPI | `<origin>/docs` / `<origin>/openapi.json` |
 | Deployed commit | Pending; copy from Render Events |
-| Last successful smoke test | Pending |
+| Last successful smoke test | Hosted database + in-process API: October 17, 2026; public API/native Google tests pending |
 | Google test-user access | Owner must add each tester in the existing Google Cloud project |
 | Demo Google address | Owner must configure `AGORA_DEMO_GOOGLE_EMAILS` in Render |
 | Live scan provider | Pending backend Gemini or Perceptron key |

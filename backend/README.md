@@ -6,8 +6,10 @@
 
 FastAPI + Postgres (TimescaleDB when available). Design and rationale: [docs/backend-spec.md](../docs/backend-spec.md).
 
-This is the **P0 spine**: dev auth, households, scan upload → vision → review → inventory time series, live sync,
-audit trail, seed data, and offline replay for demos.
+The backend includes households, scan upload → vision → review → inventory time series, run-out forecasts,
+shopping lists, wishlist suggestions, agent mandates/approvals, budgets/spend, live sync and an audit trail.
+Hosted setup uses Google ID-token auth and one populated demo account; checkout is simulated only for that
+account. See the [integration handoff](../docs/pr-handoff.md) before resuming an older feature branch.
 
 ## Run locally
 
