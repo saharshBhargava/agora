@@ -171,7 +171,7 @@ private struct ChatTitle: View {
                     Text(settings.demoCalendar?.isDemoAccount == true ? "Dibs · Sample" : (try? settings.modelConfiguration.profile(for: .chat).name) ?? "Choose model")
                     Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
                 }.font(.system(size: 12)).foregroundStyle(Color.muted)
-            }.frame(minHeight: 44)
+            }.frame(maxWidth: 180, minHeight: 44)
         }.buttonStyle(.plain).accessibilityLabel("\(chat.title). Selected model: \(settings.featureDescription(.chat))")
     }
 }
