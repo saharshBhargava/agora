@@ -50,6 +50,11 @@ final class OpenAICompatibleClient: ModelClient {
             }
             return
         }
+        // "010.0.0.1", "0x0a.1", "167772161": resolvers and URL loaders disagree on how to read these (octal, hex,
+        // one 32-bit number), so the address checked could differ from the address connected to. Refuse them.
+        if isAmbiguousNumericHost(host) {
+            throw failure("endpoint", "Enter the address as four numbers, for example 192.168.1.5.")
+        }
         if host == "localhost" || host.hasSuffix(".localhost") { return }
         let resolve = addressesForHost ?? { try lookupAddresses(host: $0) }
         let addresses: [String]
@@ -60,6 +65,17 @@ final class OpenAICompatibleClient: ModelClient {
         }
         guard !addresses.isEmpty, addresses.allSatisfy(isAllowedPrivateAddress) else {
             throw failure("endpoint", "Use HTTPS for servers outside your local network.")
+        }
+    }
+
+    /// A host made only of numeric labels (decimal or `0x` hex) that is not a canonical dotted-quad IPv4 address.
+    private static func isAmbiguousNumericHost(_ host: String) -> Bool {
+        guard parseIPv4(host) == nil else { return false }
+        let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+        return labels.allSatisfy { label in
+            let text = label.lowercased()
+            if text.hasPrefix("0x") { return text.dropFirst(2).allSatisfy(\.isHexDigit) }
+            return !text.isEmpty && text.utf8.allSatisfy { (48...57).contains($0) }
         }
     }
 
