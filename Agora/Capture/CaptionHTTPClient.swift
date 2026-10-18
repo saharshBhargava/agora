@@ -31,10 +31,10 @@ final class URLSessionCaptionHTTPClient: CaptionHTTPClient {
         config.timeoutIntervalForResource = resourceTimeout
         return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }
-    private func checked(_ response: URLResponse, count: Int = 0) throws -> HTTPURLResponse {
+    private func checked(_ response: URLResponse, count: Int = 0, body: Data? = nil) throws -> HTTPURLResponse {
         guard let http = response as? HTTPURLResponse else { throw CaptionFailure(code: "network_response", message: "No response from the model server.") }
         AppLog.event(.caption, "http.response", status: http.statusCode, count: count)
-        guard (200..<300).contains(http.statusCode) else { throw CaptionHTTPFailure(status: http.statusCode) }
+        guard (200..<300).contains(http.statusCode) else { throw CaptionHTTPFailure(status: http.statusCode, body: body) }
         return http
     }
     func data(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -42,7 +42,7 @@ final class URLSessionCaptionHTTPClient: CaptionHTTPClient {
         defer { session.invalidateAndCancel() }
         return try await withTaskCancellationHandler {
             let (data, response) = try await session.data(for: request)
-            return (data, try checked(response, count: data.count))
+            return (data, try checked(response, count: data.count, body: data))
         } onCancel: { session.invalidateAndCancel() }
     }
     func upload(_ request: URLRequest, file: URL, progress: @escaping @MainActor (Double) -> Void) async throws -> (Data, HTTPURLResponse) {
@@ -50,7 +50,7 @@ final class URLSessionCaptionHTTPClient: CaptionHTTPClient {
         defer { session.invalidateAndCancel() }
         return try await withTaskCancellationHandler {
             let (data, response) = try await session.upload(for: request, fromFile: file)
-            return (data, try checked(response, count: data.count))
+            return (data, try checked(response, count: data.count, body: data))
         } onCancel: { session.invalidateAndCancel() }
     }
     func stream(_ request: URLRequest, event: @escaping @MainActor (Data) throws -> Void) async throws {

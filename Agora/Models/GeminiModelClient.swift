@@ -117,7 +117,7 @@ final class GeminiModelClient: ModelClient {
                         }
                         let (data, httpResponse) = try await self.http.data(request)
                         try Task.checkCancellation()
-                        guard (200..<300).contains(httpResponse.statusCode) else { throw CaptionHTTPFailure(status: httpResponse.statusCode) }
+                        guard (200..<300).contains(httpResponse.statusCode) else { throw CaptionHTTPFailure(status: httpResponse.statusCode, body: data) }
                         guard data.count < 8_000_000,
                               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any], root["error"] == nil,
                               (root["promptFeedback"] as? [String: Any])?["blockReason"] == nil,
@@ -137,7 +137,21 @@ final class GeminiModelClient: ModelClient {
                 }
                 throw BrowserError("provider_error")
             }
-        } catch let failure as CaptionHTTPFailure { throw GeminiProvider.responseError(failure.status) }
+        } catch let failure as CaptionHTTPFailure {
+            if failure.status == 400, input.outputSchema != nil {
+                let hint: String
+                switch failure.rejection {
+                case .schema:
+                    hint = "Google rejected the item-list format for \(model). In Settings → Models, choose an Inventory model that supports structured output."
+                case .media:
+                    hint = "Google rejected the photo or video for \(model). Try another capture and check that the Inventory model supports images."
+                case nil:
+                    hint = "Google rejected the identification request for \(model). Check the Inventory model in Settings → Models; it must support images and structured output."
+                }
+                throw BrowserError("gemini_http_400", hint)
+            }
+            throw GeminiProvider.responseError(failure.status)
+        }
     }
     private func withMedia<T>(_ files: [(URL, CaptureItem.Kind)], prepared: [URL: [[String: Any]]],
                               onEvent: @escaping @MainActor (ModelEvent) -> Void,

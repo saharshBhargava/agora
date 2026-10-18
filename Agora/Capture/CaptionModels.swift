@@ -48,7 +48,25 @@ struct CaptionFailure: LocalizedError {
 }
 
 struct CaptionHTTPFailure: Error {
+    enum Rejection { case schema, media }
     let status: Int
+    let rejection: Rejection?
+
+    init(status: Int, body: Data? = nil) {
+        self.status = status
+        // Classify provider errors without retaining, displaying, or logging reflected user data.
+        guard status == 400, let body, body.count <= 64_000,
+              let root = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let error = root["error"] as? [String: Any],
+              let message = (error["message"] as? String)?.lowercased() else {
+            rejection = nil; return
+        }
+        if message.contains("schema") || message.contains("constraint") {
+            rejection = .schema
+        } else if ["image", "mime", "inline_data", "inlinedata", "file_uri", "fileuri", "video"].contains(where: message.contains) {
+            rejection = .media
+        } else { rejection = nil }
+    }
 }
 
 struct GeminiUploadedFile: Decodable {

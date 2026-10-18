@@ -50,20 +50,7 @@ final class GeminiInventoryService: InventoryRecognizing {
         }
     }
 
-    static let schema: [String: Any] = [
-        "type": "object", "required": ["items"], "additionalProperties": false,
-        "properties": ["items": ["type": "array", "maxItems": 100, "items": [
-            "type": "object", "additionalProperties": false,
-            "required": ["name", "category", "unit", "quantity", "confidence"],
-            "properties": [
-                "name": ["type": "string", "minLength": 1, "maxLength": 120],
-                "category": ["type": "string", "maxLength": 40],
-                "unit": ["type": "string", "minLength": 1, "maxLength": 20],
-                "quantity": ["type": "number", "minimum": 0, "maximum": 10000],
-                "confidence": ["type": "number", "minimum": 0, "maximum": 1]
-            ]
-        ]]]
-    ]
+    static let schema = InventoryRecognitionContract.schema
 
     static func decode(_ data: Data) throws -> [RecognizedItem] {
         struct Response: Decodable {

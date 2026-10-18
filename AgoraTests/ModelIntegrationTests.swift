@@ -262,6 +262,81 @@ final class ModelIntegrationTests: XCTestCase {
         }
     }
 
+    func testPhotoRecognitionUsesSupportedSchemaThroughBothGeminiPaths() async throws {
+        let file = try photo(); defer { try? FileManager.default.removeItem(at: file) }
+        // Emulate Google's supported schema subset, including rejection of unsupported string bounds.
+        func supported(_ schema: [String: Any]) -> Bool {
+            let keywords: Set<String> = ["type", "properties", "required", "additionalProperties", "items", "minimum", "maximum"]
+            guard Set(schema.keys).isSubset(of: keywords) else { return false }
+            if let properties = schema["properties"] as? [String: [String: Any]], !properties.values.allSatisfy(supported) { return false }
+            if let items = schema["items"] as? [String: Any], !supported(items) { return false }
+            return true
+        }
+        var calls = 0
+        ModelWireProtocol.handler = { request in
+            calls += 1
+            XCTAssertEqual(request.url?.host, "generativelanguage.googleapis.com")
+            let body = try modelWireBody(request)
+            XCTAssertNil(body["tools"])
+            let config = try XCTUnwrap(body["generationConfig"] as? [String: Any])
+            XCTAssertEqual(config["responseMimeType"] as? String, "application/json")
+            let schema = try XCTUnwrap(config["responseJsonSchema"] as? [String: Any])
+            guard supported(schema) else {
+                return try .json(["error": ["message": "Unsupported response JSON schema constraint"]], status: 400)
+            }
+            let contents = try XCTUnwrap(body["contents"] as? [[String: Any]])
+            let parts = try XCTUnwrap(contents.first?["parts"] as? [[String: Any]])
+            XCTAssertNotNil(parts.first?["inlineData"])
+            return try .json(self.response(.gemini, text: #"{"items":[{"name":"Milk","category":"Food","unit":"unit","quantity":1,"confidence":0.9}]}"#))
+        }
+        let services: [InventoryRecognizing] = [ModelInventoryService(client: client(.gemini)),
+            GeminiInventoryService(key: "gemini-private-key", model: "gemini-flash-latest", http: http)]
+        for service in services {
+            let items = try await service.recognize(file: file, kind: .image, progress: { _ in }, cleanupNotice: { _ in })
+            XCTAssertEqual(items.map(\.name), ["Milk"])
+        }
+        XCTAssertEqual(calls, 2)
+    }
+
+    func testRecognitionStillEnforcesLocalLengthCountAndQuantityLimits() throws {
+        let valid: [String: Any] = ["name": "Milk", "category": "Food", "unit": "unit", "quantity": 1, "confidence": 0.9]
+        var invalid: [[String: Any]] = []
+        for (field, value) in [("name", String(repeating: "n", count: 121)), ("unit", String(repeating: "u", count: 21)),
+                               ("category", String(repeating: "c", count: 41)), ("name", " ")] {
+            var item = valid; item[field] = value; invalid.append(item)
+        }
+        var negative = valid; negative["quantity"] = -1; invalid.append(negative)
+        var confidence = valid; confidence["confidence"] = 2; invalid.append(confidence)
+        for items in invalid.map({ [$0] }) + [Array(repeating: valid, count: 101)] {
+            let text = String(decoding: try JSONSerialization.data(withJSONObject: ["items": items]), as: UTF8.self)
+            XCTAssertThrowsError(try InventoryRecognitionContract.decode(text))
+        }
+    }
+
+    func testPhotoRecognition400UsesContextAndDoesNotExposeProviderBody() async throws {
+        let file = try photo(); defer { try? FileManager.default.removeItem(at: file) }
+        for (reason, expected) in [("responseJsonSchema has unsupported constraints", "item-list format"),
+                                   ("Unable to decode image", "photo or video"), ("Invalid argument", "identification request")] {
+            var calls = 0
+            ModelWireProtocol.handler = { _ in
+                calls += 1
+                return try .json(["error": ["message": reason + " private-user-data gemini-private-key"]], status: 400)
+            }
+            do {
+                _ = try await ModelInventoryService(client: client(.gemini)).recognize(file: file, kind: .image,
+                    progress: { _ in }, cleanupNotice: { _ in })
+                XCTFail("Rejected recognition must not produce items")
+            } catch {
+                XCTAssertTrue(error.localizedDescription.contains(expected), error.localizedDescription)
+                XCTAssertTrue(error.localizedDescription.contains("gemini-flash-latest"))
+                XCTAssertFalse(error.localizedDescription.contains("function calling"))
+                XCTAssertFalse(error.localizedDescription.contains("private-user-data"))
+                XCTAssertFalse(error.localizedDescription.contains("gemini-private-key"))
+            }
+            XCTAssertEqual(calls, 1)
+        }
+    }
+
     func testBothProvidersRejectMalformedToolArgumentsBeforeReturningCalls() async throws {
         let tool = try ModelToolDefinition(legacy: BrowserCall.schemas[0])
         for provider in ModelProviderKind.allCases {
