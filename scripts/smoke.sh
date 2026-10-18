@@ -13,11 +13,22 @@ if [ -z "${SMOKE_URL:-}" ]; then
 else
   BASE="$SMOKE_URL"  # e.g. a running container
 fi
-for _ in $(seq 1 50); do curl -fs "$BASE/api/health" >/dev/null 2>&1 && break; sleep 0.2; done
 fail() { echo "SMOKE FAIL: $1"; exit 1; }
-curl -fs "$BASE/api/health" | grep -q '"ok":true' || fail "health"
-curl -fs "$BASE/" | grep -qi '<html' || fail "landing /"
-curl -fs "$BASE/join?run=x" | grep -qi '<html' || fail "/join"
-for p in claim shopper settle; do curl -fs "$BASE/$p" | grep -qi '<html' || fail "/$p"; done
-curl -fs -X POST "$BASE/api/runs" | grep -q '"runId"' || fail "POST /api/runs"
+ready=0
+for _ in $(seq 1 50); do
+  if [ -n "${SERVER_PID:-}" ] && ! kill -0 "$SERVER_PID" 2>/dev/null; then fail "server exited"; fi
+  if curl -fs "$BASE/api/health" >/dev/null 2>&1; then ready=1; break; fi
+  sleep 0.2
+done
+[ "$ready" = 1 ] || fail "server not ready"
+check() { # name, expected substring, curl args...
+  local name=$1 want=$2 body; shift 2
+  body=$(curl -fs "$@") || fail "$name (request)"
+  grep -qi -- "$want" <<<"$body" || fail "$name (body)"
+}
+check health '"ok":true' "$BASE/api/health"
+check "landing /" '<html' "$BASE/"
+check "/join" '<html' "$BASE/join?run=x"
+for p in claim shopper settle; do check "/$p" '<html' "$BASE/$p"; done
+check "POST /api/runs" '"runId"' -X POST "$BASE/api/runs"
 echo "SMOKE OK $BASE"
