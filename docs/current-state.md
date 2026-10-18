@@ -342,3 +342,18 @@ reset. A live search probe against an ordinary disposable local account automati
 Barilla spaghetti and PS5 items and served Walmart/PlayStation source images with HTTP 200. The native
 continued-polling improvement remains local and requires a rebuilt app; this backend release does not
 distribute the iOS client. Deployment verification will be recorded after the managed release succeeds.
+
+
+## Existing inventory image recovery deployed — October 18, 2026
+
+PR [#39](https://github.com/saharshBhargava/agora/pull/39) merged as
+`343f183e406dd28db6390e3e6893883254e2b41a`. PR PostgreSQL/TimescaleDB suites, Docker build and
+upgrade/rollback rehearsal passed, followed by green main CI and the
+[managed deployment](https://github.com/saharshBhargava/agora/actions/runs/39133567814). Read-only public
+readiness verified that exact running commit, TimescaleDB enabled, migration 0019 and no pending migrations.
+The isolated release checkout passed all 679 backend tests and Ruff.
+
+Missing-image repair, automatic retries for old inventory search misses, and demo-image backfill are live.
+No production reset or test writes were performed. The native continued-polling improvement remains local
+and needs an app rebuild; this release does not distribute an iOS build. Earlier local-only backend notes
+for this feature are superseded by this deployment verification.
