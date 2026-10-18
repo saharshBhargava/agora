@@ -1,89 +1,11 @@
 import SwiftUI
 import Charts
 
-struct ListsView: View {
-    @ObservedObject var inventory: InventoryStore
-    @ObservedObject var shopping: ShoppingStore
-    @ObservedObject var settings: SettingsStore
-    @ObservedObject var trips: TripStore
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if inventory.households.count > 1 {
-                    Picker("Household", selection: Binding(get: { inventory.householdID }, set: { id in
-                        if let id { Task { await inventory.selectHousehold(id) } }
-                    })) {
-                        ForEach(inventory.households) { Text($0.name).tag(Optional($0.id)) }
-                    }
-                }
-                Section {
-                    NavigationLink {
-                        InventoryListView(store: inventory)
-                    } label: {
-                        listRow("Inventory list", subtitle: "What you have at home", symbol: "shippingbox", tint: .teal)
-                    }
-                    .accessibilityIdentifier("lists.inventory")
-                    NavigationLink {
-                        TripsView(store: trips)
-                    } label: {
-                        listRow("Shopping lists", subtitle: "What to pick up on your next trip", symbol: "checklist", tint: .blue)
-                    }
-                    .accessibilityIdentifier("lists.shopping")
-                    NavigationLink {
-                        WatchListView(store: shopping.watches)
-                            .toolbar {
-                                ToolbarItem(placement: .primaryAction) {
-                                    Menu {
-                                        NavigationLink("Wishlist") { ShoppingView(store: shopping, settings: settings) }
-                                        NavigationLink("Offer inbox") { WatchInboxView(store: shopping.watches) }
-                                    } label: { Label("Watch options", systemImage: "ellipsis.circle") }
-                                }
-                            }
-                    } label: {
-                        listRow("Watch list", subtitle: "Products and prices you’re keeping an eye on", symbol: "binoculars", tint: .purple)
-                    }
-                    .accessibilityIdentifier("lists.watches")
-                    NavigationLink {
-                        ShoppingView(store: shopping, settings: settings, selection: "suggestions")
-                    } label: {
-                        listRow("Suggested for you", subtitle: "Ideas and essentials to replenish", symbol: "sparkles", tint: .orange)
-                    }
-                    .accessibilityIdentifier("lists.suggestions")
-                }
-            }
-            .navigationTitle("Lists")
-            .refreshable { await inventory.refresh(); await shopping.refresh(); await trips.refresh() }
-        }
-        .id(inventory.context)
-    }
-
-    private func listRow(_ title: String, subtitle: String, symbol: String, tint: Color) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: symbol)
-                .font(.title3)
-                .foregroundStyle(tint)
-                .frame(width: 44, height: 44)
-                .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title).font(.headline)
-                Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 10)
-    }
-}
-
-struct InventoryView: View {
-    @ObservedObject var store: InventoryStore
-    var body: some View {
-        NavigationStack { InventoryListView(store: store) }
-    }
-}
-
+/// The pantry: what the household has at home. Pushed from the Dibs home inside the root stack.
 struct InventoryListView: View {
     @ObservedObject var store: InventoryStore
+    /// "Scan items": opens Capture, which recognizes items into the pantry. Hidden when nil.
+    var onScan: (() -> Void)?
     @State private var search = ""
     @State private var locationID: UUID?
     @State private var showArchived = false
@@ -105,6 +27,13 @@ struct InventoryListView: View {
                     if let id { Task { await store.selectHousehold(id) } }
                 })) {
                     ForEach(store.households) { Text($0.name).tag(Optional($0.id)) }
+                }
+            }
+            if let onScan {
+                Section {
+                    Button(action: onScan) { Label("Scan items", systemImage: "camera.viewfinder") }
+                        .disabled(store.householdID == nil)
+                        .accessibilityIdentifier("inventory.scan")
                 }
             }
             Section {
@@ -226,7 +155,7 @@ struct InventoryDetailView: View {
                         Chart(detail.daily) { point in
                             if let quantity = point.quantity {
                                 BarMark(x: .value("Date", point.day, unit: .day), y: .value("Quantity", quantity))
-                                    .foregroundStyle(.teal)
+                                    .foregroundStyle(Color.ink)
                             }
                         }
                         .chartXScale(domain: (detail.daily.first?.day ?? Date())...(detail.daily.last?.day ?? Date()).addingTimeInterval(86_400))

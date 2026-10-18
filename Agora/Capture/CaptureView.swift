@@ -25,114 +25,112 @@ struct CaptureView: View {
     }
     enum CameraMode: String, Identifiable { case photo, video; var id: String { rawValue } }
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Capture something new").font(.title2.bold())
-                        Text("Take a photo or record a video.").foregroundStyle(.secondary)
-                    }
-                    HStack(spacing: 12) {
-                        captureButton("Photo", icon: "camera", mode: .photo)
-                        captureButton("Video", icon: "video", mode: .video)
-                    }.disabled(library.busy || requestingPermission)
-                    HStack {
-                        Button { pickingLibrary = true } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
-                            .buttonStyle(.borderedProminent)
-                        Button { pickingFiles = true } label: { Label("Files", systemImage: "folder") }
-                            .buttonStyle(.bordered)
-                    }.disabled(library.busy || requestingPermission)
-                    Text("New camera captures go to your selected inventory model to identify items. Enter the purchase store while recognition runs.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    if library.busy { ProgressView("Saving media…").frame(maxWidth: .infinity) }
-                    HStack {
-                        Text("Your media").font(.title2.bold())
-                        Spacer()
-                        Text("\(library.items.count)").foregroundStyle(.secondary)
-                    }
-                    if library.items.isEmpty {
-                        ContentUnavailableView("No captures yet", systemImage: "photo.stack", description: Text("Use the camera or import existing photos and videos to get started."))
-                    } else {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 14)], spacing: 14) {
-                            ForEach(library.items) { item in
-                                Button { preview = item } label: { MediaTile(item: item, url: library.url(for: item)) }
-                                    .buttonStyle(.plain)
-                                    .contextMenu {
-                                        ShareLink(item: library.url(for: item)) { Label("Share", systemImage: "square.and.arrow.up") }
-                                        Button("Delete", systemImage: "trash", role: .destructive) { deleting = item }
-                                    }
-                            }
-                        }
-                    }
-                }.padding()
-            }
-            .navigationTitle("Capture")
-            .task { await library.load() }
-            .fullScreenCover(item: $camera, onDismiss: {
-                cameraDismissed = true
-                presentCaptureReview()
-            }) { mode in
-                CameraPicker(video: mode == .video) { result in
-                    camera = nil
-                    switch result {
-                    case .success(let media): if let (url, kind) = media { saveTemporary(url, kind: kind) }
-                    case .failure(let error): library.error = error.localizedDescription
-                    }
-                }.ignoresSafeArea()
-            }
-
-            .sheet(isPresented: $pickingLibrary) {
-                LibraryPicker { results in
-                    pickingLibrary = false
-                    guard !results.isEmpty else { return }
-                    library.busy = true
-                    Task {
-                        defer { library.busy = false }
-                        for result in results {
-                            do {
-                                let (url, kind) = try await LibraryPicker.copyFile(from: result)
-                                await library.add(file: url, kind: kind)
-                                try? FileManager.default.removeItem(at: url)
-                            } catch { library.error = "Could not import a selected item: \(error.localizedDescription)" }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Capture something new").font(.title2.bold())
+                    Text("Take a photo or record a video.").foregroundStyle(.secondary)
+                }
+                HStack(spacing: 12) {
+                    captureButton("Photo", icon: "camera", mode: .photo)
+                    captureButton("Video", icon: "video", mode: .video)
+                }.disabled(library.busy || requestingPermission)
+                HStack {
+                    Button { pickingLibrary = true } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
+                        .buttonStyle(.borderedProminent)
+                    Button { pickingFiles = true } label: { Label("Files", systemImage: "folder") }
+                        .buttonStyle(.bordered)
+                }.disabled(library.busy || requestingPermission)
+                Text("New camera captures go to your selected inventory model to identify items. Enter the purchase store while recognition runs.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                if library.busy { ProgressView("Saving media…").frame(maxWidth: .infinity) }
+                HStack {
+                    Text("Your media").font(.title2.bold())
+                    Spacer()
+                    Text("\(library.items.count)").foregroundStyle(.secondary)
+                }
+                if library.items.isEmpty {
+                    ContentUnavailableView("No captures yet", systemImage: "photo.stack", description: Text("Use the camera or import existing photos and videos to get started."))
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 14)], spacing: 14) {
+                        ForEach(library.items) { item in
+                            Button { preview = item } label: { MediaTile(item: item, url: library.url(for: item)) }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    ShareLink(item: library.url(for: item)) { Label("Share", systemImage: "square.and.arrow.up") }
+                                    Button("Delete", systemImage: "trash", role: .destructive) { deleting = item }
+                                }
                         }
                     }
                 }
-            }
-            .fileImporter(isPresented: $pickingFiles, allowedContentTypes: [.image, .movie, .pdf], allowsMultipleSelection: true) { result in
+            }.padding()
+        }
+        .navigationTitle("Capture")
+        .task { await library.load() }
+        .fullScreenCover(item: $camera, onDismiss: {
+            cameraDismissed = true
+            presentCaptureReview()
+        }) { mode in
+            CameraPicker(video: mode == .video) { result in
+                camera = nil
                 switch result {
-                case .success(let urls):
-                    library.busy = true
-                    Task {
-                        defer { library.busy = false }
-                        for url in urls {
-                            let access = url.startAccessingSecurityScopedResource()
-                            defer { if access { url.stopAccessingSecurityScopedResource() } }
-                            let type = UTType(filenameExtension: url.pathExtension)
-                            let kind: CaptureItem.Kind = type?.conforms(to: .movie) == true ? .video : type?.conforms(to: .pdf) == true ? .document : .image
-                            await library.add(file: url, kind: kind)
-                        }
-                    }
+                case .success(let media): if let (url, kind) = media { saveTemporary(url, kind: kind) }
                 case .failure(let error): library.error = error.localizedDescription
                 }
-            }
-            .sheet(item: $captureReview) { review in
-                RecognitionView(item: review.item, url: library.url(for: review.item), settings: settings,
-                                store: inventory, library: library, controller: review.controller)
-            }
-            .sheet(item: $preview) { item in
-                MediaPreview(item: item, url: library.url(for: item), settings: settings, inventory: inventory, library: library)
-            }
-            .alert("Capture", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
-                if needsSettings {
-                    Button("Open Settings") { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } }
+            }.ignoresSafeArea()
+        }
+
+        .sheet(isPresented: $pickingLibrary) {
+            LibraryPicker { results in
+                pickingLibrary = false
+                guard !results.isEmpty else { return }
+                library.busy = true
+                Task {
+                    defer { library.busy = false }
+                    for result in results {
+                        do {
+                            let (url, kind) = try await LibraryPicker.copyFile(from: result)
+                            await library.add(file: url, kind: kind)
+                            try? FileManager.default.removeItem(at: url)
+                        } catch { library.error = "Could not import a selected item: \(error.localizedDescription)" }
+                    }
                 }
-                Button("OK", role: .cancel) { library.error = nil; needsSettings = false }
-            } message: { Text(library.error ?? "") }
-            .confirmationDialog("Delete this item from Agora?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
-                Button("Delete", role: .destructive) {
-                    if let item = deleting { Task { await library.remove(item) } }
-                    deleting = nil
+            }
+        }
+        .fileImporter(isPresented: $pickingFiles, allowedContentTypes: [.image, .movie, .pdf], allowsMultipleSelection: true) { result in
+            switch result {
+            case .success(let urls):
+                library.busy = true
+                Task {
+                    defer { library.busy = false }
+                    for url in urls {
+                        let access = url.startAccessingSecurityScopedResource()
+                        defer { if access { url.stopAccessingSecurityScopedResource() } }
+                        let type = UTType(filenameExtension: url.pathExtension)
+                        let kind: CaptureItem.Kind = type?.conforms(to: .movie) == true ? .video : type?.conforms(to: .pdf) == true ? .document : .image
+                        await library.add(file: url, kind: kind)
+                    }
                 }
+            case .failure(let error): library.error = error.localizedDescription
+            }
+        }
+        .sheet(item: $captureReview) { review in
+            RecognitionView(item: review.item, url: library.url(for: review.item), settings: settings,
+                            store: inventory, library: library, controller: review.controller)
+        }
+        .sheet(item: $preview) { item in
+            MediaPreview(item: item, url: library.url(for: item), settings: settings, inventory: inventory, library: library)
+        }
+        .alert("Capture", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
+            if needsSettings {
+                Button("Open Settings") { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } }
+            }
+            Button("OK", role: .cancel) { library.error = nil; needsSettings = false }
+        } message: { Text(library.error ?? "") }
+        .confirmationDialog("Delete this item?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                if let item = deleting { Task { await library.remove(item) } }
+                deleting = nil
             }
         }
     }
@@ -140,7 +138,7 @@ struct CaptureView: View {
         Button { Task { await openCamera(mode) } } label: {
             VStack(spacing: 10) { Image(systemName: icon).font(.title); Text(title).font(.headline) }
                 .frame(maxWidth: .infinity).padding(.vertical, 22)
-                .background(Color.teal.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+                .background(Color.paper, in: RoundedRectangle(cornerRadius: 16))
         }.accessibilityIdentifier("capture.\(mode.rawValue)")
     }
     private func openCamera(_ mode: CameraMode) async {
@@ -187,7 +185,7 @@ private struct MediaTile: View {
             ZStack {
                 Color.secondary.opacity(0.08)
                 if let thumbnail { Image(uiImage: thumbnail).resizable().scaledToFill() }
-                else { Image(systemName: item.symbol).font(.largeTitle).foregroundStyle(.teal) }
+                else { Image(systemName: item.symbol).font(.largeTitle).foregroundStyle(Color.muted) }
                 if item.kind == .video { Image(systemName: "play.circle.fill").font(.largeTitle).foregroundStyle(.white).shadow(radius: 3) }
             }.frame(height: 140).clipped().clipShape(RoundedRectangle(cornerRadius: 12))
             Text(item.title).font(.headline)

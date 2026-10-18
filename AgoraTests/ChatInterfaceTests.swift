@@ -141,7 +141,7 @@ final class ChatInterfaceTests: XCTestCase {
         let previous = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
-        let host = UIHostingController(rootView: AnyView(ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser)))
+        let host = UIHostingController(rootView: AnyView(NavigationStack { ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser) }))
         window.rootViewController = host; window.makeKeyAndVisible()
         defer { window.isHidden = true; previous?.makeKeyAndVisible(); workspace.agent.stop(); workspace.browser.close() }
         for (style, label) in [(UIUserInterfaceStyle.light, "light"), (.dark, "dark")] {
@@ -150,7 +150,7 @@ final class ChatInterfaceTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(350))
             try capture(window, name: label)
         }
-        host.rootView = AnyView(ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser))
+        host.rootView = AnyView(NavigationStack { ChatView(workspace: workspace, agent: workspace.agent, browser: workspace.browser) })
         host.view.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
         try await Task.sleep(for: .milliseconds(350)); try capture(window, name: "dynamic-type")
         host.view.traitOverrides.preferredContentSizeCategory = .large

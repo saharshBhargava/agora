@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "BD8C8E9290FEE73FE275CEF2"
+               BlueprintIdentifier = "23F1ED121A70F947A7FF5E59"
                BuildableName = "Agora.app"
                BlueprintName = "Agora"
                ReferencedContainer = "container:Agora.xcodeproj">
@@ -30,7 +30,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "BD8C8E9290FEE73FE275CEF2"
+            BlueprintIdentifier = "23F1ED121A70F947A7FF5E59"
             BuildableName = "Agora.app"
             BlueprintName = "Agora"
             ReferencedContainer = "container:Agora.xcodeproj">
@@ -41,7 +41,7 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "C635A35B15706ADEC1AEEDD9"
+               BlueprintIdentifier = "E5614212EB6240EF66009915"
                BuildableName = "AgoraTests.xctest"
                BlueprintName = "AgoraTests"
                ReferencedContainer = "container:Agora.xcodeproj">
@@ -63,7 +63,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "BD8C8E9290FEE73FE275CEF2"
+            BlueprintIdentifier = "23F1ED121A70F947A7FF5E59"
             BuildableName = "Agora.app"
             BlueprintName = "Agora"
             ReferencedContainer = "container:Agora.xcodeproj">
@@ -80,7 +80,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "BD8C8E9290FEE73FE275CEF2"
+            BlueprintIdentifier = "23F1ED121A70F947A7FF5E59"
             BuildableName = "Agora.app"
             BlueprintName = "Agora"
             ReferencedContainer = "container:Agora.xcodeproj">

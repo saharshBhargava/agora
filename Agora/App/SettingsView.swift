@@ -1,57 +1,52 @@
 import SwiftUI
 
-struct SettingsView: View {
+/// The household's settings pages, as tile rows split by hairlines for the Settings sheet's "Household"
+/// card (the sheet's `NavigationStack` pushes the pages).
+struct HouseholdSettingsLinks: View {
     @ObservedObject var settings: SettingsStore
     let workspace: ChatWorkspace
 
     var body: some View {
-        NavigationStack {
-            List {
-                NavigationLink {
-                    if workspace.calendar.isDemoAccount {
-                        Form { Section("Built-in integrations") {
-                            Text("Chat, captions and recognition use sample responses. Calendar events stay inside the sample account. No external API keys are needed.")
-                            Text("Sign out and connect your own Google account to configure real providers.").foregroundStyle(.secondary)
-                        } }.navigationTitle("Models")
-                    } else { ModelSettingsView(settings: settings) }
-                } label: {
-                    settingsRow("Models", detail: "Connections and feature assignments", symbol: "cpu")
-                }
-                NavigationLink {
-                    PreferencesSettingsView(settings: settings, workspace: workspace)
-                } label: {
-                    settingsRow("Preferences", detail: "Browser preferences", symbol: "slider.horizontal.3")
-                }
-                NavigationLink {
-                    ConnectedAccountsSettingsView(settings: settings, workspace: workspace)
-                } label: {
-                    settingsRow("Connected accounts", detail: workspace.calendar.isDemoAccount ? "Built-in integrations" : "Google Calendar and Gemini", symbol: "person.crop.circle.badge.checkmark")
-                }
-                NavigationLink {
-                    AutonomySettingsView()
-                } label: {
-                    settingsRow("Autonomy settings", detail: "How your assistant acts on your behalf", symbol: "hand.raised")
-                }
-                NavigationLink {
-                    SpendingLimitsSettingsView()
-                } label: {
-                    settingsRow("Spending limits", detail: "Purchase limits and availability", symbol: "creditcard")
-                }
+        VStack(spacing: 0) {
+            NavigationLink {
+                if workspace.calendar.isDemoAccount {
+                    Form { Section("Built-in integrations") {
+                        Text("Chat, captions and recognition use sample responses. Calendar events stay inside the sample account. No external API keys are needed.")
+                        Text("Sign out and connect your own Google account to configure real providers.").foregroundStyle(.secondary)
+                    } }
+                    .dibsList()
+                    .dibsPage("Models")
+                } else { ModelSettingsView(settings: settings) }
+            } label: {
+                DibsLinkRow(title: "Models", detail: "Connections and feature assignments", symbol: "cpu", tint: 0xE5DDF7)
             }
-            .navigationTitle("Settings")
-        }
-    }
-
-    private func settingsRow(_ title: String, detail: String, symbol: String) -> some View {
-        Label {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+            Hairline()
+            NavigationLink {
+                PreferencesSettingsView(settings: settings, workspace: workspace)
+            } label: {
+                DibsLinkRow(title: "Preferences", detail: "Browser preferences", symbol: "slider.horizontal.3", tint: 0xECEAE6)
             }
-            .padding(.vertical, 6)
-        } icon: {
-            Image(systemName: symbol).foregroundStyle(.teal)
+            Hairline()
+            NavigationLink {
+                ConnectedAccountsSettingsView(settings: settings, workspace: workspace)
+            } label: {
+                DibsLinkRow(title: "Connected accounts", detail: workspace.calendar.isDemoAccount ? "Built-in integrations" : "Google Calendar and Gemini",
+                            symbol: "person.crop.circle.badge.checkmark", tint: 0xD8E2FA)
+            }
+            Hairline()
+            NavigationLink {
+                AutonomySettingsView()
+            } label: {
+                DibsLinkRow(title: "Autonomy", detail: "How your assistant acts on your behalf", symbol: "hand.raised", tint: 0xF2E3B5)
+            }
+            Hairline()
+            NavigationLink {
+                SpendingLimitsSettingsView()
+            } label: {
+                DibsLinkRow(title: "Spending limits", detail: "Purchase limits and availability", symbol: "creditcard", tint: 0xF6D9CC)
+            }
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -158,7 +153,7 @@ private struct SpendingLimitsSettingsView: View {
         Form {
             Section("Purchase limits") {
                 Label("Not available yet", systemImage: "creditcard")
-                Text("Agora does not currently track spending or enforce purchase limits. Browser action approvals are still required, but they do not check purchase amounts.")
+                Text("Dibs does not currently track spending or enforce purchase limits. Browser action approvals are still required, but they do not check purchase amounts.")
                     .foregroundStyle(.secondary)
             }
             Section("Model usage") {

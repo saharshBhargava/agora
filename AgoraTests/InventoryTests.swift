@@ -306,7 +306,7 @@ final class InventoryLiveTests: XCTestCase {
         draft.restockLevel = "2"; draft.locationID = location.id; draft.merchantID = merchant.id
         let created = try await store.save(draft, original: nil)
         XCTAssertTrue(created.isRunningLow); XCTAssertEqual(created.preferredMerchantId, merchant.id)
-        try await screenshot(InventoryView(store: store), name: "Inventory list")
+        try await screenshot(NavigationStack { InventoryListView(store: store) }, name: "Inventory list")
         try await screenshot(NavigationStack { InventoryDetailView(store: store, itemID: created.id) }, name: "Inventory detail")
         try await screenshot(InventoryEditor(store: store, original: created), name: "Inventory edit")
         await store.refresh()
@@ -537,7 +537,7 @@ extension InventoryLiveTests {
         let replayDetail = try await store.detail(milk.id, days: 7)
         XCTAssertEqual(replayDetail.observations.count, 2)
         await store.refresh(); XCTAssertEqual(store.items.count, 2)
-        try await screenshot(InventoryView(store: store), name: "Inventory after capture")
+        try await screenshot(NavigationStack { InventoryListView(store: store) }, name: "Inventory after capture")
         try await screenshot(NavigationStack { InventoryDetailView(store: store, itemID: milk.id) }, name: "Capture purchase history")
         let restored = MediaLibrary(directory: directory); await restored.load()
         XCTAssertEqual(restored.items.first?.recognition?.recognitionID, replay.recognitionId)

@@ -167,6 +167,29 @@ final class AppModel {
         store.disconnect()
     }
 
+    // MARK: household
+
+    /// Pushes one of the household screens, unless it is already the one on top. Not a run: it keeps
+    /// whatever is underneath, and a launch resume that finishes later leaves it alone.
+    func openHousehold(_ page: HouseholdPage) {
+        guard path.last != .household(page) else { return }
+        path.append(.household(page))
+    }
+
+    /// Signed in to the household account: its first name becomes the name Dibs offers when joining a
+    /// run, unless a name is already saved (one typed on the join screen always wins).
+    func prefillName(from displayName: String?) {
+        let saved = defaults.string(forKey: JoinView.nameKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard saved.isEmpty, let first = Self.firstName(displayName) else { return }
+        defaults.set(first, forKey: JoinView.nameKey)
+    }
+
+    /// The first word of a display name, at most 24 characters (the join screen's limit); nil when blank.
+    static func firstName(_ displayName: String?) -> String? {
+        guard let word = displayName?.split(whereSeparator: \.isWhitespace).first else { return nil }
+        return String(word.prefix(24))
+    }
+
     // MARK: server
 
     /// Saves a server override from the settings sheet. False when the address is not usable.

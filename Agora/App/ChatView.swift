@@ -8,7 +8,7 @@ struct ChatView: View {
     @ObservedObject var agent: AgentCoordinator
     @ObservedObject var browser: BrowserSession
     var body: some View {
-        ChatWorkspaceView(workspace: workspace, agent: agent, browser: browser, store: agent.conversations).tint(.teal)
+        ChatWorkspaceView(workspace: workspace, agent: agent, browser: browser, store: agent.conversations).tint(Color.ink)
     }
 }
 
@@ -29,65 +29,63 @@ private struct ChatWorkspaceView: View {
     @FocusState private var composing: Bool
     private var expanded: Bool { browser.state.presentation == .expanded && browser.state.isOpen }
     var body: some View {
-        NavigationStack {
-            GeometryReader { geometry in
-                let sidePane = expanded && geometry.size.width >= 760
-                let paneWidth = sidePane ? min(480, geometry.size.width * 0.46) : geometry.size.width
-                let thumbnail = CGSize(width: min(184, geometry.size.width - 24), height: min(253, max(120, geometry.size.height - 24)))
-                ZStack(alignment: .topLeading) {
-                    ChatConversationView(chat: store.current, agent: agent, browser: browser, settings: workspace.settings, composing: $composing)
-                        .frame(width: sidePane ? geometry.size.width - paneWidth : geometry.size.width)
-                        .accessibilityHidden(expanded && !sidePane)
-                        .allowsHitTesting(!expanded || sidePane)
-                    // A single mounted representable owns the same WKWebView in all layouts.
-                    browserPanel
-                        .frame(width: expanded ? paneWidth : thumbnail.width, height: expanded ? geometry.size.height : thumbnail.height)
-                        .background(.background)
-                        .clipShape(RoundedRectangle(cornerRadius: expanded ? 0 : 18))
-                        .overlay(RoundedRectangle(cornerRadius: expanded ? 0 : 18).stroke(.primary.opacity(0.1)))
-                        .shadow(color: .black.opacity(expanded ? 0.04 : 0.16), radius: 14, y: 5)
-                        .offset(x: expanded ? (sidePane ? geometry.size.width - paneWidth : 0) : clamped(position.x + drag.width, maximum: geometry.size.width - thumbnail.width - 12),
-                                y: expanded ? 0 : clamped(position.y + drag.height, maximum: geometry.size.height - thumbnail.height - 12))
-                        .opacity(browser.state.isOpen && browser.state.presentation != .hidden ? 1 : 0)
-                        .allowsHitTesting(browser.state.isOpen && browser.state.presentation != .hidden)
-                        .accessibilityHidden(!browser.state.isOpen || browser.state.presentation == .hidden)
-                        .onChange(of: geometry.size) { _, size in
-                            position.x = clamped(position.x, maximum: size.width - thumbnail.width - 12)
-                            position.y = clamped(position.y, maximum: size.height - thumbnail.height - 12)
-                        }
-                        .environment(\.browserDragBounds, CGSize(width: geometry.size.width - thumbnail.width - 12, height: geometry.size.height - thumbnail.height - 12))
-                }
+        GeometryReader { geometry in
+            let sidePane = expanded && geometry.size.width >= 760
+            let paneWidth = sidePane ? min(480, geometry.size.width * 0.46) : geometry.size.width
+            let thumbnail = CGSize(width: min(184, geometry.size.width - 24), height: min(253, max(120, geometry.size.height - 24)))
+            ZStack(alignment: .topLeading) {
+                ChatConversationView(chat: store.current, agent: agent, browser: browser, settings: workspace.settings, composing: $composing)
+                    .frame(width: sidePane ? geometry.size.width - paneWidth : geometry.size.width)
+                    .accessibilityHidden(expanded && !sidePane)
+                    .allowsHitTesting(!expanded || sidePane)
+                // A single mounted representable owns the same WKWebView in all layouts.
+                browserPanel
+                    .frame(width: expanded ? paneWidth : thumbnail.width, height: expanded ? geometry.size.height : thumbnail.height)
+                    .background(.background)
+                    .clipShape(RoundedRectangle(cornerRadius: expanded ? 0 : 18))
+                    .overlay(RoundedRectangle(cornerRadius: expanded ? 0 : 18).stroke(.primary.opacity(0.1)))
+                    .shadow(color: .black.opacity(expanded ? 0.04 : 0.16), radius: 14, y: 5)
+                    .offset(x: expanded ? (sidePane ? geometry.size.width - paneWidth : 0) : clamped(position.x + drag.width, maximum: geometry.size.width - thumbnail.width - 12),
+                            y: expanded ? 0 : clamped(position.y + drag.height, maximum: geometry.size.height - thumbnail.height - 12))
+                    .opacity(browser.state.isOpen && browser.state.presentation != .hidden ? 1 : 0)
+                    .allowsHitTesting(browser.state.isOpen && browser.state.presentation != .hidden)
+                    .accessibilityHidden(!browser.state.isOpen || browser.state.presentation == .hidden)
+                    .onChange(of: geometry.size) { _, size in
+                        position.x = clamped(position.x, maximum: size.width - thumbnail.width - 12)
+                        position.y = clamped(position.y, maximum: size.height - thumbnail.height - 12)
+                    }
+                    .environment(\.browserDragBounds, CGSize(width: geometry.size.width - thumbnail.width - 12, height: geometry.size.height - thumbnail.height - 12))
             }
-            .background(Color(.systemBackground))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Conversations", systemImage: "line.3.horizontal") { composing = false; history = true }.labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44) }
-                ToolbarItem(placement: .principal) { ChatTitle(chat: store.current, settings: workspace.settings, showSettings: { settings = true }) }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button("Show Browser", systemImage: "globe") { browser.setPresentationFromUser(.thumbnail) }.disabled(!browser.state.isOpen)
-                        Button("Rename chat", systemImage: "pencil") { name = store.current.title; rename = true }
-                        Button("Archive chat", systemImage: "archivebox") { agent.archiveConversation(store.current) }
-                        Button("New chat", systemImage: "square.and.pencil") { agent.newChat() }
-                        Divider()
-                        Button("Delete chat", systemImage: "trash", role: .destructive) { deleting = true }
-                    } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }.accessibilityLabel("Chat menu")
-                }
-            }
-            .sheet(isPresented: $history, onDismiss: { if historySettings { historySettings = false; settings = true } }) {
-                ChatHistorySheet(store: store, agent: agent, showSettings: { historySettings = true; history = false })
-            }
-            .sheet(isPresented: $settings) { NavigationStack { SettingsView(settings: workspace.settings, workspace: workspace).toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { settings = false } } } } }
-            .alert("Rename chat", isPresented: $rename) { TextField("Chat title", text: $name); Button("Save") { if !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { store.current.title = String(name.prefix(100)) } }; Button("Cancel", role: .cancel) {} }
-            .confirmationDialog("Delete this conversation?", isPresented: $deleting, titleVisibility: .visible) { Button("Delete chat", role: .destructive) { agent.deleteConversation(store.current) } }
         }
+        .background(Color(.systemBackground))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) { Button("Conversations", systemImage: "line.3.horizontal") { composing = false; history = true }.labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44) }
+            ToolbarItem(placement: .principal) { ChatTitle(chat: store.current, settings: workspace.settings, showSettings: { settings = true }) }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Show Browser", systemImage: "globe") { browser.setPresentationFromUser(.thumbnail) }.disabled(!browser.state.isOpen)
+                    Button("Rename chat", systemImage: "pencil") { name = store.current.title; rename = true }
+                    Button("Archive chat", systemImage: "archivebox") { agent.archiveConversation(store.current) }
+                    Button("New chat", systemImage: "square.and.pencil") { agent.newChat() }
+                    Divider()
+                    Button("Delete chat", systemImage: "trash", role: .destructive) { deleting = true }
+                } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }.accessibilityLabel("Chat menu")
+            }
+        }
+        .sheet(isPresented: $history, onDismiss: { if historySettings { historySettings = false; settings = true } }) {
+            ChatHistorySheet(store: store, agent: agent, showSettings: { historySettings = true; history = false })
+        }
+        .sheet(isPresented: $settings) { SettingsSheet(workspace: workspace) }
+        .alert("Rename chat", isPresented: $rename) { TextField("Chat title", text: $name); Button("Save") { if !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { store.current.title = String(name.prefix(100)) } }; Button("Cancel", role: .cancel) {} }
+        .confirmationDialog("Delete this conversation?", isPresented: $deleting, titleVisibility: .visible) { Button("Delete chat", role: .destructive) { agent.deleteConversation(store.current) } }
     }
     private func clamped(_ value: CGFloat, maximum: CGFloat) -> CGFloat { max(12, min(value, max(12, maximum))) }
     private var browserPanel: some View {
         VStack(spacing: 0) {
             HStack(spacing: 4) {
                 if expanded { Button { browser.humanInteraction(); browser.webView.goBack() } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.disabled(!browser.state.canGoBack || browser.state.busy).accessibilityLabel("Back") }
-                else { Image(systemName: browser.state.privateMode ? "lock.shield" : "globe").foregroundStyle(.teal) }
+                else { Image(systemName: browser.state.privateMode ? "lock.shield" : "globe").foregroundStyle(Color.ink) }
                 Text(expanded ? (browser.state.title.isEmpty ? browser.state.url?.host ?? "Browser" : browser.state.title) : browser.state.url?.host ?? "Shared browser").font(expanded ? .subheadline.weight(.semibold) : .caption.weight(.medium)).lineLimit(1)
                 Spacer(minLength: 0)
                 if browser.state.busy || agent.running { ProgressView().controlSize(.mini).accessibilityLabel("Agent is working") }
@@ -157,7 +155,7 @@ private struct ChatTitle: View {
     let showSettings: () -> Void
     var body: some View {
         Menu {
-            if settings.demoCalendar?.isDemoAccount == true { Text("Agora · Built-in sample responses") }
+            if settings.demoCalendar?.isDemoAccount == true { Text("Dibs · Built-in sample responses") }
             else {
                 ForEach(settings.modelConfiguration.profiles.filter { $0.capabilities.tools }) { profile in
                     Button(profile.name + " · " + profile.model) { settings.modelConfiguration.assignments[ModelFeature.chat.rawValue] = profile.id }
@@ -168,7 +166,7 @@ private struct ChatTitle: View {
             VStack(spacing: 2) {
                 Text(chat.title).font(.subheadline.weight(.semibold)).foregroundStyle(Color.primary).lineLimit(1)
                 HStack(spacing: 4) {
-                    Text(settings.demoCalendar?.isDemoAccount == true ? "Agora · Sample" : (try? settings.modelConfiguration.profile(for: .chat).name) ?? "Choose model")
+                    Text(settings.demoCalendar?.isDemoAccount == true ? "Dibs · Sample" : (try? settings.modelConfiguration.profile(for: .chat).name) ?? "Choose model")
                     Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
                 }.font(.caption).foregroundStyle(Color.secondary)
             }.frame(minHeight: 44)
@@ -259,12 +257,12 @@ private struct ChatConversationView: View {
     private var takeover: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Waiting for you", systemImage: "hand.raised").font(.headline)
-            Text(agent.status == "Waiting for you" ? "Complete the requested step in the browser, then continue. Agora will read the updated page before acting." : agent.status).font(.callout).foregroundStyle(.secondary)
+            Text(agent.status == "Waiting for you" ? "Complete the requested step in the browser, then continue. The assistant will read the updated page before acting." : agent.status).font(.callout).foregroundStyle(.secondary)
             HStack {
                 if browser.state.isOpen { Button("Open Browser") { composing.wrappedValue = false; browser.setPresentationFromUser(.expanded) }.buttonStyle(.bordered) }
                 Button("Continue") { agent.resume() }.buttonStyle(.borderedProminent)
             }.controlSize(.large)
-        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(.teal.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(Color.paper, in: RoundedRectangle(cornerRadius: 18))
     }
 }
 private struct ChatBottomKey: PreferenceKey { static var defaultValue = ChatScrollMetrics(); static func reduce(value: inout ChatScrollMetrics, nextValue: () -> ChatScrollMetrics) { value = nextValue() } }

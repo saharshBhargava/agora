@@ -25,6 +25,23 @@ public enum Route: Hashable, Sendable {
     case shopper(RunRef)
     /// A run that has settled or partly settled (Task 8's settle screen).
     case settle(RunRef)
+    /// One of the household's screens (lists, pantry, wishlist, assistant, capture). Pushed from Home,
+    /// never part of a run: run routing (`HomeRouting`, `SettleLogic.follow`) leaves these alone.
+    case household(HouseholdPage)
+}
+
+/// The household screens that join Dibs from the team app, each pushed from Home.
+public enum HouseholdPage: Hashable, Sendable {
+    /// Shopping lists and trips.
+    case lists
+    /// What the household has at home (inventory), with "Scan items".
+    case pantry
+    /// Wishlist, price watches and suggestions.
+    case wishlist
+    /// The assistant (chat with the shared browser).
+    case assistant
+    /// Photo and video capture that recognizes items for the pantry.
+    case capture
 }
 
 /// A link to join a run: `dibs://join?run=<id>` or `https://<server>/join?run=<id>`.

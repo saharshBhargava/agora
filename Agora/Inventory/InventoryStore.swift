@@ -9,6 +9,8 @@ final class InventoryStore: ObservableObject {
     @Published private(set) var loading = false
     @Published private(set) var error: String?
     @Published private(set) var context = UUID()
+    /// The signed-in account's display name, from the same `/v1/me` read as the households.
+    @Published private(set) var displayName: String?
     private let api: AgoraClient
     private(set) var accountID: String?
     private var loadID = UUID()
@@ -29,7 +31,7 @@ final class InventoryStore: ObservableObject {
     func reset(accountID: String?) {
         self.accountID = accountID
         context = UUID(); loadID = UUID()
-        households = []; householdID = nil; items = []; error = nil; loading = false
+        households = []; householdID = nil; items = []; error = nil; loading = false; displayName = nil
     }
 
     func refresh() async {
@@ -42,6 +44,7 @@ final class InventoryStore: ObservableObject {
             try check(version)
             guard loadID == request else { return }
             households = profile.households
+            displayName = profile.displayName
             let selected = householdID.flatMap { id in households.first { $0.id == id }?.id } ?? households.first?.id
             householdID = selected
             guard let selected else {
