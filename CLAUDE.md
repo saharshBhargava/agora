@@ -15,7 +15,7 @@ Documentation map:
 - [backend/README.md](backend/README.md): code layout, API overview, local development and tests.
 - [API contracts](docs/api/) and [frontend requests](docs/frontend-requests.md): implemented APIs versus UI/planned work.
 - [Backend spec](docs/backend-spec.md): design/roadmap, including unimplemented proposals; not a deployment manifest.
-- [Dibs README](docs/dibs/README.md): the shared-grocery-run app: the Agora app's Dibs tab (`Agora/Dibs/`), `server/`, `web/` (see "Dibs" below).
+- [Dibs README](docs/dibs/README.md): the shared-grocery-run app: the merged iOS app opens on the Dibs home (`Agora/Dibs/`; household pages push from it), `server/`, `web/` (see "Dibs" below).
 
 ## Shipping to production (continuous delivery)
 
@@ -112,7 +112,7 @@ of existing settings, changing `render.yaml` is not necessary and must not intro
 Record separately: repository baseline, actual live commit, migration state, dated verification, and unverified
 work. Do not claim a merge was deployed, a backup was tested, or a roadmap item was implemented without evidence.
 
-## Dibs (the Agora app's Dibs tab in `Agora/Dibs/`, plus `server/`, `web/`)
+## Dibs (the merged iOS app's core in `Agora/Dibs/`, plus `server/`, `web/`)
 
 Dibs is its own app with its own Node server, storage and people; Agora's rules above (RLS, migrations,
 demo seed, audit/notify) apply to `backend/`, not to Dibs. Details: [docs/dibs/README.md](docs/dibs/README.md).

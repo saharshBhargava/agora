@@ -113,31 +113,3 @@ struct CalendarOnboardingView: View {
         }
     }
 }
-
-struct CalendarSettingsSection: View {
-    @ObservedObject var calendar: CalendarConnection
-    let stopAgent: () -> Void
-    @State private var confirmDisconnect = false
-    var body: some View {
-        Section(calendar.isDemoAccount ? "Built-in calendar" : "Google Calendar") {
-            if calendar.isDemoAccount {
-                Label("Built-in integrations active", systemImage: "checkmark.circle.fill")
-                Text("No Google or model credentials are needed. Events stay in this account; no invitations or real purchases are sent.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                Button("Use Google account instead") { stopAgent(); Task { await calendar.connect() } }.disabled(calendar.connecting)
-                Button("Sign out") { stopAgent(); Task { await calendar.signOut() } }.disabled(calendar.connecting)
-            } else {
-            Label(calendar.connected ? "Connected" : "Connection required", systemImage: calendar.connected ? "checkmark.circle.fill" : "calendar.badge.exclamationmark")
-            if let email = calendar.email { Text(email) }
-            Text("Dibs checks availability and adds approved events to your primary calendar.").font(.footnote).foregroundStyle(.secondary)
-            if let message = calendar.message { Text(message).font(.footnote).foregroundStyle(.secondary) }
-            Button("Reconnect Google Calendar") { stopAgent(); Task { await calendar.connect() } }.disabled(calendar.connecting)
-            Button("Sign out") { stopAgent(); Task { await calendar.signOut() } }.disabled(calendar.connecting)
-            Button("Disconnect Google Calendar", role: .destructive) { confirmDisconnect = true }.disabled(calendar.connecting)
-        }
-        }
-        .confirmationDialog("Disconnect Google Calendar?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
-            Button("Disconnect and sign out", role: .destructive) { stopAgent(); Task { await calendar.disconnect() } }
-        } message: { Text("Dibs will lose Calendar access. Your existing Google Calendar events will remain.") }
-    }
-}

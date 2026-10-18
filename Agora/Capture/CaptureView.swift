@@ -25,12 +25,12 @@ struct CaptureView: View {
     }
     enum CameraMode: String, Identifiable { case photo, video; var id: String { rawValue } }
     var body: some View {
-        HousePage {
-            HouseHero(title: "Scan what you have",
+        ShelfPage {
+            ShelfHero(title: "Scan what you have",
                       subtitle: "Take a photo or record a video of your shelves, and Dibs finds the items for your pantry.")
             sources
             Text("New camera captures go to your selected inventory model to identify items. Enter the purchase store while recognition runs.")
-                .houseNote()
+                .shelfNote()
                 .fixedSize(horizontal: false, vertical: true)
             if library.busy {
                 HStack(spacing: 10) {
@@ -124,7 +124,7 @@ struct CaptureView: View {
     /// Photo Library and Files: bring in what is already on the phone.
     private var sources: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HouseSectionTitle("Import from your phone")
+            ShelfSectionTitle("Import from your phone")
             VStack(spacing: 0) {
                 Button { pickingLibrary = true } label: {
                     DibsLinkRow(title: "Photo Library", detail: "Pick photos or videos you already have", symbol: "photo.on.rectangle", tint: 0xD8E2FA)
@@ -144,11 +144,11 @@ struct CaptureView: View {
     private var media: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                HouseSectionTitle("Your media")
+                ShelfSectionTitle("Your media")
                 Text("\(library.items.count)").font(.display(17)).foregroundStyle(Color.ink).monospacedDigit()
             }
             if library.items.isEmpty {
-                HouseEmpty(symbol: "photo.stack", title: "No captures yet",
+                ShelfEmpty(symbol: "photo.stack", title: "No captures yet",
                            message: "Use the camera or import existing photos and videos to get started.")
             } else {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible())], spacing: 12) {
@@ -225,7 +225,7 @@ private struct MediaTile: View {
                 .clipShape(RoundedRectangle(cornerRadius: Metrics.radiusSmall, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title).font(.system(size: 14, weight: .bold)).foregroundStyle(Color.ink).lineLimit(1)
-                Text(item.createdAt, format: .dateTime.month().day().hour().minute()).houseNote()
+                Text(item.createdAt, format: .dateTime.month().day().hour().minute()).shelfNote()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 4)
@@ -257,14 +257,14 @@ private struct MediaPreview: View {
     @State private var reviewingInventory = false
     var body: some View {
         NavigationStack {
-            HousePage(bottomVisible: item.kind != .document) {
-                HouseHero(title: item.title, size: 28,
+            ShelfPage(bottomVisible: item.kind != .document) {
+                ShelfHero(title: item.title, size: 28,
                           subtitle: item.createdAt.formatted(date: .abbreviated, time: .shortened))
                 Group {
                     if item.kind == .video { VideoPlayer(player: player) }
                     else if item.kind == .document { PDFPreview(url: url) }
                     else if let image { Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 420) }
-                    else if loaded { HouseEmpty(symbol: "photo", title: "Cannot preview image", message: "You can still share the original file.").padding(Metrics.space2) }
+                    else if loaded { ShelfEmpty(symbol: "photo", title: "Cannot preview image", message: "You can still share the original file.").padding(Metrics.space2) }
                     else { ProgressView() }
                 }
                 .frame(maxWidth: .infinity)

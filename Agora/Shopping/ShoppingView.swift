@@ -14,12 +14,12 @@ struct ShoppingView: View {
     @State private var watching: WishlistItem?
 
     var body: some View {
-        HousePage {
-            HouseHero(title: selection == "wishlist" ? "Your wishlist" : "Suggested for you",
+        ShelfPage {
+            ShelfHero(title: selection == "wishlist" ? "Your wishlist" : "Suggested for you",
                       subtitle: selection == "wishlist"
                         ? "Save what you want and the price you'd like to pay. Set up a price watch to review exact product criteria and find matching offers."
                         : "Useful additions, grounded in what you keep at home.")
-            HouseSegments(label: "Shopping", options: [("Wishlist", "wishlist"), ("Suggestions", "suggestions")], selection: $selection)
+            ShelfSegments(label: "Shopping", options: [("Wishlist", "wishlist"), ("Suggestions", "suggestions")], selection: $selection)
             status
             if selection == "wishlist" { wishlist } else { suggestions }
         } bottom: {
@@ -49,23 +49,23 @@ struct ShoppingView: View {
     @ViewBuilder private var status: some View {
         if let error = store.error {
             VStack(alignment: .leading, spacing: 10) {
-                HouseBanner(message: error, kind: .error)
+                ShelfBanner(message: error, kind: .error)
                 Button("Try again") { Task { await store.refresh() } }
                     .buttonStyle(.dibs(.secondary, fontSize: 16))
             }
         }
-        if let notice = store.notice { HouseBanner(message: notice) }
+        if let notice = store.notice { ShelfBanner(message: notice) }
         WishlistWatchNotice(store: store.watches)
-        if !store.canUse { HouseBanner(message: "Sign in and choose a household in Lists to start.") }
+        if !store.canUse { ShelfBanner(message: "Sign in and choose a household in Lists to start.") }
     }
 
     // MARK: wishlist
 
     @ViewBuilder private var wishlist: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HouseSectionTitle("Wanted · \(store.active.count)")
+            ShelfSectionTitle("Wanted · \(store.active.count)")
             if store.active.isEmpty && !store.loading {
-                HouseEmpty(symbol: "heart", title: "Make room for something good",
+                ShelfEmpty(symbol: "heart", title: "Make room for something good",
                            message: "Add an item, set a target price, or accept a suggestion.")
             }
             ForEach(store.active) { item in card(item) }
@@ -88,7 +88,7 @@ struct ShoppingView: View {
             VStack(spacing: 0) {
                 if store.history.isEmpty {
                     Text("Purchased, removed and rejected items appear here.")
-                        .houseNote()
+                        .shelfNote()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 10)
                 }
@@ -101,7 +101,7 @@ struct ShoppingView: View {
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text("History").font(.system(size: 17, weight: .bold)).foregroundStyle(Color.ink)
-                Text("\(store.history.count) purchased, removed or rejected").houseNote()
+                Text("\(store.history.count) purchased, removed or rejected").shelfNote()
             }
         }
         .tint(Color.ink)
@@ -116,29 +116,29 @@ struct ShoppingView: View {
                 DibsSymbolTile(symbol: "arrow.clockwise", tint: 0xD8E2FA)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Replenishment").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink)
-                    Text("Dibs checks your stock every 6 hours").houseNote()
+                    Text("Dibs checks your stock every 6 hours").shelfNote()
                 }
             }
             if let state = store.refreshStatus {
                 VStack(spacing: 0) {
                     if let last = state.lastRefreshedAt {
-                        HouseFactRow(title: "Last successful check", value: last.formatted(.dateTime.month(.abbreviated).day().hour().minute()))
+                        ShelfFactRow(title: "Last successful check", value: last.formatted(.dateTime.month(.abbreviated).day().hour().minute()))
                     } else {
                         Text("Your first replenishment check is pending.")
-                            .houseNote()
+                            .shelfNote()
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 10)
                     }
                     Hairline()
-                    HouseFactRow(title: state.nextRefreshAt < Date() ? "Check pending since" : "Next scheduled check",
+                    ShelfFactRow(title: state.nextRefreshAt < Date() ? "Check pending since" : "Next scheduled check",
                                  value: state.nextRefreshAt.formatted(.dateTime.month(.abbreviated).day().hour().minute()))
                 }
             }
             if store.refreshStatus?.lastError != nil {
-                HousePill(text: "The last check failed. Previous suggestions are still available.", symbol: "exclamationmark.triangle", style: .danger)
+                ShelfPill(text: "The last check failed. Previous suggestions are still available.", symbol: "exclamationmark.triangle", style: .danger)
             }
             Text("Check stock looks for essentials you may need to replenish. Your targets and decisions stay as you left them.")
-                .houseNote()
+                .shelfNote()
                 .fixedSize(horizontal: false, vertical: true)
             Button { Task { await store.refreshSuggestions() } } label: {
                 Label("Check stock", systemImage: "arrow.clockwise")
@@ -157,9 +157,9 @@ struct ShoppingView: View {
         .dibsCard()
 
         VStack(alignment: .leading, spacing: 10) {
-            HouseSectionTitle("For you · \(store.suggestions.count)")
+            ShelfSectionTitle("For you · \(store.suggestions.count)")
             if store.suggestions.isEmpty && !store.loading {
-                HouseEmpty(symbol: "sparkles", title: "All caught up",
+                ShelfEmpty(symbol: "sparkles", title: "All caught up",
                            message: "Useful ideas will appear here. It's okay if you don't need anything right now.")
             }
             ForEach(store.suggestions) { item in card(item) }
@@ -167,16 +167,16 @@ struct ShoppingView: View {
 
         if !store.snoozed.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                HouseSectionTitle("For later · \(store.snoozed.count)")
+                ShelfSectionTitle("For later · \(store.snoozed.count)")
                 ForEach(store.snoozed) { item in card(item) }
             }
         }
 
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 8) {
-                Text(settings.featureDescription(.suggestions)).houseNote()
+                Text(settings.featureDescription(.suggestions)).shelfNote()
                 Text("Find ideas shares inventory names, quantities and suggestion feedback with your selected model. Choose a different model in Settings.")
-                    .houseNote()
+                    .shelfNote()
             }
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -192,13 +192,13 @@ struct ShoppingView: View {
 
     /// The facts about an item, as capsules under its name.
     private func pills(_ item: WishlistItem) -> some View {
-        HouseFlow(spacing: 6) {
-            if item.quantity > 1 { HousePill(text: "×\(item.quantity)", style: .ink) }
-            if let day = item.neededBy { HousePill(text: "Needed by \(Self.day(day))", symbol: "calendar", style: .line) }
+        ShelfFlow(spacing: 6) {
+            if item.quantity > 1 { ShelfPill(text: "×\(item.quantity)", style: .ink) }
+            if let day = item.neededBy { ShelfPill(text: "Needed by \(Self.day(day))", symbol: "calendar", style: .line) }
             if let until = item.snoozedUntil {
-                HousePill(text: "Snoozed until \(until.formatted(date: .abbreviated, time: .omitted))", symbol: "clock", style: .muted)
+                ShelfPill(text: "Snoozed until \(until.formatted(date: .abbreviated, time: .omitted))", symbol: "clock", style: .muted)
             }
-            if !item.isPending && item.status != "active" { HousePill(text: item.status.capitalized, style: .muted) }
+            if !item.isPending && item.status != "active" { ShelfPill(text: item.status.capitalized, style: .muted) }
         }
     }
 
@@ -219,7 +219,7 @@ struct ShoppingView: View {
     private func card(_ item: WishlistItem) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 12) {
-                HouseTile(seed: item.id.uuidString, label: item.title, size: 48)
+                ShelfTile(seed: item.id.uuidString, label: item.title, size: 48)
                     .overlay(alignment: .topTrailing) {
                         if item.pinned {
                             Image(systemName: "pin.fill")
@@ -233,14 +233,14 @@ struct ShoppingView: View {
                         }
                     }
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(item.title).houseName().lineLimit(3)
+                    Text(item.title).shelfName().lineLimit(3)
                     pills(item)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if let price = item.targetLabel {
                     VStack(alignment: .trailing, spacing: 0) {
                         Text(price).font(.display(22)).foregroundStyle(Color.ink).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
-                        Text("target").houseNote()
+                        Text("target").shelfNote()
                     }
                 }
             }
@@ -255,16 +255,16 @@ struct ShoppingView: View {
     }
 
     @ViewBuilder private func details(_ item: WishlistItem) -> some View {
-        if let notes = item.notes, !notes.isEmpty { Text(notes).houseBody().fixedSize(horizontal: false, vertical: true) }
-        if let reason = item.rationale { Text(reason).houseBody().fixedSize(horizontal: false, vertical: true) }
+        if let notes = item.notes, !notes.isEmpty { Text(notes).shelfBody().fixedSize(horizontal: false, vertical: true) }
+        if let reason = item.rationale { Text(reason).shelfBody().fixedSize(horizontal: false, vertical: true) }
         if !item.priorityReasons.isEmpty {
-            Text(item.priorityReasons.prefix(2).joined(separator: " · ")).houseNote().fixedSize(horizontal: false, vertical: true)
+            Text(item.priorityReasons.prefix(2).joined(separator: " · ")).shelfNote().fixedSize(horizontal: false, vertical: true)
         }
         if item.evidence.contains(where: { $0.detail != nil }) {
             DisclosureGroup {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(item.evidence.enumerated()), id: \.offset) { _, evidence in
-                        if let detail = evidence.detail { Text(detail).houseNote().fixedSize(horizontal: false, vertical: true) }
+                        if let detail = evidence.detail { Text(detail).shelfNote().fixedSize(horizontal: false, vertical: true) }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -280,7 +280,7 @@ struct ShoppingView: View {
         if item.isPending {
             HStack(spacing: 8) {
                 Button("Add to wishlist") { Task { await store.act(item, action: "accept") } }
-                    .buttonStyle(.houseAction(.primary))
+                    .buttonStyle(.shelfAction(.primary))
                 Menu {
                     Button("Tomorrow") { Task { await store.act(item, action: "snooze", body: ["days": 1]) } }
                     Button("In a week") { Task { await store.act(item, action: "snooze", body: ["days": 7]) } }
@@ -296,9 +296,9 @@ struct ShoppingView: View {
         } else if item.status == "active" {
             VStack(spacing: 4) {
                 HStack(spacing: 8) {
-                    Button("Set up price watch") { watching = item }.buttonStyle(.houseAction())
+                    Button("Set up price watch") { watching = item }.buttonStyle(.shelfAction())
                     Button("Purchased") { Task { await store.act(item, action: "purchased") } }
-                        .buttonStyle(.houseAction())
+                        .buttonStyle(.shelfAction())
                         .disabled(store.busy)
                 }
                 footer(item, removable: true)
@@ -361,10 +361,10 @@ struct ShoppingView: View {
     /// A line in History: tile, name, the outcome and the target.
     private func historyRow(_ item: WishlistItem) -> some View {
         HStack(spacing: 12) {
-            HouseTile(seed: item.id.uuidString, label: item.title, size: 40)
+            ShelfTile(seed: item.id.uuidString, label: item.title, size: 40)
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink).lineLimit(2)
-                HousePill(text: item.status.capitalized, style: .muted)
+                ShelfPill(text: item.status.capitalized, style: .muted)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if let price = item.targetLabel {
@@ -380,7 +380,7 @@ struct ShoppingView: View {
 private struct WishlistWatchNotice: View {
     @ObservedObject var store: WatchStore
     var body: some View {
-        if let notice = store.notice { HouseBanner(message: notice) }
+        if let notice = store.notice { ShelfBanner(message: notice) }
     }
 }
 
@@ -396,22 +396,22 @@ private struct WishlistEditor: View {
     }
     var body: some View {
         NavigationStack {
-            HousePage {
-                HouseHero(title: item == nil ? "Add to wishlist" : "Edit wishlist item", size: 30,
+            ShelfPage {
+                ShelfHero(title: item == nil ? "Add to wishlist" : "Edit wishlist item", size: 30,
                           subtitle: item == nil ? "Save what you want and the price you'd like to pay." : item?.title)
 
                 VStack(alignment: .leading, spacing: 14) {
-                    HouseField(label: "Name") { TextField("Sourdough starter kit", text: $draft.title) }
-                    HouseField(label: "Category (optional)") { TextField("Kitchen", text: $draft.category) }
+                    ShelfField(label: "Name") { TextField("Sourdough starter kit", text: $draft.title) }
+                    ShelfField(label: "Category (optional)") { TextField("Kitchen", text: $draft.category) }
                     quantity
-                    HouseField(label: "Notes", multiline: true) {
+                    ShelfField(label: "Notes", multiline: true) {
                         TextField("Brand, size or anything else", text: $draft.notes, axis: .vertical).lineLimit(2...5)
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    HouseSectionTitle("Price and timing")
-                    HouseField(label: "Target price in USD",
+                    ShelfSectionTitle("Price and timing")
+                    ShelfField(label: "Target price in USD",
                                note: "Your desired price per item, before shipping and tax. This is a target, not a live offer.") {
                         TextField("Not set", text: $draft.targetPrice).keyboardType(.decimalPad)
                     }
@@ -426,17 +426,17 @@ private struct WishlistEditor: View {
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    HouseSectionTitle("Priority")
+                    ShelfSectionTitle("Priority")
                     Toggle("Pin to the top", isOn: $draft.pinned)
                         .font(.system(size: 16)).foregroundStyle(Color.ink).tint(Color.ink)
                         .dibsInput()
-                    HouseMenu(label: "Priority", selection: $draft.priority) {
+                    ShelfMenu(label: "Priority", selection: $draft.priority) {
                         Text("Automatic").tag(0)
                         ForEach(1...5, id: \.self) { Text("\($0)\($0 == 5 ? " · Highest" : "")").tag($0) }
                     }
                 }
 
-                if let error { HouseBanner(message: error, kind: .error) }
+                if let error { ShelfBanner(message: error, kind: .error) }
             } bottom: {
                 Button(saving ? "Saving…" : "Save") {
                     saving = true
@@ -512,11 +512,11 @@ private struct WishlistRejection: View {
 
     var body: some View {
         NavigationStack {
-            HousePage {
-                HouseHero(title: "Not for you?", size: 30, subtitle: item.title)
+            ShelfPage {
+                ShelfHero(title: "Not for you?", size: 30, subtitle: item.title)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    HouseSectionTitle("Reason")
+                    ShelfSectionTitle("Reason")
                     VStack(spacing: 0) {
                         ForEach(Array(Self.reasons.enumerated()), id: \.element.code) { index, option in
                             if index > 0 { Hairline() }
@@ -538,13 +538,13 @@ private struct WishlistRejection: View {
                     .dibsCard(padding: Metrics.space2)
                 }
 
-                HouseField(label: "Anything else? (optional)",
+                ShelfField(label: "Anything else? (optional)",
                            note: "This helps improve future suggestions. We won't suggest this item again for 30 days, except for a lower price after “Too expensive”.",
                            multiline: true) {
                     TextField("Tell us more", text: $comment, axis: .vertical).lineLimit(2...5)
                 }
 
-                if let error = store.error { HouseBanner(message: error, kind: .error) }
+                if let error = store.error { ShelfBanner(message: error, kind: .error) }
             } bottom: {
                 Button("Reject", role: .destructive) {
                     Task {

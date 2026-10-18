@@ -165,7 +165,18 @@ final class ChatInterfaceTests: XCTestCase {
         let cookies = webView.configuration.websiteDataStore.httpCookieStore
         await withCheckedContinuation { continuation in cookies.setCookie(cookie) { continuation.resume() } }
         _ = try await webView.evaluateJavaScript("window.scrollTo(0, 60); window.location.hash = 'second'")
-        let scroll = try await webView.evaluateJavaScript("window.scrollY") as? Double
+        // WebKit applies a scroll and re-lays out a resized page asynchronously, so read the offset once it settles
+        // (a moment of 0 during re-layout is not a lost position; a value that never comes back is).
+        func settledScroll(toward expected: Double?) async throws -> Double? {
+            var value = try await webView.evaluateJavaScript("window.scrollY") as? Double
+            for _ in 0..<40 where value != expected {
+                try await Task.sleep(for: .milliseconds(50))
+                value = try await webView.evaluateJavaScript("window.scrollY") as? Double
+            }
+            return value
+        }
+        let scroll = try await settledScroll(toward: 60)
+        XCTAssertEqual(scroll, 60)
         let historyCount = webView.backForwardList.backList.count
         let identity = ObjectIdentifier(webView)
         for presentation: BrowserPresentation in [.thumbnail, .expanded, .hidden, .thumbnail] {
@@ -175,7 +186,7 @@ final class ChatInterfaceTests: XCTestCase {
             XCTAssertNotNil(webView.superview)
             let input = try await webView.evaluateJavaScript("document.getElementById('note').value")
             XCTAssertEqual(input as? String, "Keep this text")
-            let offset = try await webView.evaluateJavaScript("window.scrollY") as? Double
+            let offset = try await settledScroll(toward: scroll)
             XCTAssertEqual(offset, scroll)
             let savedCookies = await withCheckedContinuation { continuation in cookies.getAllCookies { continuation.resume(returning: $0) } }
             XCTAssertTrue(savedCookies.contains { $0.name == cookie.name && $0.value == cookie.value })

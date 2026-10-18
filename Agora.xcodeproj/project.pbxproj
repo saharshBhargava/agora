@@ -864,8 +864,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Agora/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Dibs;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Agora uses the camera to scan items and, in Dibs, to stream your cart to your housemates.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Agora uses the microphone to dictate chat messages and record sound with your videos.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Dibs uses the camera to stream your cart to your housemates, read receipts and scan what you have at home.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Dibs uses the microphone to dictate messages to the assistant and record sound with your videos.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -895,8 +895,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Agora/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Dibs;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Agora uses the camera to scan items and, in Dibs, to stream your cart to your housemates.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Agora uses the microphone to dictate chat messages and record sound with your videos.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Dibs uses the camera to stream your cart to your housemates, read receipts and scan what you have at home.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Dibs uses the microphone to dictate messages to the assistant and record sound with your videos.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

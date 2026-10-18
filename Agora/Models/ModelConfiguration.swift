@@ -74,7 +74,7 @@ extension SettingsStore {
         }
     }
     func featureDescription(_ feature: ModelFeature) -> String {
-        if demoCalendar?.isDemoAccount == true { return "Agora · Built-in responses" }
+        if demoCalendar?.isDemoAccount == true { return "Dibs · Built-in responses" }
         guard let profile = try? modelConfiguration.profile(for: feature),
               let connection = try? modelConfiguration.connection(for: profile) else { return "Choose a model in Settings" }
         return "\(connection.name) · \(profile.model)"
@@ -85,7 +85,7 @@ extension SettingsStore {
               let connection = try? modelConfiguration.connection(for: profile) else { return "Choose a model in Settings." }
         if kind == .video {
             if connection.provider == .gemini && profile.capabilities.nativeVideo {
-                return "Video and audio are uploaded to Google. Up to 5 minutes and 100 MB. Agora requests deletion afterward."
+                return "Video and audio are uploaded to Google. Up to 5 minutes and 100 MB. Dibs requests deletion afterward."
             }
             return "Up to eight timestamped video frames go to this model. Audio is not sent or analyzed. Up to 3 minutes and 500 MB."
         }

@@ -10,13 +10,13 @@ struct HouseholdSettingsLinks: View {
         VStack(spacing: 0) {
             NavigationLink {
                 if workspace.calendar.isDemoAccount {
-                    HousePage {
-                        HouseHero(title: "Models", subtitle: "Which models answer chat, captions and recognition.")
+                    ShelfPage {
+                        ShelfHero(title: "Models", subtitle: "Which models answer chat, captions and recognition.")
                         SettingsCard(symbol: "cpu", tint: 0xE5DDF7, title: "Built-in integrations") {
                             Text("Chat, captions and recognition use sample responses. Calendar events stay inside the sample account. No external API keys are needed.")
-                                .houseBody()
+                                .shelfBody()
                             Text("Sign out and connect your own Google account to configure real providers.")
-                                .houseNote()
+                                .shelfNote()
                         }
                     }
                 } else { ModelSettingsView(settings: settings) }
@@ -67,7 +67,7 @@ private struct SettingsCard<Content: View>: View {
                 DibsSymbolTile(symbol: symbol, tint: tint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink)
-                    if let detail { Text(detail).houseNote() }
+                    if let detail { Text(detail).shelfNote() }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -120,10 +120,10 @@ private struct PreferencesSettingsView: View {
     @State private var message = ""
 
     var body: some View {
-        HousePage {
-            HouseHero(title: "Preferences", subtitle: "How your assistant uses the browser on your behalf.")
+        ShelfPage {
+            ShelfHero(title: "Preferences", subtitle: "How your assistant uses the browser on your behalf.")
             VStack(alignment: .leading, spacing: 10) {
-                HouseSectionTitle("Browser access")
+                ShelfSectionTitle("Browser access")
                 SettingsCard(symbol: "globe", tint: 0xECEAE6, title: "All website domains allowed") {
                     SettingsParagraphs(paragraphs: [
                         "Browse HTTPS websites without adding domains. Redirects to other HTTPS sites are allowed. Local hostnames, IP addresses and URLs containing credentials remain unsupported.",
@@ -133,7 +133,7 @@ private struct PreferencesSettingsView: View {
                         Text("Clear cookies and website data").foregroundStyle(Color.danger)
                     }
                     .buttonStyle(.dibs(.secondary, fontSize: 16))
-                    if !message.isEmpty { Text(message).houseNote() }
+                    if !message.isEmpty { Text(message).shelfNote() }
                 }
             }
         }
@@ -159,7 +159,7 @@ private struct CalendarAccountCard: View {
         Group {
             if calendar.isDemoAccount {
                 SettingsCard(symbol: "calendar", tint: 0xD8E2FA, title: "Built-in calendar") {
-                    HousePill(text: "Built-in integrations active", symbol: "checkmark.circle.fill", style: .ink)
+                    ShelfPill(text: "Built-in integrations active", symbol: "checkmark.circle.fill", style: .ink)
                     SettingsParagraphs(paragraphs: ["No Google or model credentials are needed. Events stay in this account; no invitations or real purchases are sent."], muted: true)
                     Button("Use Google account instead") { stopAgent(); Task { await calendar.connect() } }
                         .buttonStyle(.dibs(.secondary, fontSize: 16)).disabled(calendar.connecting)
@@ -168,11 +168,11 @@ private struct CalendarAccountCard: View {
                 }
             } else {
                 SettingsCard(symbol: "calendar", tint: 0xD8E2FA, title: "Google Calendar", detail: calendar.email) {
-                    HousePill(text: calendar.connected ? "Connected" : "Connection required",
+                    ShelfPill(text: calendar.connected ? "Connected" : "Connection required",
                               symbol: calendar.connected ? "checkmark.circle.fill" : "calendar.badge.exclamationmark",
                               style: calendar.connected ? .ink : .danger)
                     SettingsParagraphs(paragraphs: ["Dibs checks availability and adds approved events to your primary calendar."], muted: true)
-                    if let message = calendar.message { Text(message).houseNote() }
+                    if let message = calendar.message { Text(message).shelfNote() }
                     Button("Reconnect Google Calendar") { stopAgent(); Task { await calendar.connect() } }
                         .buttonStyle(.dibs(calendar.connected ? .secondary : .ink, fontSize: 16)).disabled(calendar.connecting)
                     Button("Sign out") { stopAgent(); Task { await calendar.signOut() } }
@@ -199,8 +199,8 @@ private struct ConnectedAccountsSettingsView: View {
     @FocusState private var editingKey: Bool
 
     var body: some View {
-        HousePage {
-            HouseHero(title: "Connected accounts",
+        ShelfPage {
+            ShelfHero(title: "Connected accounts",
                       subtitle: workspace.calendar.isDemoAccount ? "Built-in integrations are active." : "Google Calendar and Gemini.")
             CalendarAccountCard(calendar: workspace.calendar, stopAgent: { workspace.agent.stop() })
             if !workspace.calendar.isDemoAccount { gemini }
@@ -209,7 +209,7 @@ private struct ConnectedAccountsSettingsView: View {
 
     private var gemini: some View {
         SettingsCard(symbol: "key", tint: 0xE5DDF7, title: "Google Gemini") {
-            HousePill(text: settings.hasKey ? "API key saved on this device" : "No API key saved",
+            ShelfPill(text: settings.hasKey ? "API key saved on this device" : "No API key saved",
                       symbol: settings.hasKey ? "checkmark.circle.fill" : "key",
                       style: settings.hasKey ? .ink : .muted)
                 .accessibilityIdentifier("apiKeyStatus")
@@ -256,10 +256,10 @@ private struct ConnectedAccountsSettingsView: View {
 
 private struct AutonomySettingsView: View {
     var body: some View {
-        HousePage {
-            HouseHero(title: "Autonomy", subtitle: "How your assistant acts on your behalf.")
+        ShelfPage {
+            ShelfHero(title: "Autonomy", subtitle: "How your assistant acts on your behalf.")
             VStack(alignment: .leading, spacing: 10) {
-                HouseSectionTitle("Current behavior")
+                ShelfSectionTitle("Current behavior")
                 SettingsCard(symbol: "hand.raised.fill", tint: 0xF2E3B5, title: "Ask before acting") {
                     SettingsParagraphs(paragraphs: [
                         "Your assistant asks for approval before clicking, typing, submitting forms, or closing the browser. Each approval applies to one action.",
@@ -268,7 +268,7 @@ private struct AutonomySettingsView: View {
                 }
             }
             VStack(alignment: .leading, spacing: 10) {
-                HouseSectionTitle("Your control")
+                ShelfSectionTitle("Your control")
                 VStack(alignment: .leading, spacing: 8) {
                     SettingsParagraphs(paragraphs: ["Use Stop in Chat to end a task. Interacting with the browser pauses the assistant until you resume it."])
                     SettingsParagraphs(paragraphs: ["Additional autonomy modes are not available yet."], muted: true)
@@ -281,16 +281,16 @@ private struct AutonomySettingsView: View {
 
 private struct SpendingLimitsSettingsView: View {
     var body: some View {
-        HousePage {
-            HouseHero(title: "Spending limits", subtitle: "Purchase limits and availability.")
+        ShelfPage {
+            ShelfHero(title: "Spending limits", subtitle: "Purchase limits and availability.")
             VStack(alignment: .leading, spacing: 10) {
-                HouseSectionTitle("Purchase limits")
+                ShelfSectionTitle("Purchase limits")
                 SettingsCard(symbol: "creditcard", tint: 0xF6D9CC, title: "Not available yet") {
                     SettingsParagraphs(paragraphs: ["Dibs does not currently track spending or enforce purchase limits. Browser action approvals are still required, but they do not check purchase amounts."])
                 }
             }
             VStack(alignment: .leading, spacing: 10) {
-                HouseSectionTitle("Model usage")
+                ShelfSectionTitle("Model usage")
                 VStack(alignment: .leading, spacing: 4) {
                     SettingsParagraphs(paragraphs: ["Manage Gemini API usage through Google AI Studio. Purchase limits do not cover model usage."])
                     SettingsLink(title: "Manage usage in Google AI Studio", url: URL(string: "https://aistudio.google.com/")!)

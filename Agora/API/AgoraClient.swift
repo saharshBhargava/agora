@@ -101,7 +101,7 @@ final class AgoraClient {
         guard isConfigured, let baseURL else {
             throw BrowserError(
                 "agora_not_configured",
-                "Inventory isn’t connected to a backend. This app needs a valid HTTPS Agora API address configured before inventory can load or save."
+                "Inventory isn’t connected to a backend. This app needs a valid HTTPS household API address configured before inventory can load or save."
             )
         }
         guard calendar.connected, let accountID = calendar.accountID else {
@@ -133,7 +133,7 @@ final class AgoraClient {
             (data, response) = try await http.data(for: request)
         } catch {
             try Task.checkCancellation()
-            throw BrowserError("connection_failed", "Could not reach Agora. Check your connection and try again.")
+            throw BrowserError("connection_failed", "Could not reach your household. Check your connection and try again.")
         }
         try Task.checkCancellation()
         guard calendar.accountID == accountID, calendar.connected else {
@@ -146,7 +146,7 @@ final class AgoraClient {
             // Do not sign the user out of Google when the Agora API rejects a call.
             let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             let code = object?["title"] as? String ?? "agora_unavailable"
-            let detail = object?["detail"] as? String ?? "Couldn’t reach Agora. Please try again later."
+            let detail = object?["detail"] as? String ?? "Couldn’t reach your household. Please try again later."
             throw BrowserError(code, detail, status: httpResponse.statusCode)
         }
         return data

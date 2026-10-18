@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
     <key>NSSpeechRecognitionUsageDescription</key>
-    <string>Agora uses speech recognition to turn your spoken message into an editable draft.</string>
+    <string>Dibs uses speech recognition to turn your spoken message into an editable draft.</string>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Agora connects to the model server you configure on your local network.</string>
+    <string>Dibs connects to the model server you configure on your local network.</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key>

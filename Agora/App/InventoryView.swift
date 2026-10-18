@@ -38,11 +38,11 @@ struct InventoryListView: View {
     }
 
     var body: some View {
-        HousePage {
-            HouseHero(title: "What's at home", subtitle: summary)
+        ShelfPage {
+            ShelfHero(title: "What's at home", subtitle: summary)
 
             if store.households.count > 1 {
-                HouseMenu(label: "Household", selection: Binding(get: { store.householdID }, set: { id in
+                ShelfMenu(label: "Household", selection: Binding(get: { store.householdID }, set: { id in
                     if let id { Task { await store.selectHousehold(id) } }
                 })) {
                     ForEach(store.households) { Text($0.name).tag(Optional($0.id)) }
@@ -51,7 +51,7 @@ struct InventoryListView: View {
 
             if let error = store.error {
                 VStack(alignment: .leading, spacing: 10) {
-                    HouseBanner(message: error, kind: .error)
+                    ShelfBanner(message: error, kind: .error)
                     Button("Try again") { Task { await store.refresh() } }
                         .buttonStyle(.dibs(.secondary, fontSize: 16))
                         .disabled(store.loading)
@@ -121,12 +121,12 @@ struct InventoryListView: View {
         }
 
         if store.householdID != nil {
-            HouseFlow(spacing: 8) {
-                HouseChip(title: "All locations", selected: locationID == nil) { locationID = nil }
+            ShelfFlow(spacing: 8) {
+                ShelfChip(title: "All locations", selected: locationID == nil) { locationID = nil }
                 ForEach(store.locations) { location in
-                    HouseChip(title: location.name, selected: locationID == location.id) { locationID = location.id }
+                    ShelfChip(title: location.name, selected: locationID == location.id) { locationID = location.id }
                 }
-                HouseChip(title: "Locations", symbol: "square.grid.2x2", selected: false, quiet: true) { managingLocations = true }
+                ShelfChip(title: "Locations", symbol: "square.grid.2x2", selected: false, quiet: true) { managingLocations = true }
             }
         }
 
@@ -150,7 +150,7 @@ struct InventoryListView: View {
             .accessibilityElement(children: .combine)
         } else if visibleItems.isEmpty && store.error == nil {
             VStack(spacing: 12) {
-                HouseEmpty(symbol: "shippingbox", title: showArchived ? "No archived items" : "No items found",
+                ShelfEmpty(symbol: "shippingbox", title: showArchived ? "No archived items" : "No items found",
                            message: search.isEmpty && locationID == nil ? "Add an item to start tracking your essentials." : "Try another search or location.")
                 if !showArchived {
                     Button("Add item") { adding = true }
@@ -170,7 +170,7 @@ struct InventoryListView: View {
 
     private func section(_ title: String, items: [InventoryItem]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HouseSectionTitle(title)
+            ShelfSectionTitle(title)
             ForEach(items) { item in
                 let location = store.locations.first { $0.id == item.locationId }?.name
                 NavigationLink {
@@ -197,11 +197,11 @@ private struct InventoryRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            HouseTile(seed: item.id.uuidString, label: item.displayName, size: 48)
+            ShelfTile(seed: item.id.uuidString, label: item.displayName, size: 48)
             VStack(alignment: .leading, spacing: 4) {
-                Text(item.displayName).houseName().lineLimit(2)
-                if let location { Text(location).houseNote().lineLimit(1) }
-                if let state = Self.state(item) { HousePill(text: state.text, style: state.style) }
+                Text(item.displayName).shelfName().lineLimit(2)
+                if let location { Text(location).shelfNote().lineLimit(1) }
+                if let state = Self.state(item) { ShelfPill(text: state.text, style: state.style) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .trailing, spacing: 0) {
@@ -211,12 +211,12 @@ private struct InventoryRowView: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                Text(item.quantity == nil ? "unknown" : item.unit).houseNote().lineLimit(1)
+                Text(item.quantity == nil ? "unknown" : item.unit).shelfNote().lineLimit(1)
             }
         }
     }
 
-    static func state(_ item: InventoryItem) -> (text: String, style: HousePill.Style)? {
+    static func state(_ item: InventoryItem) -> (text: String, style: ShelfPill.Style)? {
         if item.status == "archived" { return ("Archived", .muted) }
         if item.quantity == 0 { return ("Out of stock", .danger) }
         if item.isRunningLow { return ("Running low", .ink) }
@@ -249,15 +249,15 @@ struct InventoryDetailView: View {
     var body: some View {
         Group {
             if let item {
-                HousePage {
-                    HouseHero(title: item.displayName, size: 30, subtitle: subtitle(item))
+                ShelfPage {
+                    ShelfHero(title: item.displayName, size: 30, subtitle: subtitle(item))
                     stock(item)
                     facts(item)
                     purchaseInformation(item)
                     history(item)
                     if let error {
                         VStack(alignment: .leading, spacing: 10) {
-                            HouseBanner(message: error, kind: .error)
+                            ShelfBanner(message: error, kind: .error)
                             Button("Reload history") { Task { await load() } }
                                 .buttonStyle(.dibs(.secondary, fontSize: 16))
                         }
@@ -270,8 +270,8 @@ struct InventoryDetailView: View {
                         .accessibilityIdentifier("inventory.updateQuantity")
                 }
             } else {
-                HousePage {
-                    HouseEmpty(symbol: "shippingbox", title: "Item unavailable", message: "This item is no longer in your pantry.")
+                ShelfPage {
+                    ShelfEmpty(symbol: "shippingbox", title: "Item unavailable", message: "This item is no longer in your pantry.")
                 }
             }
         }
@@ -313,7 +313,7 @@ struct InventoryDetailView: View {
                 .font(.system(size: 17))
                 .foregroundStyle(Color.muted)
             Spacer(minLength: 8)
-            if let state = InventoryRowView.state(item) { HousePill(text: state.text, style: state.style) }
+            if let state = InventoryRowView.state(item) { ShelfPill(text: state.text, style: state.style) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .dibsCard()
@@ -323,7 +323,7 @@ struct InventoryDetailView: View {
 
     @ViewBuilder private func facts(_ item: InventoryItem) -> some View {
         let rows = factRows(item)
-        if !rows.isEmpty { HouseFacts(rows: rows).dibsCard() }
+        if !rows.isEmpty { ShelfFacts(rows: rows).dibsCard() }
     }
 
     private func factRows(_ item: InventoryItem) -> [(title: String, value: String)] {
@@ -337,12 +337,12 @@ struct InventoryDetailView: View {
 
     private func purchaseInformation(_ item: InventoryItem) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HouseSectionTitle("Purchase information")
+            ShelfSectionTitle("Purchase information")
             VStack(spacing: 0) {
-                if let merchant = item.lastPurchasedFrom { HouseFactRow(title: "Last purchased from", value: merchant.label); Hairline() }
-                if let date = item.lastPurchasedOn { HouseFactRow(title: "Last purchased on", value: date); Hairline() }
+                if let merchant = item.lastPurchasedFrom { ShelfFactRow(title: "Last purchased from", value: merchant.label); Hairline() }
+                if let date = item.lastPurchasedOn { ShelfFactRow(title: "Last purchased on", value: date); Hairline() }
                 if let id = item.preferredMerchantId { PreferredMerchantLabel(store: store, id: id) }
-                else { Text("No preferred store").houseNote().frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10) }
+                else { Text("No preferred store").shelfNote().frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10) }
             }
             .dibsCard()
         }
@@ -350,9 +350,9 @@ struct InventoryDetailView: View {
 
     private func history(_ item: InventoryItem) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HouseSectionTitle("Quantity history")
+            ShelfSectionTitle("Quantity history")
             VStack(alignment: .leading, spacing: 14) {
-                HouseSegments(label: "Period", options: [("7 days", 7), ("30 days", 30), ("90 days", 90)], selection: $days)
+                ShelfSegments(label: "Period", options: [("7 days", 7), ("30 days", 30), ("90 days", 90)], selection: $days)
                 if loading { ProgressView("Loading history…").font(.system(size: 14)).foregroundStyle(Color.muted) }
                 if let detail, detail.daily.contains(where: { $0.quantity != nil }) {
                     Chart(detail.daily) { point in
@@ -377,7 +377,7 @@ struct InventoryDetailView: View {
                     .frame(height: 180)
                     .accessibilityLabel("Daily quantity in \(item.unit)")
                 } else if !loading && error == nil {
-                    Text("No quantity history yet.").houseNote()
+                    Text("No quantity history yet.").shelfNote()
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -387,14 +387,14 @@ struct InventoryDetailView: View {
 
     private func observations(_ detail: InventoryDetail, item: InventoryItem) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HouseSectionTitle("Recent observations")
+            ShelfSectionTitle("Recent observations")
             VStack(spacing: 0) {
-                if detail.observations.isEmpty { Text("No observations yet.").houseNote().frame(maxWidth: .infinity, alignment: .leading) }
+                if detail.observations.isEmpty { Text("No observations yet.").shelfNote().frame(maxWidth: .infinity, alignment: .leading) }
                 ForEach(Array(detail.observations.enumerated()), id: \.offset) { index, observation in
                     if index > 0 { Hairline() }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("\(observation.quantity.formatted()) \(item.unit) · \(observation.source.capitalized)").houseBody()
-                        Text(observation.time, format: .dateTime.month().day().year().hour().minute()).houseNote()
+                        Text("\(observation.quantity.formatted()) \(item.unit) · \(observation.source.capitalized)").shelfBody()
+                        Text(observation.time, format: .dateTime.month().day().year().hour().minute()).shelfNote()
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 10)
@@ -407,16 +407,16 @@ struct InventoryDetailView: View {
 
     private func purchases(_ detail: InventoryDetail, item: InventoryItem) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HouseSectionTitle("Purchase history")
+            ShelfSectionTitle("Purchase history")
             VStack(spacing: 0) {
-                if detail.purchaseHistory.isEmpty { Text("No purchases recorded yet.").houseNote().frame(maxWidth: .infinity, alignment: .leading) }
+                if detail.purchaseHistory.isEmpty { Text("No purchases recorded yet.").shelfNote().frame(maxWidth: .infinity, alignment: .leading) }
                 ForEach(Array(detail.purchaseHistory.enumerated()), id: \.element.id) { index, purchase in
                     if index > 0 { Hairline() }
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(purchase.merchant?.label ?? "Store not recorded").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink)
-                            if let date = purchase.purchasedOn { Text(date).houseNote() }
-                            else { Text(purchase.observedAt, style: .date).houseNote() }
+                            if let date = purchase.purchasedOn { Text(date).shelfNote() }
+                            else { Text(purchase.observedAt, style: .date).shelfNote() }
                         }
                         Spacer(minLength: 8)
                         Text("\(purchase.quantity.formatted()) \(item.unit)").font(.display(17)).foregroundStyle(Color.ink)
@@ -438,7 +438,7 @@ struct InventoryDetailView: View {
                 .frame(maxWidth: .infinity, minHeight: Metrics.tap)
                 .disabled(saving)
             Text("Archived items keep their history and can be restored from your pantry.")
-                .houseNote()
+                .shelfNote()
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
         }
@@ -465,7 +465,7 @@ private struct PreferredMerchantLabel: View {
     @State private var merchant: InventoryMerchant?
     @State private var failed = false
     var body: some View {
-        HouseFactRow(title: "Preferred store", value: merchant?.label ?? (failed ? "Store unavailable" : "Loading…"))
+        ShelfFactRow(title: "Preferred store", value: merchant?.label ?? (failed ? "Store unavailable" : "Loading…"))
             .task(id: id) {
                 merchant = nil; failed = false
                 do { merchant = try await store.merchant(id) } catch { failed = true }
@@ -481,228 +481,17 @@ private struct PreferredMerchantLabel: View {
 // the bottom. They carry a `House` prefix so this branch merges without clashing; once both land, point
 // them at the Shelf versions and delete this block.
 
-extension View {
-    /// Secondary copy: 13 pt, muted.
-    func houseNote() -> some View {
-        font(.system(size: 13)).foregroundStyle(Color.muted)
-    }
 
-    /// Body copy: 15 pt, body ink.
-    func houseBody() -> some View {
-        font(.system(size: 15)).foregroundStyle(Color.bodyInk)
-    }
 
-    /// An item name: 16 pt bold ink.
-    func houseName() -> some View {
-        font(.system(size: 16, weight: .bold)).foregroundStyle(Color.ink)
-    }
 
-    /// The pinned action bar at the bottom of a page.
-    func housePinned() -> some View {
-        padding(.horizontal, 20)
-            .padding(.top, Metrics.space1)
-            .padding(.bottom, Metrics.space1)
-            .background(Color.paper)
-    }
-}
 
-/// A page on paper: a scrolling column of cards with an optional pinned action, as in Dibs' Start screen.
-/// The hero (a `HouseHero`) is the first thing in `content`; the navigation bar only carries Back and icons.
-struct HousePage<Content: View, Bottom: View>: View {
-    private let content: Content
-    private let bottom: Bottom
-    private let showsBottom: Bool
 
-    init(bottomVisible: Bool = true, @ViewBuilder content: () -> Content, @ViewBuilder bottom: () -> Bottom) {
-        self.content = content()
-        self.bottom = bottom()
-        self.showsBottom = bottomVisible
-    }
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) { content }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.top, Metrics.space1)
-                .padding(.bottom, Metrics.space3)
-        }
-        .scrollBounceBehavior(.basedOnSize)
-        .scrollDismissesKeyboard(.interactively)
-        .safeAreaInset(edge: .bottom) {
-            if showsBottom { bottom.housePinned() }
-        }
-        .dibsScreen()
-        .navigationTitle("")
-        .toolbar(.visible, for: .navigationBar)
-        .tint(Color.ink)
-    }
-}
 
-extension HousePage where Bottom == EmptyView {
-    init(@ViewBuilder content: () -> Content) {
-        self.init(bottomVisible: false, content: content, bottom: { EmptyView() })
-    }
-}
 
-/// The page headline: display type, then one line of context.
-struct HouseHero: View {
-    let title: String
-    var size: CGFloat = 32
-    var subtitle: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.display(size))
-                .tracking(-0.5)
-                .foregroundStyle(Color.ink)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
-            if let subtitle {
-                Text(subtitle)
-                    .font(.system(size: 15))
-                    .lineSpacing(3)
-                    .foregroundStyle(Color.bodyInk)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-/// A section title above a group of cards: 17 pt bold ink.
-struct HouseSectionTitle: View {
-    let title: String
-    init(_ title: String) { self.title = title }
-    var body: some View {
-        Text(title)
-            .font(.system(size: 17, weight: .bold))
-            .foregroundStyle(Color.ink)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityAddTraits(.isHeader)
-    }
-}
-
-/// A rounded tile in the item's soft tint with its first letter, as on ChipCard and CartRowView.
-struct HouseTile: View {
-    let seed: String
-    let label: String
-    var size: CGFloat = 44
-
-    var body: some View {
-        ZStack {
-            tileColor(id: seed)
-            Text(label.first.map { String($0).uppercased() } ?? "?")
-                .font(.system(size: size * 0.4, weight: .bold))
-                .foregroundStyle(Color.ink)
-        }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous))
-        .accessibilityHidden(true)
-    }
-}
-
-/// A small fact in a capsule: outlined, ink, muted or danger.
-struct HousePill: View {
-    enum Style { case line, ink, muted, danger }
-    let text: String
-    var symbol: String?
-    var style: Style = .line
-
-    var body: some View {
-        HStack(spacing: 5) {
-            if let symbol { Image(systemName: symbol).font(.system(size: 11, weight: .bold)) }
-            Text(text).font(.system(size: 12, weight: .bold)).fixedSize(horizontal: false, vertical: true)
-        }
-        .foregroundStyle(foreground)
-        .padding(.horizontal, 12)
-        .frame(minHeight: 28)
-        .background(Capsule().fill(fill))
-        .overlay(Capsule().strokeBorder(border))
-    }
-
-    private var foreground: Color {
-        switch style {
-        case .line: return .ink
-        case .ink: return .white
-        case .muted: return .muted
-        case .danger: return .danger
-        }
-    }
-    private var fill: Color {
-        switch style {
-        case .line: return .card
-        case .ink: return .ink
-        case .muted: return .paper
-        case .danger: return .dangerSoft
-        }
-    }
-    private var border: Color {
-        switch style {
-        case .line, .muted: return .line
-        case .ink: return .ink
-        case .danger: return .dangerSoft
-        }
-    }
-}
-
-/// A dashed "nothing here yet" box, like Start's "Waiting for your housemates…".
-struct HouseEmpty: View {
-    let symbol: String
-    let title: String
-    let message: String
-
-    var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: symbol)
-                .font(.system(size: 26))
-                .foregroundStyle(Color.muted)
-                .accessibilityHidden(true)
-            Text(title).font(.system(size: 17, weight: .bold)).foregroundStyle(Color.ink)
-            Text(message)
-                .font(.system(size: 15))
-                .foregroundStyle(Color.muted)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Metrics.space3)
-        .padding(.horizontal, Metrics.space2)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.lineStrong, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-        )
-        .accessibilityElement(children: .combine)
-    }
-}
-
-/// A message above the content: an error on a soft red card, or a notice on a white one.
-struct HouseBanner: View {
-    enum Kind { case error, notice }
-    let message: String
-    var kind: Kind = .notice
-
-    var body: some View {
-        Group {
-            switch kind {
-            case .error:
-                ErrorText(message: message)
-                    .padding(12)
-                    .background(Color.dangerSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            case .notice:
-                Text(message)
-                    .houseBody()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .dibsCard(radius: 14, padding: 12)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
 
 /// One label and value line inside a card: ink title, muted value.
-struct HouseFactRow: View {
+struct ShelfFactRow: View {
     let title: String
     let value: String
 
@@ -720,65 +509,11 @@ struct HouseFactRow: View {
     }
 }
 
-/// Label and value rows inside a card, split by hairlines.
-struct HouseFacts: View {
-    let rows: [(title: String, value: String)]
 
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(rows.indices, id: \.self) { index in
-                if index > 0 { Hairline() }
-                HouseFactRow(title: rows[index].title, value: rows[index].value)
-            }
-        }
-    }
-}
 
-/// A labelled `dibsInput` field.
-struct HouseField<Content: View>: View {
-    let label: String
-    var note: String?
-    var multiline = false
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 13)).foregroundStyle(Color.muted)
-            content
-                .font(.system(size: 16))
-                .foregroundStyle(Color.ink)
-                .accessibilityLabel(label)
-                .padding(.vertical, multiline ? 12 : 0)
-                .dibsInput()
-            if let note { Text(note).houseNote().fixedSize(horizontal: false, vertical: true) }
-        }
-    }
-}
-
-/// A labelled field holding a menu `Picker`.
-struct HouseMenu<Value: Hashable, Options: View>: View {
-    let label: String
-    @Binding var selection: Value
-    @ViewBuilder let options: Options
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 13)).foregroundStyle(Color.muted)
-            HStack(spacing: 0) {
-                Picker(label, selection: $selection) { options }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .tint(Color.ink)
-                    .padding(.leading, -8)
-                Spacer(minLength: 0)
-            }
-            .dibsInput()
-        }
-    }
-}
 
 /// Two or three exclusive choices in one capsule: the chosen one is ink with white text.
-struct HouseSegments<Value: Hashable>: View {
+struct ShelfSegments<Value: Hashable>: View {
     let label: String
     let options: [(title: String, value: Value)]
     @Binding var selection: Value
@@ -809,7 +544,7 @@ struct HouseSegments<Value: Hashable>: View {
 }
 
 /// A filter capsule: ink when chosen, white with a hairline otherwise; `quiet` is a plain action.
-struct HouseChip: View {
+struct ShelfChip: View {
     let title: String
     var symbol: String?
     let selected: Bool
@@ -837,7 +572,7 @@ struct HouseChip: View {
 }
 
 /// A compact 44 pt action inside a card: ink or outlined.
-struct HouseActionStyle: ButtonStyle {
+struct ShelfActionStyle: ButtonStyle {
     enum Kind { case primary, secondary }
     var kind: Kind = .secondary
     @Environment(\.isEnabled) private var isEnabled
@@ -862,35 +597,7 @@ struct HouseActionStyle: ButtonStyle {
     }
 }
 
-extension ButtonStyle where Self == HouseActionStyle {
-    static func houseAction(_ kind: HouseActionStyle.Kind = .secondary) -> HouseActionStyle { HouseActionStyle(kind: kind) }
+extension ButtonStyle where Self == ShelfActionStyle {
+    static func shelfAction(_ kind: ShelfActionStyle.Kind = .secondary) -> ShelfActionStyle { ShelfActionStyle(kind: kind) }
 }
 
-/// Chips and pills that wrap onto new lines.
-struct HouseFlow: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? .infinity
-        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(ProposedViewSize(width: width.isFinite ? width : nil, height: nil))
-            if x > 0, x + size.width > width { x = 0; y += rowHeight; rowHeight = 0 }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-            widest = max(widest, x - spacing)
-        }
-        return CGSize(width: width.isFinite ? width : widest, height: y + rowHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
-            if x > bounds.minX, x + size.width > bounds.maxX { x = bounds.minX; y += rowHeight; rowHeight = 0 }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-    }
-}

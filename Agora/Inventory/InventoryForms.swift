@@ -266,6 +266,8 @@ struct ShelfFacts: View {
 struct ShelfField<Content: View>: View {
     let label: String
     var note: String?
+    /// Taller padding for a multi-line text field (notes).
+    var multiline = false
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -275,6 +277,7 @@ struct ShelfField<Content: View>: View {
                 .font(.system(size: 16))
                 .foregroundStyle(Color.ink)
                 .accessibilityLabel(label)
+                .padding(.vertical, multiline ? 12 : 0)
                 .dibsInput()
             if let note { Text(note).shelfNote().fixedSize(horizontal: false, vertical: true) }
         }

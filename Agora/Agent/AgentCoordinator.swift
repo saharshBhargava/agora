@@ -114,7 +114,7 @@ final class AgentCoordinator: ObservableObject {
             if row.tool?.status == .running { row.tool?.status = .stopped }
         }
         browser.revoke(); running = false; self.paused = paused && !uncertainCalendar
-        let calendarName = calendar?.isDemoAccount == true ? "Agora Calendar" : "Google Calendar"
+        let calendarName = calendar?.isDemoAccount == true ? "Dibs calendar" : "Google Calendar"
         status = uncertainCalendar ? "A Calendar event may have been saved. Check \(calendarName) before retrying." : reason
         browser.state.status = status
         if uncertainCalendar { messages.append(ChatMessage(role: "notice", text: status)) }
@@ -163,7 +163,7 @@ final class AgentCoordinator: ObservableObject {
         let reference = call.arguments["elementId"] as? String
         let elements = browser.lastObservation["elements"] as? [[String: Any]] ?? []
         let target = elements.first { $0["id"] as? String == reference }?["name"] as? String ?? reference ?? "page"
-        approval = ActionApproval(title: "Allow Agora to \(action)?", detail: "\(browser.state.title) · \(browser.state.url?.host ?? "Browser")\nTarget: \(target)\(value.map { "\nValue: \($0)" } ?? "")\nReview the page first. This approval applies once to this action.")
+        approval = ActionApproval(title: "Allow the assistant to \(action)?", detail: "\(browser.state.title) · \(browser.state.url?.host ?? "Browser")\nTarget: \(target)\(value.map { "\nValue: \($0)" } ?? "")\nReview the page first. This approval applies once to this action.")
         AppLog.event(.agent, "approval.requested")
         status = "Waiting for your approval"
         return await withCheckedContinuation { approvalReply = $0 }
@@ -233,7 +233,7 @@ final class AgentCoordinator: ObservableObject {
                             let approvedAccountID = calendar.accountID
                             let call = try CalendarCall(raw)
                             if call.name == "calendar_create_event" {
-                                approval = ActionApproval(title: calendar.isDemoAccount ? "Add this Agora Calendar event?" : "Add this Google Calendar event?", detail: call.approvalDetail)
+                                approval = ActionApproval(title: calendar.isDemoAccount ? "Add this Dibs calendar event?" : "Add this Google Calendar event?", detail: call.approvalDetail)
                                 status = "Waiting for your approval"
                                 let allowed = await withCheckedContinuation { approvalReply = $0 }
                                 guard allowed else { throw BrowserError("approval_denied", "Do not retry this action.") }
