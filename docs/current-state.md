@@ -560,6 +560,22 @@ simulator; validation was completed on a separate simulator. Physical camera/mic
 live credentialed model calls were not exercised. The scan changes are local source, not a distributed app.
 
 
+## Existing inventory image recovery — release candidate, October 18, 2026
+
+Active inventory repairs missing image bindings at worker startup and household inventory loads. Empty
+automatic results older than seven days retry, and startup revisits old search-version misses while
+respecting the current negative cache. The existing image pipeline searches online and selects a result
+without requiring edits or a manual image choice. Explicit selections, removals, photos and successful
+images remain preserved. Demo seed/backfill restores labeled sample images without external searches.
+No migration is needed.
+
+The shared checkout passed 679 backend tests, Ruff, nine native image tests and a disposable demo CLI
+reset. A live search probe against an ordinary disposable local account automatically recovered existing
+Barilla spaghetti and PS5 items and served Walmart/PlayStation source images with HTTP 200. The native
+continued-polling improvement remains local and requires a rebuilt app; this backend release does not
+distribute the iOS client. Deployment verification will be recorded after the managed release succeeds.
+
+
 ## Existing inventory image recovery deployed — October 18, 2026
 
 PR [#39](https://github.com/saharshBhargava/agora/pull/39) merged as
