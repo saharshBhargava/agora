@@ -5,11 +5,12 @@ services:
     name: agora-api
     runtime: docker
     plan: free
+    branch: main
     rootDir: backend
     dockerfilePath: ./backend/Dockerfile   # Render resolves these from the repo root
     dockerContext: ./backend
     healthCheckPath: /readyz
-    autoDeploy: true
+    autoDeployTrigger: checksPass       # deploy main only after its CI checks pass
     envVars:
       - key: AGORA_DATABASE_URL        # Tiger Cloud (or any Postgres) connection string
         sync: false
@@ -39,4 +40,6 @@ services:
         value: "true"
       - key: AGORA_SEED_ON_BOOT          # idempotent: creates demo accounts once, never overwrites
         value: "true"
+      - key: AGORA_SEED_NEW_USERS        # sample history belongs only to the designated demo account
+        value: "false"
 
