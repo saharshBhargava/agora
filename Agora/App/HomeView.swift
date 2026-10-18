@@ -27,14 +27,6 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("A little ahead of everyday.")
-                            .font(.title2.bold())
-                        Text("Your essentials, good finds, and next shopping trip.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
                     scanCard
 
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 16)], alignment: .leading, spacing: 16) {
@@ -153,37 +145,23 @@ struct HomeView: View {
         Button {
             selectedTab = .capture
         } label: {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Image(systemName: "viewfinder")
-                        .font(.system(size: 32, weight: .medium))
-                        .accessibilityHidden(true)
-                    Spacer()
-                    Text("START HERE")
-                        .font(.caption.weight(.bold))
-                        .tracking(1.4)
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("What’s on your shelves?")
-                        .font(.title2.bold())
-                    Text("Start with a photo of your everyday essentials.")
-                        .font(.subheadline)
-                }
-                Label("Scan your items", systemImage: "arrow.right")
-                    .font(.subheadline.bold())
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 11)
-                    .background(.white.opacity(0.16), in: Capsule())
+            HStack(spacing: 16) {
+                Text("Scan your items")
+                    .font(.headline)
+                Spacer(minLength: 0)
+                Image(systemName: "camera.viewfinder")
+                    .font(.title2.weight(.medium))
+                    .accessibilityHidden(true)
             }
             .foregroundStyle(.white)
-            .padding(24)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                LinearGradient(colors: [Color(red: 0.04, green: 0.34, blue: 0.32), Color(red: 0.06, green: 0.43, blue: 0.39)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing),
-                in: RoundedRectangle(cornerRadius: 24)
+                Color(red: 0.0, green: 0.36, blue: 0.49),
+                in: RoundedRectangle(cornerRadius: 16)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 24))
+            .contentShape(RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("homeScanItems")
