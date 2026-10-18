@@ -6,7 +6,12 @@ import SwiftUI
 struct ShoppingView: View {
     @ObservedObject var store: ShoppingStore
     @ObservedObject var settings: SettingsStore
+    /// "Buy with the assistant" on a wanted item; hidden without it.
+    var commerce: CommerceStore? = nil
     @State var selection = "wishlist"
+    @State private var buying: UUID?
+    @State private var purchase: AgentIntent?
+    @State private var purchaseError: String?
     @State private var adding = false
     @State private var editing: WishlistItem?
     @State private var rejecting: WishlistItem?
@@ -40,6 +45,9 @@ struct ShoppingView: View {
         .sheet(isPresented: $adding) { WishlistEditor(store: store) }
         .sheet(item: $editing) { WishlistEditor(store: store, item: $0) }
         .sheet(item: $rejecting) { WishlistRejection(store: store, item: $0) }
+        .sheet(item: $purchase) { intent in
+            if let commerce { ApprovalSheet(store: commerce, intent: intent) }
+        }
     }
 
     // MARK: status
@@ -53,6 +61,7 @@ struct ShoppingView: View {
             }
         }
         if let notice = store.notice { ShelfBanner(message: notice) }
+        if let purchaseError { ShelfBanner(message: purchaseError, kind: .error) }
         WishlistWatchNotice(store: store.watches)
         if !store.canUse { ShelfBanner(message: "Sign in and choose a household in Lists to start.") }
     }
@@ -294,11 +303,36 @@ struct ShoppingView: View {
         } else if item.status == "active" {
             VStack(alignment: .leading, spacing: 8) {
                 WishlistWatchSummary(store: store.watches, item: item)
-                Button("Purchased") { Task { await store.act(item, action: "purchased") } }
-                    .buttonStyle(.shelfAction())
-                    .disabled(store.busy)
+                HStack(spacing: 8) {
+                    if commerce != nil {
+                        Button(buying == item.id ? "Asking…" : "Buy with the assistant") { buy(item) }
+                            .buttonStyle(.shelfAction(.primary))
+                            .disabled(buying != nil)
+                            .accessibilityIdentifier("wishlist.buy.\(item.id)")
+                    }
+                    Button("Purchased") { Task { await store.act(item, action: "purchased") } }
+                        .buttonStyle(.shelfAction())
+                        .disabled(store.busy)
+                }
                 footer(item, removable: true)
             }
+        }
+    }
+
+    /// Proposes an Agora checkout for the item at the best current price found (else its target), then shows
+    /// the backend's answer: bought, waiting for approval (the approval sheet) or refused with its reasons.
+    private func buy(_ item: WishlistItem) {
+        guard let commerce, buying == nil else { return }
+        guard let proposal = WishlistPurchase.proposal(item: item, watch: store.watches.watch(for: item)) else {
+            purchaseError = "Set a target price on \(item.title) first, so the assistant knows what to spend."
+            return
+        }
+        buying = item.id; purchaseError = nil
+        Task {
+            defer { buying = nil }
+            do { purchase = try await commerce.propose(proposal, action: "wishlist:\(item.id.uuidString)") }
+            catch is CancellationError {}
+            catch { purchaseError = CommerceStore.message(error) }
         }
     }
 
