@@ -1,5 +1,19 @@
 # Current state — mandatory read before resuming work
 
+## Combined native integration merged and released — October 18, 2026
+
+PR [#41](https://github.com/saharshBhargava/agora/pull/41) merged the full pending native integration
+as `75a3f8879a88e171c1aa410e72475ea315dd98ef`: automatic inventory image startup loading with no image
+chooser, Home/Lists carousels, store grouping, scan review, shared-browser watch fallback, native images,
+and regression tests. Earlier entries calling this source local-only or unpublished are superseded.
+Rebuilding/distributing the iOS app remains separate from merging its source.
+
+All PR checks passed: expanded iOS simulator suite, PostgreSQL, TimescaleDB, Docker and upgrade/rollback
+rehearsal. The combined local backend suite passed 679 tests and Ruff. Main CI and the
+[deployment](https://github.com/saharshBhargava/agora/actions/runs/39135676812) succeeded; public readiness
+verified running commit `75a3f8879a88e171c1aa410e72475ea315dd98ef`, TimescaleDB enabled, migration 0019
+and no pending migrations. No production reset or test writes were performed.
+
 ## Combined native integration — October 18, 2026
 
 The pending native image displays/startup preloading, automatic-watch browser fallback, Home/Lists

@@ -1,5 +1,12 @@
 # Merged-work handoff for returning agents
 
+## Combined native integration on main
+
+PR [#41](https://github.com/saharshBhargava/agora/pull/41), merge `75a3f88`, brings the pending native
+image startup loading, automatic image presentation, Home/Lists carousels, scan review and watch-browser
+fallback onto main. Earlier references to these files as local-only are superseded. All PR checks and
+the managed deployment passed; see [current state](current-state.md). A rebuilt iOS app is still required.
+
 ## Existing inventory images released
 
 PR [#39](https://github.com/saharshBhargava/agora/pull/39), merge `343f183`, is deployed. Missing
