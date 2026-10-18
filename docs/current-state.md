@@ -258,3 +258,25 @@ flow, duplicate handling, destination ambiguity, persistence reload, Stop and ac
 A disposable local demo CLI reset also passed. Broader exploratory iOS runs encountered the existing
 unsigned-build Keychain limitation and a browser-scroll timing assertion; no full iOS suite pass is claimed.
 Live credentialed model inference, production deployment and a distributed iOS build were not performed.
+
+
+## Automatic wishlist price checks — release preparation, October 18, 2026
+
+The native “Preparing automatic price checks” text was shown for an absent watch even when the hosted
+service did not support automatic watches. Read-only production readiness confirmed commit `6a86e2f`
+and migration 0018; that version still required separate watch setup.
+
+This backend change creates and queues watches when active wishlist items are saved/accepted, backfills
+existing active items at worker startup and scheduled sweeps, and preserves explicit pauses. Targets are
+optional; verified source prices appear independently of meeting a target. Multi-retailer research works
+without a reasoning model. Migration 0019 supplies the final foreground browser claim/result protocol;
+device-reported prices cannot generate server-verified offer alerts. Demo remains isolated.
+
+`GET /v1/watches` now advertises `automatic_watches:true`. Updated native source distinguishes an older
+service, an unloaded/failed request and a genuinely missing watch instead of promising endless preparation.
+The native changes require a rebuilt app; this backend-only release does not distribute that build.
+
+Local validation: the prior combined checkout passed 649 backend tests, 70 selected native regressions and
+24 focused browser/watch tests, including a real disposable API/Postgres flow. The additive migration and
+old/new API compatibility rehearsal passed. This isolated release is being checked separately before merge;
+production availability must be established from its deploy run and `/readyz`, not this preparation entry.

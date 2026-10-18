@@ -488,3 +488,12 @@ requests save immediately; ambiguous destinations are clarified and duplicates l
 Shared screens update after confirmed saves. Existing suggestions remain a separate acceptance flow.
 See [chat additions](api/chat-additions.md) for argument limits, demo examples and retry behavior.
 List creation from chat, existing-stock changes, browser/photo extraction and undo remain outside this MVP.
+
+
+## Automatic-watch rollout compatibility
+
+The watch-list response advertises `automatic_watches:true` when wishlist saves and startup backfills
+create watches. Native clients must not show “Preparing automatic price checks” indefinitely for an absent
+watch: distinguish unsupported automatic checks (flag absent/false), a failed/unloaded request, and a
+missing watch after a successful response. The updated local native code implements these states.
+See [price watches](api/price-watches.md).

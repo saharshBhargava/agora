@@ -74,6 +74,7 @@ def _mcp_rows(result, provider):
     if not isinstance(content, list):
         raise ProviderFailure()
     rows = []
+    recognized_results = False
     for block in content[:20]:
         if not isinstance(block, dict) or block.get('type') != 'text' or not isinstance(block.get('text'), str):
             continue
@@ -83,6 +84,7 @@ def _mcp_rows(result, provider):
         except ValueError:
             parsed = None
         if isinstance(parsed, dict) and isinstance(parsed.get('results'), list):
+            recognized_results = True
             rows.extend(parsed['results'])
         elif provider == 'exa':
             # Exa's public MCP returns its own Title/URL records, not a model answer.
@@ -93,7 +95,7 @@ def _mcp_rows(result, provider):
                 snippet = re.split(r'(?:Highlights|Text):\n', excerpt, maxsplit=1)
                 rows.append({'title': match[1], 'url': match[2],
                              'snippet': snippet[1][:1200] if len(snippet) > 1 else ''})
-    if not rows:
+    if not rows and not recognized_results:
         raise ProviderFailure()
     return rows
 
