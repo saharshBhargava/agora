@@ -23,10 +23,13 @@ jobs:
       - name: Build and test authentication and provider boundaries
         run: |
           set -o pipefail
+          # Xcode 16.4's iOS 18.5 simulator misses the Swift WebKit overlay for older deployment targets.
+          # Apple workaround: https://developer.apple.com/forums/thread/785964
+          # This CI override does not change the app's checked-in iOS 17 deployment target.
           xcodebuild test -project Agora.xcodeproj -scheme Agora \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -derivedDataPath build -resultBundlePath build/TestResults.xcresult \
-            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO \
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=18.4 \
             -only-testing:AgoraTests/DemoAccessTests \
             -only-testing:AgoraTests/CalendarAuthTests \
             -only-testing:AgoraTests/CalendarToolTests \
