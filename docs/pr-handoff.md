@@ -4,6 +4,15 @@ Updated October 17, 2026 (America/Los_Angeles). Read this before resuming older 
 
 ## Password-first demo access
 
+[PR #17](https://github.com/saharshBhargava/agora/pull/17) merged as
+`f65cf0eccd2da9661f2d1220e861cbd9ff765997` and was deployed to Render on October 17 at 8:36 PM PDT.
+[PR verification](https://github.com/saharshBhargava/agora/actions/runs/39093773083): 24 iOS tests passed
+and the onboarding screenshot was captured; backend Postgres 17, TimescaleDB and image checks passed.
+Locally, 238 backend tests and the required dev demo reset passed. The live password-only smoke check
+verified login, profile, 12 inventory items, three private Calendar events and availability, with anonymous
+profile access rejected (401). No Google or model-provider credentials were used in that check.
+
+
 The sample account now signs into iOS using username `demo` and the existing Render
 `AGORA_DEMO_PASSWORD`. Google is an optional alternate entry. Do not restore a mandatory Google-only gate.
 `CalendarConnection` owns the verified account session; `AgoraClient` asks it for the appropriate Bearer

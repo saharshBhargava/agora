@@ -7,10 +7,11 @@ Pending UI work: [frontend-requests.md](frontend-requests.md).
 
 As of October 17, 2026, Render is **Live** at `https://agora-api-yq3m.onrender.com`, backed by Tiger with
 TimescaleDB. The database is initialized through migration `0013`; the single designated demo
-account retains its inventory/history and has commerce data. The public health/readiness, docs and
+account retains its inventory/history and has commerce data and three private Calendar events. The public health/readiness, docs and
 OpenAPI endpoints returned HTTP 200. Demo password sign-in and authenticated profile, inventory, lists,
 wishlist, forecasts, agent state, mandates, intents, budgets and spend all returned HTTP 200.
-Unauthenticated profile/inventory/agent-state requests returned 401. No payments were made.
+Password-only integration verification also passed for `/v1/demo/profile`, Calendar event listing and
+availability. Anonymous demo-profile access returned 401. No payments were made.
 
 The existing keep-warm workflow is configured with repository variable `AGORA_API_URL`; a manual run
 passed. Native Google sign-in/Calendar consent and a real Gemini recognition still need device testing.
@@ -22,6 +23,7 @@ Normal hosted boot checks pending migrations and ensures demo data idempotently.
 | API root | `https://agora-api-yq3m.onrender.com/v1` |
 | Health / database readiness | `/healthz` / `/readyz` at that origin; verified HTTP 200 |
 | Interactive docs / OpenAPI | [Docs](https://agora-api-yq3m.onrender.com/docs) / [OpenAPI](https://agora-api-yq3m.onrender.com/openapi.json) |
+| Latest verified live commit | `f65cf0eccd2da9661f2d1220e861cbd9ff765997` ([PR #17](https://github.com/saharshBhargava/agora/pull/17)); live password/Calendar check at 8:38 PM PDT, October 17 |
 | First verified live commit | `d6bac9d122ebe902735cfcfccd8f704ffbd115a6`; see Render Events for subsequent deploys |
 | Last successful smoke test | Public health, demo login and authenticated reads: October 17, 2026 |
 | Google test-user access | Owner must add each tester in the existing Google Cloud project |
