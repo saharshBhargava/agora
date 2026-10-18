@@ -23,8 +23,10 @@ Postgres 16; GitHub's Postgres 17, TimescaleDB 17 and Docker image jobs all pass
 ## Agent commerce — PR #10
 
 The commerce integration includes current main, forecasts/lists, the dedicated demo account, and hosting
-handoff PR #12 (`66e63cd98f4ec91de7e264552357b9ac75492dae`). Its final merge/check state is available on
-[PR #10](https://github.com/saharshBhargava/agora/pull/10); this handoff ships with that PR.
+handoff PR #12 (`66e63cd98f4ec91de7e264552357b9ac75492dae`).
+[PR #10](https://github.com/saharshBhargava/agora/pull/10) merged as
+`b218ca8684a3c7c7a1d8400a6a4398825b0e438b`. Its final head `a2d59bd` and the merge commit both passed
+Postgres 17, TimescaleDB 17 and Docker CI. No original pending PR remains open.
 
 Migration mapping for old commerce branches:
 
@@ -58,3 +60,13 @@ Local validation: all **193 tests passed** against Postgres 16, Ruff passed, and
 `uv run --no-sync python -m app.tools.demo reset` succeeded against a fresh, isolated local database.
 GitHub checks must pass on the final PR head before merge; the required matrix covers Postgres 17,
 TimescaleDB 17, and the deploy Docker image. No hosted database was reset during PR validation.
+
+After merge, the owner-authorized hosting setup applied `0011`/`0012` to Tiger and backfilled the designated
+demo account without a reset. The demo has a mandate, four intents, a budget, three orders and three spend
+entries in addition to its existing inventory/list history. Read-only API checks against Tiger passed for
+all new commerce read endpoints. Render's public API deployment and native Google sign-in still require
+completion; see the [deployment record](frontend-handoff.md#current-deployment-record).
+
+The original sleeping forecast and commerce checkouts were left intact at their earlier local commits.
+Before resuming one, inspect its local changes, fetch origin, and integrate current main using the team's
+normal workflow. Do not push an old branch as a replacement for main or reapply the renamed migrations.
