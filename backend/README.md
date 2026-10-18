@@ -1,5 +1,7 @@
 # Agora backend
 
+> **Deploying for the demo?** Follow [SETUP.md](../SETUP.md): every account and key, in order, all free.
+
 FastAPI + Postgres (TimescaleDB when available). Design and rationale: [docs/backend-spec.md](../docs/backend-spec.md).
 
 This is the **P0 spine**: dev auth, households, scan upload → vision → review → inventory time series, live sync,
@@ -116,9 +118,9 @@ container and any Postgres 14+ will work. Moving hosts means moving env vars; no
 | API + worker | Render **free** web service via `render.yaml` | No | Sleeps after ~15 idle min, ~1 min to wake. 750 free hours/month covers one service 24/7 |
 | Media | Postgres itself (`AGORA_STORAGE_BACKEND=db`) | n/a | Frames are small and deleted after review, so there's no bucket to set up |
 | Vision | Gemini API key from AI Studio | No | Free tier. Perceptron is used instead if the sponsor gives us a key |
-| Auth | Built-in dev tokens (`AGORA_ENV=demo`) | n/a | No identity-provider account needed for the demo |
+| Auth | Google ID tokens from the iOS app (`AGORA_AUTH_MODE=google`), plus dev tokens for the seeded accounts in `AGORA_ENV=demo` | No | Uses the existing iOS OAuth client; no server-side Google secrets |
 
-Steps:
+Steps (the full walkthrough, including Google sign-in, is in [SETUP.md](../SETUP.md)):
 
 1. Tiger Cloud: create a **Free** service and copy the connection string (`postgres://tsdbadmin:...?sslmode=require`).
 2. Render: **New > Blueprint**, pick this repo. Render reads `render.yaml`. Paste the Tiger URL into

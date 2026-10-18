@@ -118,3 +118,25 @@ async def test_missing_vision_key_degrades_to_replay_instead_of_crashing():
     async with httpx.AsyncClient() as client:
         pipeline = build_pipeline(settings, db=None, client=client)
     assert pipeline.vision.primary.name == "replay" and pipeline.vision.fallback is None
+
+
+def test_google_settings_are_optional_until_a_client_id_is_set():
+    key = "B0jrphAPOY7pg92AN0c9MN4yecczLMdwnx4OkA1KFUk="  # shape of Render's generateValue
+    Settings(env="test", google_token_key=key)  # pre-generated key alone must not block boot
+    configured = Settings(env="demo", dev_jwt_secret="x" * 40, google_token_key=key, google_client_id="id",
+                          google_client_secret="secret", public_url="https://agora-api.onrender.com/")
+    assert configured.google_redirect_uri == "https://agora-api.onrender.com/v1/integrations/google/callback"
+    with pytest.raises(ValueError, match="required"):
+        Settings(env="test", google_client_id="id", google_token_key=key)
+
+
+async def test_blank_optional_env_vars_count_as_unset():
+    # Hosts like Render create prompted-but-skipped variables as empty strings.
+    import httpx
+
+    from app.main import build_pipeline
+
+    settings = Settings(env="test", google_client_id="", google_client_secret="", gemini_api_key="",
+                        vision_provider="gemini", storage_backend="local")
+    async with httpx.AsyncClient() as client:
+        assert build_pipeline(settings, db=None, client=client).vision.primary.name == "replay"

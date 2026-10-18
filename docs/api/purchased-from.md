@@ -1,24 +1,30 @@
 # "Purchased from" and "Purchased on": API contract
 
 For wiring the Swift upload screen's **Purchased from** (store) and **Purchased on** (date) fields to the
-backend. Every example below was captured from
+backend. Setup for the shared server is in [SETUP.md](../../SETUP.md). Every example below was captured from
 the running server (IDs shortened only where marked).
 
 ## 1. Base URL and sign-in
 
-Set it in Xcode as the user-defined build setting `AGORA_API_BASE_URL` (read via `AgoraAPIBaseURL` in
-`Info.plist`). The app only accepts **HTTPS** origins, so use one of:
+**Base URL.** Set `AGORA_API_BASE_URL` in `Config/Local.xcconfig` (gitignored; copy it from
+`Config/Local.xcconfig.example`), for example `AGORA_API_BASE_URL = https:/$()/agora-api.onrender.com`.
+`AgoraAPIClient` reads it from `Info.plist` and only accepts **HTTPS** origins:
 
 | Environment | Base URL |
 |---|---|
-| Shared dev deploy | The Render URL once deployed from `render.yaml`, e.g. `https://agora-api.onrender.com` (first request after idle can take ~1 min) |
+| Shared dev deploy | The Render URL from [SETUP.md](../../SETUP.md), e.g. `https://agora-api.onrender.com`. The first request after idle can take ~1 min |
 | Backend on your Mac (simulator or device) | `cloudflared tunnel --url http://localhost:8000` → `https://<random>.trycloudflare.com` (free, no account; the URL changes each run) |
 
-Run the backend locally with `backend/README.md` → "Run locally". If you'd rather skip Docker, point
+To run the backend locally, see `backend/README.md` → "Run locally". If you'd rather skip Docker, point
 `AGORA_DATABASE_URL` at a free Tiger Cloud service.
 
-Auth for dev and demo: exchange a handle for a bearer token. Seeded handles are `kedar` and `saharsh`. On a demo
-deploy only those work; locally any `[a-z0-9_]{3,32}` handle creates an account.
+**Sign-in from iOS: nothing to add.** `AgoraAPIClient` already sends the Google ID token from native Google
+Sign-In as `Authorization: Bearer <id token>`. The deployed backend (`AGORA_AUTH_MODE=google`) verifies it against
+the iOS client ID and maps it to the user's Agora account. On `401`, refresh the ID token and retry once.
+
+**Sign-in for curl, the API docs page, or a client without Google sign-in (e.g. desktop).** On demo and local
+deploys, exchange a seeded handle (`kedar` or `saharsh`) for a token. On a demo deploy only those work; locally
+any `[a-z0-9_]{3,32}` handle creates an account.
 
 ```http
 POST /v1/dev/login
@@ -31,11 +37,8 @@ Content-Type: application/json
 {"access_token": "eyJhbGciOiJIUzI1NiIs…", "token_type": "bearer", "expires_at": 1792323170}
 ```
 
-Send `Authorization: Bearer <access_token>` on every other call. If the backend runs with
-`AGORA_AUTH_MODE=google`, use the `ags_…` session token from the Google Calendar onboarding instead (see
-`backend/README.md`). Every endpoint here accepts either. Tokens last 12 h; on `401` sign in again. Store the
-token in the Keychain like the Gemini key (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`). When we move to a real
-identity provider, only the login step changes.
+Send `Authorization: Bearer <access_token>` on every other call. Dev tokens last 12 h. Every endpoint accepts
+either kind of token.
 
 Errors are always `application/problem+json`:
 

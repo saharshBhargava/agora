@@ -147,3 +147,8 @@ Send `PATCH /v1/wishlist/{id}` with only the fields that changed.
 - How the agent decides what to suggest. That's on-device: it reads `GET /v1/wishlist/agent-context` and
   calls `POST /v1/wishlist/suggestions` with an `Idempotency-Key`.
 - Checkout and purchase flows.
+
+---
+
+Backend URL and accounts for testing: see [SETUP.md](../SETUP.md). The "Purchased from / on" contract is in
+[docs/api/purchased-from.md](api/purchased-from.md).

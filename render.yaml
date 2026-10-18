@@ -15,8 +15,12 @@ services:
         sync: false
       - key: AGORA_ENV
         value: demo
-      - key: AGORA_AUTH_MODE
-        value: dev
+      - key: AGORA_AUTH_MODE             # iOS signs in with Google; demo mode keeps /v1/dev/login for curl/desktop
+        value: google
+      - key: AGORA_GOOGLE_IOS_CLIENT_ID  # public iOS client ID from Config/Agora.xcconfig; must match the app's
+        value: 875535919816-pt11h5vsprq94mktf5of9ltfbu529evl.apps.googleusercontent.com
+      - key: AGORA_SEED_NEW_USERS        # demo: new accounts start with sample fridge/pantry history
+        value: "true"
       - key: AGORA_DEV_JWT_SECRET
         generateValue: true
       - key: AGORA_STORAGE_BACKEND
@@ -33,3 +37,4 @@ services:
         value: "true"
       - key: AGORA_SEED_ON_BOOT          # idempotent: creates demo accounts once, never overwrites
         value: "true"
+

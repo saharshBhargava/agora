@@ -39,7 +39,7 @@ async def require_household(conn: asyncpg.Connection, household_id: UUID | None,
 async def dev_login(body: DevLoginIn, request: Request) -> TokenOut:
     """Development and demo sign-in. Disabled entirely when a real identity provider is configured."""
     settings = request.app.state.settings
-    if settings.auth_mode != "dev":
+    if not settings.dev_login_enabled:
         raise not_found()
     if settings.env == "demo" and body.handle not in settings.demo_handles:
         raise Problem(403, "demo_user_only", "This demo only allows the seeded accounts.")

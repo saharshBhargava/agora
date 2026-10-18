@@ -43,6 +43,12 @@ class TokenVerifier:
     def verify(self, token: str) -> str:
         """Return the token's subject, or raise Problem(401). Algorithms are pinned; ``none`` is never accepted."""
         try:
+            if self.settings.dev_login_enabled and jwt.get_unverified_header(token).get("alg") == "HS256":
+                # Demo dev tokens next to Google ones. Only the server can mint these (pinned HS256 + secret).
+                claims = jwt.decode(token, self.settings.dev_jwt_secret.get_secret_value(), algorithms=["HS256"],
+                                    audience=DEV_AUDIENCE, issuer=DEV_ISSUER,
+                                    options={"require": ["exp", "sub", "iss", "aud"]})
+                return self._subject(claims, namespace="")
             if self._native_google:
                 key = self._jwks.get_signing_key_from_jwt(token).key
                 claims = jwt.decode(
@@ -62,10 +68,14 @@ class TokenVerifier:
                                     options={"require": ["exp", "sub", "iss", "aud"]})
         except jwt.PyJWTError as error:
             raise Problem(401, "invalid_token", "Sign in again.") from error
+        return self._subject(claims, namespace="google:" if self._native_google else "")
+
+    @staticmethod
+    def _subject(claims: dict, namespace: str) -> str:
         subject = claims["sub"]
         if not isinstance(subject, str) or not 1 <= len(subject) <= 255:
             raise Problem(401, "invalid_token", "Sign in again.")
-        return "google:" + subject if self._native_google else subject
+        return namespace + subject
 
 
 def _bearer(request: Request) -> str:
@@ -121,7 +131,7 @@ async def current_principal(request: Request) -> Principal:
         row = await conn.fetchrow("SELECT id, handle FROM users WHERE auth_subject = $1 AND deleted_at IS NULL",
                                   subject)
     if row is None:
-        if state.settings.auth_mode not in ("oidc", "google"):
+        if state.settings.auth_mode not in ("oidc", "google") or subject.startswith("dev:"):
             raise Problem(401, "unknown_user", "Sign in again.")
         # Preserve the Google subject/handle used by the earlier server-side OAuth flow.
         handle = ("g_" + hashlib.sha256(subject.removeprefix("google:").encode()).hexdigest()[:28]
@@ -132,6 +142,10 @@ async def current_principal(request: Request) -> Principal:
                                       subject)
         if row is None:
             raise Problem(401, "account_unavailable", "This account is unavailable.")
+        if state.settings.seed_new_users:
+            from app.seed import seed_new_user  # local import: app.seed depends on this module
+
+            await seed_new_user(state.db, row["id"])
     request.state.user_id = row["id"]
     return Principal(user_id=row["id"], subject=subject, handle=row["handle"])
 

@@ -94,3 +94,30 @@ async def test_native_inventory_preserves_existing_account_and_isolation(databas
                 assert not await conn.fetchval("SELECT 1 FROM google_calendar_connections WHERE user_id = $1", user_id)
                 await conn.execute("UPDATE users SET deleted_at = now() WHERE id = $1", user_id)
             assert (await client.get("/v1/me", headers=headers)).status_code == 401
+
+
+async def test_demo_deploy_accepts_google_and_dev_logins_and_seeds_new_accounts(database_url, tmp_path, signing_key):
+    settings = Settings(env="demo", auth_mode="google", google_ios_client_id=CLIENT_ID, database_url=database_url,
+                        storage_dir=tmp_path, run_worker_in_process=False, seed_new_users=True,
+                        dev_jwt_secret="a-real-random-secret-for-the-demo-0123456789")
+    app = create_app(settings)
+    async with app.router.lifespan_context(app):
+        app.state.verifier = verifier_with_key(settings, signing_key)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test") as client:
+            # A judge signing in with Google for the first time gets a populated fridge.
+            judge = {"Authorization": "Bearer " + token(signing_key, sub=uuid4().hex)}
+            items = (await client.get("/v1/inventory", headers=judge)).json()
+            assert len(items) >= 10 and all(i["quantity"] is not None for i in items)
+            assert len((await client.get("/v1/inventory", headers=judge)).json()) == len(items)  # seeded once
+
+            # Seeded demo accounts still work for curl and clients without Google sign-in.
+            login = await client.post("/v1/dev/login", json={"handle": "kedar"})
+            assert login.status_code == 200
+            me = await client.get("/v1/me", headers={"Authorization": "Bearer " + login.json()["access_token"]})
+            assert me.status_code == 200 and me.json()["handle"] == "kedar"
+            assert (await client.post("/v1/dev/login", json={"handle": "mallory"})).status_code == 403
+
+
+def test_seeding_new_users_is_refused_outside_demo():
+    with pytest.raises(ValueError, match="SEED_NEW_USERS"):
+        Settings(env="prod", auth_mode="google", google_ios_client_id=CLIENT_ID, seed_new_users=True)
