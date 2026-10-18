@@ -1,10 +1,11 @@
 name: iOS
 
+# PR-only: macOS simulator runs take ~10–14 minutes. Re-running the same suite on every
+# push to main doubled post-merge wait without catching merge-only failures that branch
+# protection + a green PR check would already require. Backend still re-runs on main and
+# hands off to deploy.yml.
 on:
   pull_request:
-    paths: ["Agora/**", "AgoraTests/**", "Agora.xcodeproj/**", "Config/**", "assets/**", "scripts/generate-project.rb", ".github/workflows/ios.yml"]
-  push:
-    branches: [main]
     paths: ["Agora/**", "AgoraTests/**", "Agora.xcodeproj/**", "Config/**", "assets/**", "scripts/generate-project.rb", ".github/workflows/ios.yml"]
 
 permissions:
