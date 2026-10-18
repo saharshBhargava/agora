@@ -457,3 +457,30 @@ final class DemoAccessTests: XCTestCase {
         XCTAssertEqual(auth.accessTokenCalls, 0); XCTAssertEqual(auth.idTokenCalls, 0)
     }
 }
+
+/// A personal build can carry its owner's Gemini key; a key saved on the device still wins.
+@MainActor
+final class BundledGeminiKeyTests: XCTestCase {
+    func testBundledKeyIsUsedUntilOneIsSaved() throws {
+        let suite = "bundled-key-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        let settings = SettingsStore(keychainService: suite, defaults: defaults, bundledKey: "bundled-key")
+        defer { try? settings.deleteKey(); defaults.removePersistentDomain(forName: suite) }
+        XCTAssertTrue(settings.hasKey)
+        XCTAssertEqual(try settings.apiKey(), "bundled-key")
+        try settings.saveKey("saved-key")
+        XCTAssertEqual(try settings.apiKey(), "saved-key")
+        try settings.deleteKey()
+        XCTAssertTrue(settings.hasKey)
+        XCTAssertEqual(try settings.apiKey(), "bundled-key")
+    }
+
+    func testNoBundledKeyMeansNone() {
+        let suite = "no-bundled-key-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(keychainService: suite, defaults: defaults, bundledKey: nil)
+        XCTAssertFalse(settings.hasKey)
+        XCTAssertNil(SettingsStore.infoPlistGeminiKey(Bundle(for: Self.self)))
+    }
+}

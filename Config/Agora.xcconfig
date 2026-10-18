@@ -11,5 +11,6 @@ AGORA_BUNDLE_ID = dev.agora.browserchat
 DEVELOPMENT_TEAM = 8N46NST49L
 // Dibs tab server (the Node server in server/, usually a laptop tunnel). Empty means the Dibs tab
 // falls back to http://localhost:3000; set it per machine in Config/Local.xcconfig.
+DIBS_DEFAULT_GEMINI_KEY =
 DIBS_SERVER_URL =
 #include? "Local.xcconfig"

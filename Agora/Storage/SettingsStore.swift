@@ -20,7 +20,15 @@ final class SettingsStore: ObservableObject {
     private let defaults: UserDefaults
     @Published var hasKey = false
     private let keychainService: String
-    init(keychainService: String = "app.agora.gemini", defaults: UserDefaults = .standard) {
+    /// A Gemini key built into this build (DIBS_DEFAULT_GEMINI_KEY in the gitignored Config/Local.xcconfig or on the
+    /// build command line), used when none is saved on the device. Empty in the shared project.
+    let bundledKey: String?
+    nonisolated static func infoPlistGeminiKey(_ bundle: Bundle = .main) -> String? {
+        let value = (bundle.object(forInfoDictionaryKey: "DibsDefaultGeminiKey") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value?.isEmpty == false && value?.hasPrefix("$(") == false ? value : nil
+    }
+    init(keychainService: String = "app.agora.gemini", defaults: UserDefaults = .standard, bundledKey: String? = SettingsStore.infoPlistGeminiKey()) {
+        self.bundledKey = bundledKey
         self.defaults = defaults
         self.keychainService = keychainService
         let savedModel = defaults.string(forKey: "gemini.model")
@@ -62,6 +70,8 @@ final class SettingsStore: ObservableObject {
         let status = SecItemCopyMatching(q as CFDictionary, &result)
         AppLog.keychain("read", status: status)
         if status == errSecItemNotFound {
+            // Nothing saved on this device: a personal build may carry its owner's key (DIBS_DEFAULT_GEMINI_KEY).
+            if let bundledKey { return bundledKey }
             throw BrowserError("missing_api_key", "Add your Gemini API key in Settings.")
         }
         guard status == errSecSuccess else { throw keychainError(status, operation: "read") }
@@ -93,7 +103,7 @@ final class SettingsStore: ObservableObject {
         let status = SecItemDelete(query as CFDictionary)
         AppLog.keychain("delete", status: status)
         guard status == errSecSuccess || status == errSecItemNotFound else { throw keychainError(status, operation: "remove") }
-        hasKey = false
+        hasKey = bundledKey != nil
         if (try? modelConfiguration.profile(for: .chat).connectionID) == ModelConfiguration.geminiConnectionID { chatRevision += 1 }
     }
 
