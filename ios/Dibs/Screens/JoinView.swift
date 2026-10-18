@@ -13,7 +13,7 @@ struct JoinView: View {
 
     @Environment(AppModel.self) private var model
     @State private var run: Run?
-    @State private var name = UserDefaults.standard.string(forKey: JoinView.nameKey) ?? ""
+    @State private var name = ""
     @State private var capCents = RunText.holdCents
     @State private var busy = false
     @State private var error: String?
@@ -59,6 +59,9 @@ struct JoinView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .dibsCard()
                     .id("joined")
+                }
+                if joined == nil, let run, let closed = RunText.stateMessage(run) {
+                    ErrorText(message: closed)
                 }
                 if let error {
                     ErrorText(message: error).id("error")
@@ -201,7 +204,7 @@ struct JoinView: View {
                     Text(busy ? "Joining…" : "Hold \(Money.whole(capCents)) and join")
                 }
                 .buttonStyle(.dibs)
-                .disabled(busy || trimmedName.isEmpty)
+                .disabled(busy || trimmedName.isEmpty || run.map { !$0.isJoinable } == true)
             }
             Text("A Visa authorization, not a charge.")
                 .font(.system(size: 12))
@@ -216,6 +219,7 @@ struct JoinView: View {
     // MARK: actions
 
     private func load() async {
+        if name.isEmpty, joined == nil { name = model.defaults.string(forKey: Self.nameKey) ?? "" }
         if let previewRun {
             run = previewRun
             return
@@ -237,7 +241,7 @@ struct JoinView: View {
         defer { busy = false }
         do {
             let result = try await model.api.join(runId: runId, name: trimmedName, capCents: capCents, decline: decline)
-            UserDefaults.standard.set(trimmedName, forKey: Self.nameKey)
+            model.defaults.set(trimmedName, forKey: Self.nameKey)
             model.remember(RunRef(runId: runId, personId: result.personId))
             withAnimation(.snappy) { joined = result }
             UIAccessibility.post(notification: .announcement, argument: "You are in. \(HeldBadge.text(cents: result.auth.authorizedCents, approvalCode: nil)).")

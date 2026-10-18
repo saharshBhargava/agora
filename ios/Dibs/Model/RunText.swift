@@ -39,6 +39,17 @@ public enum RunText {
         return parts.joined(separator: " · ")
     }
 
+    /// Why a run can no longer be joined or shopped, or nil while it is open or in last call.
+    public static func stateMessage(_ run: Run) -> String? {
+        let shopper = run.shopper?.name ?? "The shopper"
+        switch run.state {
+        case .open, .lastCall, .unknown: return nil
+        case .locked, .receipt: return "\(shopper) checked out. This run is closed."
+        case .settled: return "This run is settled."
+        case .partlySettled: return "This run is partly settled."
+        }
+    }
+
     /// The avatar initial the server would give this name.
     public static func initial(of name: String) -> String {
         name.trimmingCharacters(in: .whitespacesAndNewlines).first.map { String($0).uppercased() } ?? "?"

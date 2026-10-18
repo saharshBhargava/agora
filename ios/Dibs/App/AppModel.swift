@@ -15,15 +15,21 @@ final class AppModel {
     private(set) var resuming = false
     /// A problem to show on Home (a link that is not a Dibs link, for example).
     var homeError: String?
+    /// A link that names a server other than this one; waits for the person to confirm the switch.
+    private(set) var pendingLink: JoinLink?
 
     let defaults: UserDefaults
+    /// The server baked into the build (`DIBS_SERVER_URL`).
+    let bundledServer: URL?
     @ObservationIgnored private var launched = false
     /// Bumped on every navigation the person asked for, so a slow launch resume never overrides it.
     @ObservationIgnored private var intent = 0
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, bundledServer: URL? = ServerConfig.bundled()) {
         self.defaults = defaults
-        let server = ServerConfig.current(defaults: defaults)
+        self.bundledServer = bundledServer
+        let saved = defaults.string(forKey: ServerConfig.serverKey).flatMap(ServerConfig.validate)
+        let server = saved ?? bundledServer ?? ServerConfig.fallback
         let api = DibsAPI(base: server)
         self.server = server
         self.api = api
@@ -37,10 +43,10 @@ final class AppModel {
         guard !launched else { return }
         launched = true
         let mine = intent
-        guard let saved = HomeRouting.savedRun(defaults: defaults) else { return }
+        guard HomeRouting.savedRun(defaults: defaults) != nil else { return }
         resuming = true
         let api = self.api
-        let route = await HomeRouting.resume(saved) { try await api.getRun($0) }
+        let route = await HomeRouting.launchRoute(defaults: defaults) { try await api.getRun($0) }
         resuming = false
         guard let route, mine == intent, path.isEmpty, api.base == self.api.base else { return }
         path = [route]
@@ -55,15 +61,40 @@ final class AppModel {
         Task { await open(link) }
     }
 
-    /// Opens a join link: switches to the link's server when it names another one, goes straight back
+    /// Opens a join link. A link for this server (or the built-in one) is used at once; a link naming
+    /// any other server waits in `pendingLink` until the person confirms the switch. Goes straight back
     /// into the run when this phone already joined it, otherwise to the join screen.
     func open(_ link: JoinLink) async {
         intent += 1
-        let mine = intent
         homeError = nil
         if let linkServer = link.server, linkServer != server {
-            useServer(linkServer)
+            guard linkServer == bundledServer else {
+                pendingLink = link
+                return
+            }
+            ServerConfig.reset(defaults: defaults)
+            apply(linkServer)
         }
+        pendingLink = nil
+        await proceed(link)
+    }
+
+    /// "Use server": saves the link's server, then opens the link.
+    func confirmPendingServer(_ link: JoinLink?) async {
+        guard let link, let linkServer = link.server else { return }
+        intent += 1
+        pendingLink = nil
+        useServer(linkServer)
+        await proceed(link)
+    }
+
+    /// "Cancel": forget the link; nothing changes.
+    func cancelPendingServer() {
+        pendingLink = nil
+    }
+
+    private func proceed(_ link: JoinLink) async {
+        let mine = intent
         if let personId = ServerConfig.personId(runId: link.runId, defaults: defaults) {
             let api = self.api
             let route = await HomeRouting.resume(RunRef(runId: link.runId, personId: personId)) { try await api.getRun($0) }
@@ -123,7 +154,7 @@ final class AppModel {
     /// Back to the server baked into the build.
     func resetServer() {
         ServerConfig.reset(defaults: defaults)
-        apply(ServerConfig.current(defaults: defaults))
+        apply(bundledServer ?? ServerConfig.fallback)
     }
 
     private func useServer(_ url: URL) {

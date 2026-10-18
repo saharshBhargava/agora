@@ -29,6 +29,18 @@ struct RootView: View {
                 }
         }
         .tint(Color.ink)
+        .confirmationDialog(
+            "This link is from \(model.pendingLink?.server?.host ?? "another server"). Use it as your Dibs server?",
+            isPresented: Binding(
+                get: { model.pendingLink != nil },
+                set: { if !$0 { model.cancelPendingServer() } }
+            ),
+            titleVisibility: .visible,
+            presenting: model.pendingLink
+        ) { link in
+            Button("Use server") { Task { await model.confirmPendingServer(link) } }
+            Button("Cancel", role: .cancel) { model.cancelPendingServer() }
+        }
     }
 
     @ViewBuilder
@@ -43,6 +55,9 @@ struct RootView: View {
             RunPendingView(ref: ref)
         case .shopper(let ref):
             // Task 6 replaces this with ShopperView.
+            RunPendingView(ref: ref)
+        case .settle(let ref):
+            // Task 8 replaces this with SettleView.
             RunPendingView(ref: ref)
         }
     }
@@ -60,6 +75,11 @@ struct RunPendingView: View {
             Text(run?.title ?? "Your run")
                 .font(.display(30))
                 .foregroundStyle(Color.ink)
+            if let run, let message = RunText.stateMessage(run) {
+                Text(message)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color.ink)
+            }
             if let run {
                 Text(RunText.whoLine(run: run, excluding: nil))
                     .font(.system(size: 15))

@@ -23,6 +23,8 @@ public enum Route: Hashable, Sendable {
     case claim(RunRef)
     /// The shopper's camera and cart.
     case shopper(RunRef)
+    /// A run that has settled or partly settled (Task 8's settle screen).
+    case settle(RunRef)
 }
 
 /// A link to join a run: `dibs://join?run=<id>` or `https://<server>/join?run=<id>`.
@@ -92,11 +94,13 @@ public enum HomeRouting {
         return RunRef(runId: runId, personId: personId)
     }
 
-    /// Where a person lands in a run they are already part of; nil when the run is settled or they are not in it.
-    /// The shopper goes back to the invite screen until the first item lands, then to the cart.
+    /// Where a person lands in a run they are already part of; nil when they are not in it.
+    /// Settled and partly settled runs go to Settle. The shopper goes back to the invite screen until
+    /// the first item lands, then to the cart.
     public static func route(for run: Run, personId: String) -> Route? {
-        guard run.state != .settled, let me = run.person(personId) else { return nil }
+        guard let me = run.person(personId) else { return nil }
         let ref = RunRef(runId: run.id, personId: personId)
+        if run.state == .settled || run.state == .partlySettled { return .settle(ref) }
         guard me.isShopper else { return .claim(ref) }
         return run.state == .open && run.chips.isEmpty ? .start(ref) : .shopper(ref)
     }
@@ -107,9 +111,16 @@ public enum HomeRouting {
         return route(for: run, personId: ref.personId)
     }
 
-    /// The screen to open at launch, or nil for Home. Fetches only when a person is saved for the last run.
+    /// The screen to open at launch, or nil for Home. Fetches only when a person is saved for the last
+    /// run. A settled last run is not resumed, and is forgotten as the last run.
+    @MainActor
     public static func launchRoute(defaults: UserDefaults = .standard, fetch: @Sendable (String) async throws -> Run) async -> Route? {
-        guard let ref = savedRun(defaults: defaults) else { return nil }
-        return await resume(ref, fetch: fetch)
+        guard let ref = savedRun(defaults: defaults),
+              let run = try? await fetch(ref.runId), run.id == ref.runId else { return nil }
+        if run.state == .settled {
+            clearLastRun(defaults: defaults)
+            return nil
+        }
+        return route(for: run, personId: ref.personId)
     }
 }

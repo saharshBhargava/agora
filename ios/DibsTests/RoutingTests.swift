@@ -56,16 +56,17 @@ final class JoinLinkTests: XCTestCase {
     }
 }
 
+@MainActor
 final class HomeRoutingTests: XCTestCase {
     private var defaults: UserDefaults!
     private var suite: String!
 
-    override func setUp() {
+    override func setUp() async throws {
         suite = "dibs.tests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suite)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         defaults.removePersistentDomain(forName: suite)
     }
 
@@ -94,7 +95,12 @@ final class HomeRoutingTests: XCTestCase {
     func testRouteForAClaimer() {
         XCTAssertEqual(HomeRouting.route(for: makeRun(), personId: "priya"), .claim(RunRef(runId: "r1", personId: "priya")))
         XCTAssertEqual(HomeRouting.route(for: makeRun(.lastCall), personId: "priya"), .claim(RunRef(runId: "r1", personId: "priya")))
-        XCTAssertEqual(HomeRouting.route(for: makeRun(.partlySettled), personId: "priya"), .claim(RunRef(runId: "r1", personId: "priya")))
+    }
+
+    func testSettledAndPartlySettledRunsGoToSettle() {
+        XCTAssertEqual(HomeRouting.route(for: makeRun(.partlySettled), personId: "priya"), .settle(RunRef(runId: "r1", personId: "priya")))
+        XCTAssertEqual(HomeRouting.route(for: makeRun(.settled), personId: "priya"), .settle(RunRef(runId: "r1", personId: "priya")))
+        XCTAssertEqual(HomeRouting.route(for: makeRun(.settled), personId: "jake"), .settle(RunRef(runId: "r1", personId: "jake")))
     }
 
     func testRouteForTheShopper() {
@@ -104,9 +110,7 @@ final class HomeRoutingTests: XCTestCase {
         XCTAssertEqual(HomeRouting.route(for: makeRun(.receipt), personId: "jake"), .shopper(ref))
     }
 
-    func testSettledRunOrStrangerIsNotResumed() {
-        XCTAssertNil(HomeRouting.route(for: makeRun(.settled), personId: "priya"))
-        XCTAssertNil(HomeRouting.route(for: makeRun(.settled), personId: "jake"))
+    func testStrangerIsNotResumed() {
         XCTAssertNil(HomeRouting.route(for: makeRun(), personId: "someone-else"))
     }
 
@@ -140,6 +144,16 @@ final class HomeRoutingTests: XCTestCase {
         let settled = makeRun(.settled)
         let route = await HomeRouting.launchRoute(defaults: defaults) { _ in settled }
         XCTAssertNil(route)
+        XCTAssertNil(defaults.string(forKey: HomeRouting.lastRunKey), "a settled last run is forgotten")
+    }
+
+    func testLaunchIntoAPartlySettledRunGoesToSettle() async {
+        HomeRouting.saveLastRun("r1", defaults: defaults)
+        ServerConfig.savePersonId("priya", runId: "r1", defaults: defaults)
+        let partly = makeRun(.partlySettled)
+        let route = await HomeRouting.launchRoute(defaults: defaults) { _ in partly }
+        XCTAssertEqual(route, .settle(RunRef(runId: "r1", personId: "priya")))
+        XCTAssertEqual(defaults.string(forKey: HomeRouting.lastRunKey), "r1")
     }
 
     func testLaunchWhenTheServerIsUnreachableStaysHome() async {
@@ -176,6 +190,15 @@ final class RunTextTests: XCTestCase {
         XCTAssertEqual(RunText.whoLine(run: run, excluding: nil), "Jake is shopping · Priya and Marcus are in")
         let priya = try XCTUnwrap(run.people.first { $0.name == "Priya" })
         XCTAssertEqual(RunText.whoLine(run: run, excluding: priya.id), "Jake is shopping · Marcus is in")
+    }
+
+    func testStateMessage() {
+        var run = Run(id: "r", store: "costco", shopperId: "j", people: [Person(id: "j", name: "Jake", initial: "J", isShopper: true)])
+        XCTAssertNil(RunText.stateMessage(run))
+        run.state = .lastCall; XCTAssertNil(RunText.stateMessage(run))
+        run.state = .locked; XCTAssertEqual(RunText.stateMessage(run), "Jake checked out. This run is closed.")
+        run.state = .settled; XCTAssertEqual(RunText.stateMessage(run), "This run is settled.")
+        run.state = .partlySettled; XCTAssertEqual(RunText.stateMessage(run), "This run is partly settled.")
     }
 
     func testInitial() {
