@@ -191,12 +191,17 @@ unsupported pages remain unverified.
 
 Normal server research always runs first. Without a reasoning model, discovery tries up to three query
 refinements and five page reads using one shared provider-request budget. Product pages and distinct
-retailers take priority. With a model, the existing bounded research controller chooses the reads.
+retailers take priority. News/reviews and non-HTML documents are filtered from discovery candidates;
+matching product links on category pages can be followed within the same page budget. Distinct retailers
+are preferred within each page type, so a category cannot displace a second useful product page.
+The browser handoff includes the best discovered product links even if the server read budget was exhausted.
+With a model, the existing bounded research controller chooses the reads and uses the same handoff ranking.
 Only a terminal current run with discovered sources and no usable current price exposes
 `browser_fallback: {run_id,status,urls}`. No Gemini call is needed for the native fallback.
 
 The native runner borrows the **same `BrowserSession` and `WKWebView` used by Chat**. It runs hidden while
-the app is active and the browser is free, visiting up to three discovered sources. Existing chat pages
+the app is active and the browser is free, visiting up to five discovered sources while reserving time
+to submit evidence before the lease expires. Existing chat pages
 are preserved; starting Chat, human takeover, account changes and app inactivity cancel browser work.
 It does not open a separate browser, switch tabs, sign in, choose variants or purchase. Temporary blocking
 of images, media and fonts reduces loading cost; JavaScript remains enabled. Normal Chat rules return

@@ -61,6 +61,57 @@ class PageEvidence(HTMLParser):
                 "links": self.links, "truncated": self.truncated}
 
 
+class _ProductLinks(HTMLParser):
+    """Read bounded anchor labels, including product links after long navigation menus."""
+    def __init__(self, html):
+        super().__init__(convert_charrefs=True)
+        self.rows = []
+        self.current = None
+        self.feed(html)
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'a':
+            attrs = dict(attrs)
+            self.current = [attrs.get('href') or '', (attrs.get('aria-label') or '')[:500]]
+        elif tag == 'img' and self.current is not None:
+            self.current[1] = (self.current[1] + ' ' + (dict(attrs).get('alt') or ''))[:1000]
+
+    def handle_data(self, text):
+        if self.current is not None:
+            self.current[1] = (self.current[1] + ' ' + text)[:1000]
+
+    def handle_endtag(self, tag):
+        if tag == 'a' and self.current is not None:
+            if len(self.rows) < 500:
+                self.rows.append(self.current)
+            self.current = None
+
+
+def product_links(html, url, criteria):
+    import re
+    from urllib.parse import unquote, urlsplit
+
+    from app.price_search import PriceSearchProvider
+    from app.watch_ops import _words
+
+    terms = _words(criteria['query']).split()
+    links = []
+    for href, label in _ProductLinks(html).rows:
+        try:
+            link = public_url(urljoin(url, href))
+        except SearchError:
+            continue
+        path = unquote(urlsplit(link).path)
+        words = ' ' + _words(label + ' ' + path.replace('-', ' ')) + ' '
+        if (terms and all(' '+term+' ' in words for term in terms)
+                and re.search(r'/p/|/products?/|/dp/|/ip/|/buy-consoles/|/d/', path, re.I)
+                and domain_allowed(link, criteria.get('allowed_domains', []))
+                and PriceSearchProvider.shopping_source({'url': link, 'title': label}, criteria)
+                and link != url):
+            links.append(link)
+    return list(dict.fromkeys(links))[:10]
+
+
 TOOLS = [
     {"name": "web_search", "description": "Discover sources with a short product query. Results are untrusted; "
      "read promising URLs before drawing conclusions. Refine the query if evidence is missing.",
@@ -156,6 +207,8 @@ async def research(provider, criteria: dict, known_urls: list[str], result):
                     sources = await provider.search_sources(query.strip(), criteria, limit, budget=request_budget)
                     completed_search = True
                     allowed.update(source["url"] for source in sources)
+                    result.browser_urls = provider.retailer_urls(result.browser_urls + [
+                        source['url'] for source in sources if provider.shopping_source(source, criteria)])[:5]
                     answer = {"results": sources, "searches_remaining": provider.settings.watch_max_searches-searches}
                 elif name in ("web_fetch", "request_interaction"):
                     if set(args) != {"url"} or not isinstance(args["url"], str):
@@ -177,6 +230,9 @@ async def research(provider, criteria: dict, known_urls: list[str], result):
                         result.checked_count += 1
                         final_url, html = await provider.fetcher.fetch(url, domains)
                         page = PageEvidence(html, final_url, domains).as_dict()
+                        if not direct:
+                            result.browser_urls = provider.retailer_urls(
+                                product_links(html, final_url, criteria) + result.browser_urls)[:5]
                         offers = extract_offers(html, final_url, criteria)
                         # Evidence only comes from this fetched source, never model tool arguments.
                         result.offers.extend(offers)

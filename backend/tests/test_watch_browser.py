@@ -243,5 +243,6 @@ async def test_normal_discovery_tries_multiple_retailers_with_one_shared_budget(
     assert len(searches) == (1 if succeeds else 2)
     assert all(budget is searches[0] for budget in searches)
     assert len(set(reads)) == len(reads)
-    assert result.browser_urls == reads
+    assert result.checked_urls == reads
+    assert result.browser_urls == [f'https://shop{i}.example/products/skillet' for i in range(5)]
     assert provider.has_usable_price(CRITERIA, result) == succeeds

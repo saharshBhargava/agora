@@ -1,5 +1,23 @@
 # Current state — mandatory read before resuming work
 
+## Price discovery correction — October 18, 2026
+
+Live keyless reproduction of the earlier price release exhausted PS5's five page reads on a buy-now
+page and news articles; Xbox also selected a pricing PDF. The correction filters editorial/non-HTML
+sources, follows matching product links on retailer category pages within the existing budget, and
+keeps product pages ahead of categories even when diversifying retailers. Both model and model-free
+research retain the best discovered URLs for the final browser fallback. There are no product-specific
+URLs or prices in the implementation. Pinned URLs, merchant evidence validation, demo isolation and
+alert eligibility remain unchanged. The local native runner now attempts up to five sources within
+its lease; rebuilding the app is required for that client change.
+
+After integrating current main (including chat additions), all 670 backend tests and Ruff passed.
+The native browser suite passed 16 tests. Live search discovered direct PS5
+product pages in 5.0 seconds and five Xbox product URLs in 17.4 seconds; these are search/discovery
+timings, not successful verified-price checks. The actual shared WebKit browser read a live Xbox price at the fourth candidate (Newegg) in 1.6 seconds
+and a PS5 Pro price from PlayStation Direct in 1.5 seconds per page. These are lower-confidence device
+observations, not server-verified alerts. Release verification is pending.
+
 Verified October 17, 2026 (PDT; October 18 UTC). This is a dated snapshot, not a claim that GitHub and Render
 always have the same commit. Fetch and inspect current state before acting. Current user instructions take
 precedence; older chat history and planning documents do not override current main.
