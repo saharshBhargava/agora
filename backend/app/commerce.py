@@ -27,9 +27,11 @@ class BudgetUsage:
         return self.row["limit_cents"] - self.spent_cents - self.pending_cents
 
 
-async def agent_settings(conn: asyncpg.Connection, user_id: UUID) -> AgentSettings:
-    row = await conn.fetchrow("SELECT autonomy_level, timezone, agent_paused_at FROM user_settings WHERE user_id = $1",
-                              user_id)
+async def agent_settings(conn: asyncpg.Connection, user_id: UUID, lock: bool = False) -> AgentSettings:
+    """``lock`` holds the settings row until commit, so a decision and the kill switch can't interleave: a pause
+    either lands first (and the decision sees it) or waits and then cancels what the decision created."""
+    row = await conn.fetchrow("SELECT autonomy_level, timezone, agent_paused_at FROM user_settings WHERE user_id = $1"
+                              + (" FOR UPDATE" if lock else ""), user_id)
     return AgentSettings(autonomy_level=row["autonomy_level"], paused=row["agent_paused_at"] is not None,
                          timezone=row["timezone"])
 

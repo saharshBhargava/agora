@@ -223,7 +223,7 @@ async def propose_intent(body: IntentIn, request: Request, user: Principal = Cur
         category = category_key(category)
         item_key = f"product:{body.product_id}" if body.product_id else title_key(body.title)
 
-        settings = await agent_settings(conn, user.user_id)
+        settings = await agent_settings(conn, user.user_id, lock=True)
         mandates, budgets, recent = await policy_inputs(conn, user.user_id, household_id, settings, now)
         verdict = decide(ProposedIntent(kind=body.kind, title=body.title.strip(), item_key=item_key,
                                         amount_cents=body.amount_cents,
