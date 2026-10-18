@@ -4,6 +4,19 @@ import XCTest
 @testable import Dibs
 
 final class FrameEncoderTests: XCTestCase {
+    func testLivestreamSendsFifteenFramesASecondFromAThirtyFpsCamera() {
+        var last = -Double.infinity
+        var sent = 0
+        for i in 0..<60 { // two seconds of 30 fps presentation times, with a little jitter
+            let t = Double(i) / 30 + (i % 2 == 0 ? 0.002 : -0.002)
+            if FrameEncoder.shouldStream(at: t, lastStreamAt: last) {
+                last = t
+                sent += 1
+            }
+        }
+        XCTAssertEqual(sent, 30)
+    }
+
     /// A 1080x1920 BGRA frame, light gray, with a black square whose top-left (in top-left pixels) is `square`.
     private func frame(square: CGRect?) -> CVPixelBuffer {
         var pb: CVPixelBuffer?
