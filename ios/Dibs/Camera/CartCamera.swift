@@ -42,7 +42,7 @@ final class CartCamera: NSObject, @unchecked Sendable {
     private let lock = NSLock()
     private var _streaming = false
     private var _watching = false
-    /// Gates the 2 fps livestream (only while the run is open or in last call).
+    /// Gates the 15 fps livestream (only while the run is open or in last call).
     var streaming: Bool {
         get { lock.withLock { _streaming } }
         set { lock.withLock { _streaming = newValue } }
@@ -167,11 +167,11 @@ final class CartCamera: NSObject, @unchecked Sendable {
         }
         frameIndex += 1
 
-        if streaming, t - lastStreamAt >= FrameEncoder.streamInterval - 0.01 {
+        if streaming, FrameEncoder.shouldStream(at: t, lastStreamAt: lastStreamAt) {
             lastStreamAt = t
             if let jpeg = encoder.streamJPEG(buffer) {
                 framesSent += 1
-                if framesSent % 10 == 0 { DibsLog.event("frames sent \(framesSent) (\(jpeg.count / 1024) KB)") }
+                if framesSent % 75 == 0 { DibsLog.event("frames sent \(framesSent) (\(jpeg.count / 1024) KB)") }
                 onStreamFrame?(jpeg, FrameEncoder.streamSize(for: size))
             }
         }

@@ -5,10 +5,10 @@ import CoreVideo
 import Foundation
 import ImageIO
 
-/// JPEG encoding for the shopper camera: the 2 fps livestream frame, the trigger crop, and the
+/// JPEG encoding for the shopper camera: the 15 fps livestream frame, the trigger crop, and the
 /// 96 px gray thumbnail for scene change. Thread-safe (CIContext is), used on the video queue.
 final class FrameEncoder: @unchecked Sendable {
-    static let streamInterval: TimeInterval = 0.5
+    static let streamInterval: TimeInterval = 1.0 / 15
     static let streamWidth: CGFloat = 640
     static let streamQuality: CGFloat = 0.6
     static let cropQuality: CGFloat = 0.8
@@ -18,6 +18,12 @@ final class FrameEncoder: @unchecked Sendable {
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
     /// Gamma 2.2 gray, so thumbnail levels match sRGB gray (the server's thresholds) instead of linear light.
     private let grayColorSpace = CGColorSpace(name: CGColorSpace.genericGrayGamma2_2)!
+
+    /// Whether the frame at presentation time `t` goes out on the livestream. The slack keeps a 30 fps
+    /// camera's slightly early frames from being skipped, which would halve the rate.
+    static func shouldStream(at t: TimeInterval, lastStreamAt: TimeInterval) -> Bool {
+        t - lastStreamAt >= streamInterval - 0.01
+    }
 
     /// Size of a streamed frame for a source frame of `size` (640 wide, aspect kept).
     static func streamSize(for size: CGSize) -> CGSize {
