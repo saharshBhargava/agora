@@ -1,4 +1,5 @@
 import type { Box } from '../types.js';
+import { GeminiVision } from './gemini.js';
 import { StubVision } from './stub.js';
 
 export type Identified = { name: string; priceCents: number | null; cropBase64: string; confidence: number; barcode: string | null };
@@ -15,5 +16,9 @@ export interface VisionProvider {
 export function getVision(): VisionProvider {
   const mode = process.env.VISION ?? 'stub';
   if (mode === 'stub') return new StubVision();
+  if (mode === 'gemini') {
+    if (!process.env.GEMINI_API_KEY) throw new Error('VISION=gemini requires GEMINI_API_KEY');
+    return new GeminiVision();
+  }
   throw new Error(`VISION=${mode} is not wired yet`);
 }
