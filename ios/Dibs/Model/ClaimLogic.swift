@@ -1,0 +1,274 @@
+import Foundation
+import CoreGraphics
+
+/// The claim screen's rules, kept free of UI so they can be tested (web/lib/share.ts, web/components/Chip.tsx,
+/// Tray.tsx, web/lib/highlight.ts, web/lib/frame.ts). Every number here is a display preview built from the
+/// server's own numbers (authorized cents, tax rate, prices, claimers); the server decides every claim.
+enum ClaimLogic {
+    /// Each raise grows the hold by $20 (web RAISE_STEP_CENTS).
+    static let raiseStepCents = 2000
+    /// Undo window after a claim or leave.
+    static let undoSeconds = 3
+    /// How long a server error toast stays up.
+    static let noticeSeconds: Double = 4
+    /// How long a new chip's outline stays on the live picture.
+    static let highlightMs: Double = 8000
+    /// Camera frames are sent this many pixels wide; regions arrive in these frame pixels.
+    static let frameWidth: Double = 640
+    /// Where the wish screen's "Usual picks" are kept.
+    static let usualPicksKey = "dibs.usualPicks"
+    static let usualPicksLimit = 20
+
+    // MARK: money
+
+    /// Split a price among claimers: floor share, leftover cents one each to the earliest claimers.
+    static func splitChip(_ priceCents: Int, _ claimers: [String]) -> [String: Int] {
+        guard !claimers.isEmpty else { return [:] }
+        let base = priceCents / claimers.count
+        let leftover = priceCents - base * claimers.count
+        var out: [String: Int] = [:]
+        for (i, id) in claimers.enumerated() { out[id] = base + (i < leftover ? 1 : 0) }
+        return out
+    }
+
+    /// My share of one chip; a chip with no price yet counts 0.
+    static func myShare(_ chip: Chip, me: String) -> Int {
+        guard let price = chip.priceCents else { return 0 }
+        return splitChip(price, chip.claimers)[me] ?? 0
+    }
+
+    /// Cents of hold left after the tray's full prices plus tax, rounded up; may be negative.
+    static func roomFor(_ trayFullPricesCents: [Int], authorizedCents: Int, taxRate: Double) -> Int {
+        let sum = trayFullPricesCents.reduce(0, +)
+        let rate = 10000 + Int((taxRate * 10000).rounded())
+        let withTax = (sum * rate + 9999) / 10000   // ceil for non-negative sums
+        return authorizedCents - withTax
+    }
+
+    /// Room left on my hold for the run as the server sent it; nil when I have no hold.
+    static func roomLeft(run: Run, me: String) -> Int? {
+        guard let held = run.person(me)?.authorizedCents else { return nil }
+        return roomFor(trayChips(run, me: me).map { $0.priceCents ?? 0 }, authorizedCents: held, taxRate: run.taxRate)
+    }
+
+    static func trayTotal(_ tray: [Chip], me: String) -> Int {
+        tray.reduce(0) { $0 + myShare($1, me: me) }
+    }
+
+    /// "1 item · $4.36".
+    static func traySummary(_ tray: [Chip], me: String) -> String {
+        "\(tray.count) \(tray.count == 1 ? "item" : "items") · \(Money.format(trayTotal(tray, me: me)))"
+    }
+
+    // MARK: chips
+
+    /// What the shelf shows: everything not removed or dropped, wishes first, then newest first.
+    static func shelfChips(_ run: Run) -> [Chip] {
+        run.chips
+            .filter { $0.state != .removed && !$0.dropped }
+            .sorted { a, b in
+                let aw = a.state == .wish, bw = b.state == .wish
+                if aw != bw { return aw }
+                return a.addedAt > b.addedAt
+            }
+    }
+
+    static func isMine(_ chip: Chip, me: String) -> Bool {
+        chip.claimers.contains(me)
+    }
+
+    /// My tray: the shelf chips I claimed, in shelf order.
+    static func trayChips(_ run: Run, me: String) -> [Chip] {
+        shelfChips(run).filter { isMine($0, me: me) }
+    }
+
+    /// The small label at a chip's bottom right. `colorHex` nil means muted.
+    struct Tag: Equatable {
+        let text: String
+        let colorHex: UInt32?
+    }
+
+    /// "÷2" (my blue when I share it, ink otherwise), "You", the one claimer's name, or "open".
+    static func chipTag(_ chip: Chip, people: [Person], me: String) -> Tag {
+        let n = chip.claimers.count
+        if n == 0 { return Tag(text: "open", colorHex: nil) }
+        if n == 1 {
+            let id = chip.claimers[0]
+            let text = id == me ? "You" : (people.first { $0.id == id }?.name ?? "?")
+            return Tag(text: text, colorHex: ringColorHex(people: people, id: id, me: me))
+        }
+        let mine = chip.claimers.contains(me)
+        return Tag(text: "÷\(n)", colorHex: mine ? ringColorHex(people: people, id: me, me: me) : 0x111111)
+    }
+
+    /// Border colors in claim order: empty for the plain line border, one per claimer for an even split.
+    /// A wish takes its wisher's color (my blue for a shopper's wish, like the web).
+    static func borderColors(_ chip: Chip, people: [Person], me: String) -> [UInt32] {
+        if chip.state == .wish {
+            guard let w = chip.wishedBy, people.contains(where: { $0.id == w }) else { return [Palette.meHex] }
+            return [ringColorHex(people: people, id: w, me: me)]
+        }
+        if chip.state == .identifying { return [] }
+        return chip.claimers.map { ringColorHex(people: people, id: $0, me: me) }
+    }
+
+    /// "Split with Marcus", "Split with Marcus and Lee", or "Just you".
+    static func splitLabel(_ chip: Chip, people: [Person], me: String) -> String {
+        let others = chip.claimers.filter { $0 != me }.map { id in people.first { $0.id == id }?.name ?? "someone" }
+        return others.isEmpty ? "Just you" : "Split with \(RunText.listNames(others))"
+    }
+
+    /// A wish shows a delete control to the person who wished it and to the shopper.
+    static func canDeleteWish(_ chip: Chip, me: String, meIsShopper: Bool) -> Bool {
+        guard chip.state == .wish else { return false }
+        return meIsShopper || chip.wishedBy == me
+    }
+
+    /// "Your wish" or "Marcus's wish".
+    static func wishWho(_ chip: Chip, people: [Person], me: String) -> String {
+        if chip.wishedBy == me { return "Your wish" }
+        let name = people.first { $0.id == chip.wishedBy }?.name ?? "A"
+        return "\(name)'s wish"
+    }
+
+    /// "Lands in your tray when Jake adds it".
+    static func wishNote(_ chip: Chip, people: [Person], me: String) -> String {
+        let whose: String
+        if chip.wishedBy == me { whose = "your" } else {
+            whose = "\(people.first { $0.id == chip.wishedBy }?.name ?? "their")'s"
+        }
+        let shopper = people.first { $0.isShopper }?.name ?? "the shopper"
+        return "Lands in \(whose) tray when \(shopper) adds it"
+    }
+
+    // MARK: claiming
+
+    enum ClaimDecision: Equatable {
+        /// Send the claim.
+        case claim
+        /// It would go past my hold: offer the raise sheet.
+        case overCap
+        /// Already in my tray: nothing to do.
+        case alreadyMine
+        /// A wish or a chip still being identified.
+        case notClaimable
+    }
+
+    /// Same check as the web tray before it sends a claim; `authorizedCents` nil skips the cap check.
+    static func decide(_ chip: Chip, tray: [Chip], me: String, authorizedCents: Int?, taxRate: Double) -> ClaimDecision {
+        if chip.state == .wish || chip.state == .identifying { return .notClaimable }
+        if chip.claimers.contains(me) || tray.contains(where: { $0.id == chip.id }) { return .alreadyMine }
+        if let held = authorizedCents {
+            let after = roomFor((tray + [chip]).map { $0.priceCents ?? 0 }, authorizedCents: held, taxRate: taxRate)
+            if after < 0 { return .overCap }
+        }
+        return .claim
+    }
+
+    static func raiseTarget(authorizedCents: Int) -> Int { authorizedCents + raiseStepCents }
+
+    /// "Over your cap. Raise it to $60?"
+    static func overCapTitle(authorizedCents: Int) -> String {
+        "Over your cap. Raise it to \(Money.whole(raiseTarget(authorizedCents: authorizedCents)))?"
+    }
+
+    /// "Raise to $60 and claim".
+    static func raiseButton(authorizedCents: Int) -> String {
+        "Raise to \(Money.whole(raiseTarget(authorizedCents: authorizedCents))) and claim"
+    }
+
+    static let raiseCopy = "Your hold grows by \(Money.whole(raiseStepCents)). Only what you claim is captured."
+    static let raiseOffTitle = "Raising your cap is off for this run"
+
+    /// "$14.99 · more than your $7.29 room".
+    static func overCapLine(_ chip: Chip, roomCents: Int) -> String {
+        let price = chip.priceCents.map(Money.format) ?? "Price not known yet"
+        return "\(price) · more than your \(Money.format(max(0, roomCents))) room"
+    }
+
+    // MARK: copy
+
+    /// "Live · 3 in the run" or "Closed · 3 in the run".
+    static func statusLine(_ run: Run) -> String {
+        "\(run.isJoinable ? "Live" : "Closed") · \(run.people.count) in the run"
+    }
+
+    static func lastCallLine(shopperName: String?, secs: Int) -> String {
+        "\(shopperName ?? "The shopper") is checking out · last call · \(secs)s"
+    }
+
+    static func closedLine(trayCents: Int, count: Int) -> String {
+        "Your tray is \(Money.format(trayCents)) across \(count) \(count == 1 ? "item" : "items")"
+    }
+
+    /// A server reason ("over cap") as a toast ("Over cap").
+    static func notice(_ reason: String) -> String { RunText.capitalize(reason) }
+
+    // MARK: live view
+
+    struct Highlight: Equatable {
+        let region: Box
+        let label: String
+        let pending: Bool
+    }
+
+    /// The region being identified now, or else the newest chip with a region for 8 s after it lands.
+    static func highlight(chips: [Chip], identifying: Box?, nowMs: Double) -> Highlight? {
+        if let identifying { return Highlight(region: identifying, label: "Identifying…", pending: true) }
+        let newest = chips
+            .filter { $0.region != nil && $0.state != .wish && $0.state != .identifying && $0.state != .removed && !$0.dropped }
+            .max { $0.addedAt < $1.addedAt }
+        guard let newest, let region = newest.region, nowMs - newest.addedAt < highlightMs else { return nil }
+        let price = newest.priceCents.map(Money.format) ?? "~$?"
+        return Highlight(region: region, label: "\(newest.name) · \(price)", pending: false)
+    }
+
+    /// A region in sent-frame pixels to a rectangle in a box the image fills (aspect fill, centered).
+    static func frameBoxToDisplay(_ r: Box, box: CGSize, imageSize: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else { return .zero }
+        let s = max(box.width / imageSize.width, box.height / imageSize.height)
+        let ox = (box.width - imageSize.width * s) / 2
+        let oy = (box.height - imageSize.height * s) / 2
+        let k = frameWidth / imageSize.width
+        let f = s / k
+        return CGRect(x: ox + r.x * f, y: oy + r.y * f, width: r.w * f, height: r.h * f)
+    }
+
+    // MARK: usual picks
+
+    /// Names this phone has seen in the run (wishes and named chips), oldest first.
+    static func seenNames(_ run: Run) -> [String] {
+        run.chips
+            .sorted { $0.addedAt < $1.addedAt }
+            .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Adds `seen` (oldest first) to the front of `existing`, newest first, unique ignoring case, at most 20.
+    static func rememberPicks(_ existing: [String], seen: [String]) -> [String] {
+        var out = existing
+        for raw in seen {
+            let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { continue }
+            out.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
+            out.insert(name, at: 0)
+        }
+        return Array(out.prefix(usualPicksLimit))
+    }
+
+    /// Saved picks minus anything already on the shelf (in the cart or wished).
+    static func usualPicks(saved: [String], run: Run) -> [String] {
+        let present = Set(shelfChips(run).map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+        return saved.filter { !present.contains($0.lowercased()) }
+    }
+
+    static func savedPicks(_ defaults: UserDefaults) -> [String] {
+        defaults.stringArray(forKey: usualPicksKey) ?? []
+    }
+
+    static func recordSeen(_ seen: [String], defaults: UserDefaults) {
+        let before = savedPicks(defaults)
+        let after = rememberPicks(before, seen: seen)
+        if after != before { defaults.set(after, forKey: usualPicksKey) }
+    }
+}
