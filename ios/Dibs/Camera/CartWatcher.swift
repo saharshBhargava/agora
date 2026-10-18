@@ -93,6 +93,14 @@ struct CartWatcher: Sendable {
         case restored(chipId: String, item: Int)
         /// A feature-print distance between a new candidate and a missing item (for logs).
         case match(distance: Double, item: Int, chipId: String?)
+        /// A failed add is tried again (a `.trigger` for the same item follows).
+        case retry(CGRect, attempt: Int)
+        /// A retry found nothing to crop before its deadline: the region is absorbed.
+        case gaveUp(CGRect)
+        /// A new item was placed over an existing one, which is now hidden rather than missing.
+        case occluded(item: Int, by: Int)
+        /// An item left the view (auto-removal off): it stays in the cart.
+        case away(item: Int, chipId: String?)
     }
 
     /// An item that triggered, remembered for removal and move detection.
@@ -105,6 +113,30 @@ struct CartWatcher: Sendable {
         var missingSince: TimeInterval?
         var wentMissingAt: TimeInterval?
         var removed = false
+        /// A later item placed over this one: it is hidden, not gone, and never auto-removed.
+        var occludedBy: Int?
+        /// Out of view for `removeSeconds` with auto-removal off: still in the cart, its spot is
+        /// absorbed, and it stays matchable as a move.
+        var away = false
+        /// 0 for the first add, then 1 and 2 for retries after failed adds.
+        var attempt = 0
+        /// The scene reference just before this item was absorbed into it (restored if the add fails).
+        var before: SceneThumb?
+    }
+
+    /// A failed add waiting to be tried again.
+    struct Retry: Sendable, Equatable {
+        var box: CGRect
+        var attempt: Int
+        var at: TimeInterval
+        /// Give up if the item is not seen again by then.
+        var deadline: TimeInterval
+    }
+
+    enum AddFailure: Sendable, Equatable {
+        case retry(after: TimeInterval, attempt: Int)
+        case gaveUp(CGRect)
+        case unknownItem
     }
 
     private struct Track: Sendable {
@@ -141,11 +173,24 @@ struct CartWatcher: Sendable {
     /// The initial scene ends after this long even if the camera never holds perfectly still.
     var initialMaxSeconds: TimeInterval = 6.0
     var triggerOnInitialScene = true
+    /// Remove a chip when its item leaves the view. Off by default: items out of view stay in the
+    /// cart (the server's duplicate check catches a re-add). Launch arg `-DibsAutoRemove YES`.
+    var autoRemove = false
     var removeSeconds: TimeInterval = 2.0
     var moveWindow: TimeInterval = 5.0
     var moveDistance: Double = 0.5
     /// A box overlapping a remembered item by more than this means the item is still there.
     var presentIoU: CGFloat = 0.3
+    /// A new box this close to a missing item's box is that spot emptying, not a new item.
+    var vacatedIoU: CGFloat = 0.6
+    /// A new item occludes an existing one when IoU > `occludeIoU` or it covers > `occludeCover` of it.
+    var occludeIoU: CGFloat = 0.1
+    var occludeCover: CGFloat = 0.3
+    /// Seconds before retrying a failed add: first retry, second retry. Then give up.
+    var retryDelays: [TimeInterval] = [3, 8]
+    var retryWindow: TimeInterval = 5
+
+    private(set) var retries: [Retry] = []
 
     private(set) var items: [Item] = []
     private var nextItemId = 1
@@ -267,7 +312,9 @@ struct CartWatcher: Sendable {
                 if settled.contains(where: { CartWatcher.iou($0, box) >= mergeIoU }) { continue }
                 settled.append(box)
                 if triggerOnInitialScene {
-                    touched.insert(addItem(box, thumb: o.thumb))
+                    let id = addItem(box, thumb: o.thumb, attempt: 0, before: nil)
+                    touched.insert(id)
+                    out += occlude(under: box, by: id)
                     out.append(.trigger(box))
                 } else {
                     out.append(.baselined(box))
@@ -275,20 +322,26 @@ struct CartWatcher: Sendable {
                 continue
             }
             guard let ref = reference else { continue }
+            // A box waiting on a retry, or an occluded item showing again, is not a new item.
+            if retries.contains(where: { Self.iou($0.box, box) >= mergeIoU }) { continue }
+            if items.contains(where: { $0.occludedBy != nil && !$0.removed && Self.iou($0.box, box) > mergeIoU }) {
+                out.append(.unchanged(box))
+                continue
+            }
             let gate = SceneDiff.regionChange(current: o.thumb, reference: ref,
                                               rect: SceneDiff.pixelRect(box, width: ref.width, height: ref.height),
                                               alignment: alignment, pixelDelta: regionPixelDelta)
             lastGate = gate
             let changed = gate.mean >= regionMeanDelta && gate.fraction >= regionChangedFraction
             // The spot a missing item just left is not a new item.
-            let vacated = items.contains { $0.missingSince != nil && !$0.removed && Self.iou($0.box, box) > presentIoU }
+            let vacated = items.contains { $0.missingSince != nil && !$0.removed && Self.iou($0.box, box) > vacatedIoU }
             guard changed, !vacated else {
                 out.append(.unchanged(box))
                 continue
             }
             // A missing (or just removed) item showing up here is a move, not a new item.
             var best: (index: Int, d: Double)?
-            for (j, item) in items.enumerated() where item.missingSince != nil || item.removed {
+            for (j, item) in items.enumerated() where item.missingSince != nil || item.removed || item.away {
                 guard let d = distance(box, item.id) else { continue }
                 out.append(.match(distance: d, item: item.id, chipId: item.chipId))
                 if d < (best?.d ?? .infinity) { best = (j, d) }
@@ -307,18 +360,39 @@ struct CartWatcher: Sendable {
                     out.append(.restored(chipId: chip, item: items[best.index].id))
                 }
                 items[best.index].removed = false
+                items[best.index].away = false
+                unocclude(by: items[best.index].id)
                 out.append(.moved(item: items[best.index].id, chipId: items[best.index].chipId, to: box))
                 continue
             }
             settled.append(box)
             absorbBoxes.append(box)
-            touched.insert(addItem(box, thumb: o.thumb))
+            let id = addItem(box, thumb: o.thumb, attempt: 0, before: ref)
+            touched.insert(id)
+            out += occlude(under: box, by: id)
             out.append(.trigger(box))
         }
 
-        // Removal: a remembered item whose spot changed with no box over it, for removeSeconds.
+        // Retries of failed adds: crop again once the item is seen at its spot.
+        for r in retries where o.time + 1e-6 >= r.at {
+            if let box = cands.first(where: { Self.iou($0, r.box) >= mergeIoU }) {
+                retries.removeAll { $0 == r }
+                settled.append(box)
+                if watching { absorbBoxes.append(box) }
+                let id = addItem(box, thumb: o.thumb, attempt: r.attempt, before: watching ? reference : nil)
+                touched.insert(id)
+                out += [.retry(box, attempt: r.attempt), .trigger(box)]
+            } else if o.time > r.deadline {
+                retries.removeAll { $0 == r }
+                if watching { absorbBoxes.append(r.box) }
+                out.append(.gaveUp(r.box))
+            }
+        }
+
+        // Removal (or "away" when auto-removal is off): a remembered item whose spot changed with no
+        // box over it, for removeSeconds.
         if watching && !o.handPresent {
-            for i in items.indices where !items[i].removed && !touched.contains(items[i].id) {
+            for i in items.indices where !items[i].removed && !items[i].away && items[i].occludedBy == nil && !touched.contains(items[i].id) {
                 let item = items[i]
                 let rect = SceneDiff.pixelRect(item.box, width: o.thumb.width, height: o.thumb.height)
                 var gate = SceneDiff.regionChange(current: o.thumb, reference: item.reference, rect: rect,
@@ -329,7 +403,11 @@ struct CartWatcher: Sendable {
                     gate = SceneDiff.regionChange(current: o.thumb, reference: item.reference, rect: rect, alignment: a, pixelDelta: regionPixelDelta)
                 }
                 let gone = gate.mean >= regionMeanDelta && gate.fraction >= regionChangedFraction
-                let boxed = cands.contains { Self.iou($0, item.box) > presentIoU }
+                // A box over an item this one hides is that item, not this one.
+                let hidden = items.filter { $0.occludedBy == item.id }.map(\.box)
+                let boxed = cands.contains { c in
+                    Self.iou(c, item.box) > presentIoU && !hidden.contains { Self.iou(c, $0) > mergeIoU }
+                }
                 guard gone, !boxed else {
                     items[i].missingSince = nil
                     items[i].wentMissingAt = nil
@@ -339,10 +417,21 @@ struct CartWatcher: Sendable {
                 items[i].missingSince = since
                 items[i].wentMissingAt = item.wentMissingAt ?? o.time
                 guard o.time - since + 1e-6 >= removeSeconds, let chip = item.chipId else { continue }
+                guard autoRemove else {
+                    // Out of view, still in the cart: absorb the emptied spot so it is not a "new item",
+                    // and keep the item matchable in case it shows up elsewhere.
+                    items[i].away = true
+                    items[i].missingSince = nil
+                    absorbBoxes.append(item.box)
+                    unocclude(by: item.id)
+                    out.append(.away(item: item.id, chipId: chip))
+                    continue
+                }
                 items[i].removed = true
                 items[i].missingSince = nil
                 settled.removeAll { $0 == item.box }
                 absorbBoxes.append(item.box)
+                unocclude(by: item.id)
                 out.append(.removed(chipId: chip, item: item.id))
             }
         }
@@ -379,20 +468,68 @@ struct CartWatcher: Sendable {
         if let i = items.firstIndex(where: { $0.id == id }) { items[i].chipId = chipId }
     }
 
-    /// Drops an item whose add failed.
+    /// Drops an item outright (no retry).
     mutating func forget(item id: Int) {
         items.removeAll { $0.id == id }
+        unocclude(by: id)
     }
 
-    private mutating func addItem(_ box: CGRect, thumb: SceneThumb) -> Int {
+    /// An add failed. A temporary failure (`retryable`) puts the region back to "not seen" in the
+    /// reference and schedules a retry (after 3 s, then 8 s); after the last retry, or for a final
+    /// failure (nothing nameable, cart closed), the region is absorbed so it never loops.
+    mutating func addFailed(item id: Int, retryable: Bool = true) -> AddFailure {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return .unknownItem }
+        let item = items.remove(at: i)
+        settled.removeAll { $0 == item.box }
+        unocclude(by: id)
+        guard retryable, item.attempt < retryDelays.count else {
+            if let ref = reference, let now = previous {
+                reference = SceneDiff.absorb(current: now, into: ref, offset: 0, pixelDelta: -1, boxes: [item.box])
+            }
+            return .gaveUp(item.box)
+        }
+        if let before = item.before, var ref = reference, before.width == ref.width, before.height == ref.height {
+            let p = SceneDiff.pixelRect(item.box, width: ref.width, height: ref.height)
+            for y in p.y0..<p.y1 { for x in p.x0..<p.x1 { ref.pixels[y * ref.width + x] = before.pixels[y * ref.width + x] } }
+            reference = ref
+        }
+        let delay = retryDelays[item.attempt]
+        let at = (lastTime ?? 0) + delay
+        retries.append(Retry(box: item.box, attempt: item.attempt + 1, at: at, deadline: at + retryWindow))
+        return .retry(after: delay, attempt: item.attempt + 1)
+    }
+
+    private mutating func addItem(_ box: CGRect, thumb: SceneThumb, attempt: Int, before: SceneThumb?) -> Int {
         let id = nextItemId
         nextItemId += 1
-        items.append(Item(id: id, box: box, reference: thumb))
+        items.append(Item(id: id, box: box, reference: thumb, attempt: attempt, before: before))
         return id
     }
 
+    /// Marks existing items that a new item at `box` sits over as hidden by it.
+    private mutating func occlude(under box: CGRect, by id: Int) -> [Decision] {
+        var out: [Decision] = []
+        for i in items.indices where items[i].id != id && !items[i].removed && items[i].occludedBy == nil {
+            let b = items[i].box
+            let inter = b.intersection(box)
+            let cover = inter.isNull || b.width * b.height == 0 ? 0 : (inter.width * inter.height) / (b.width * b.height)
+            guard Self.iou(b, box) > occludeIoU || cover > occludeCover else { continue }
+            items[i].occludedBy = id
+            items[i].missingSince = nil
+            items[i].wentMissingAt = nil
+            out.append(.occluded(item: items[i].id, by: id))
+        }
+        return out
+    }
+
+    /// The item on top left: the items it hid are visible (and watched) again.
+    private mutating func unocclude(by id: Int) {
+        for i in items.indices where items[i].occludedBy == id { items[i].occludedBy = nil }
+    }
+
     private mutating func rereferenceItems(_ thumb: SceneThumb) {
-        for i in items.indices {
+        // Hidden items keep their own reference (from before they were covered).
+        for i in items.indices where items[i].occludedBy == nil {
             items[i].reference = thumb
             items[i].missingSince = nil
             if !items[i].removed { items[i].wentMissingAt = nil }

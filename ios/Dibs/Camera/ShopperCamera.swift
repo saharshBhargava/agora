@@ -106,6 +106,17 @@ final class ShopperCamera {
         DibsLog.event("watcher restored chip=\(chipId) name=\(name) sent=\(sent)")
     }
 
+    /// Whether a failed add is worth trying again. 422 (Gemini saw nothing nameable) and other 4xx
+    /// (cart closed, bad request) are final; 5xx (identify failed, rate limits), timeouts and network
+    /// errors are temporary.
+    nonisolated static func isRetryable(_ error: Error) -> Bool {
+        guard let e = error as? DibsError else { return true }
+        switch e {
+        case .server(_, let status): return !(400..<500).contains(status)
+        case .offline, .timeout: return true
+        }
+    }
+
     private func post(_ trigger: CartTrigger) {
         cropCount += 1
         let n = cropCount
@@ -124,7 +135,7 @@ final class ShopperCamera {
             } catch {
                 let text = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 DibsLog.event("addChip #\(n) error=\(text)")
-                camera.forget(item: itemId)
+                camera.addFailed(item: itemId, retryable: Self.isRetryable(error))
                 self?.lastAddError = text
             }
             self?.pending[id] = nil

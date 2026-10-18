@@ -79,6 +79,8 @@ final class CartCamera: NSObject, @unchecked Sendable {
 
     init(triggerOnInitialScene: Bool = true) {
         watcher = CartWatcher(triggerOnInitialScene: triggerOnInitialScene)
+        watcher.autoRemove = UserDefaults.standard.bool(forKey: "DibsAutoRemove")
+        DibsLog.event("watcher autoRemove=\(watcher.autoRemove)")
         super.init()
     }
 
@@ -248,7 +250,7 @@ final class CartCamera: NSObject, @unchecked Sendable {
             case .moved(let itemId, _, let b):
                 if let p = Self.featurePrint(buffer, box: b) { prints[itemId] = p }
             case .removed(let chipId, _):
-                onRemoved?(chipId)
+                onRemoved?(chipId)   // only with -DibsAutoRemove YES
             case .restored(let chipId, _):
                 onRestored?(chipId)
             default:
@@ -265,11 +267,27 @@ final class CartCamera: NSObject, @unchecked Sendable {
         videoQueue.async { [self] in watcher.attach(chipId: chipId, toItem: itemId) }
     }
 
-    /// Drops a watcher item whose add failed (from any thread).
+    /// Drops a watcher item without retrying (from any thread).
     func forget(item itemId: Int) {
         videoQueue.async { [self] in
             watcher.forget(item: itemId)
             prints[itemId] = nil
+        }
+    }
+
+    /// An add failed: a temporary failure is retried after 3 s, then 8 s; a final one (or the last
+    /// retry) absorbs the region (from any thread).
+    func addFailed(item itemId: Int, retryable: Bool) {
+        videoQueue.async { [self] in
+            prints[itemId] = nil
+            switch watcher.addFailed(item: itemId, retryable: retryable) {
+            case .retry(let after, let attempt):
+                DibsLog.event("watcher retry scheduled item=\(itemId) attempt=\(attempt) in \(Int(after)) s")
+            case .gaveUp(let box):
+                DibsLog.event("watcher gave up box=\(Self.fmt(box)) retryable=\(retryable) (absorbed)")
+            case .unknownItem:
+                break
+            }
         }
     }
 
@@ -333,6 +351,14 @@ final class CartCamera: NSObject, @unchecked Sendable {
             DibsLog.event("watcher restored chip=\(chipId) item=\(item)"); lastDecisionKind = "restored"; return
         case .moved(let item, let chipId, let b):
             DibsLog.event("watcher moved chip=\(chipId ?? "pending") item=\(item) to box=\(Self.fmt(b))"); lastDecisionKind = "moved"; return
+        case .retry(let b, let attempt):
+            DibsLog.event("watcher retry box=\(Self.fmt(b)) attempt=\(attempt)"); return
+        case .gaveUp(let b):
+            DibsLog.event("watcher gave up box=\(Self.fmt(b)) (not seen again, absorbed)"); return
+        case .away(let item, let chipId):
+            DibsLog.event("watcher away chip=\(chipId ?? "pending") item=\(item) (out of view, kept in the cart)"); return
+        case .occluded(let item, let by):
+            DibsLog.event("watcher occluded item=\(item) by item=\(by) (hidden, not removed)"); return
         case .match(let d, let item, let chipId):
             DibsLog.event(String(format: "watcher match d=%.3f vs chip=%@ item=%d", d, chipId ?? "pending", item)); return
         case .rebaseline: kind = "rebaseline"

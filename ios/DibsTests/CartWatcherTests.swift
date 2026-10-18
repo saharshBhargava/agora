@@ -11,10 +11,12 @@ private struct Scene {
     var sx = 0, sy = 0
     var brightness = 0
     var texture = 0
+    /// Items (by index) drawn dark instead of bright. Later items are drawn on top.
+    var dark: Set<Int> = []
 
     func world(_ x: Int, _ y: Int) -> Int {
-        for it in items where x >= it.x && x < it.x + it.w && y >= it.y && y < it.y + it.h {
-            return 225 - ((x + y) % 3) * 8
+        for (i, it) in items.enumerated().reversed() where x >= it.x && x < it.x + it.w && y >= it.y && y < it.y + it.h {
+            return dark.contains(i) ? 30 + ((x + y) % 3) * 8 : 225 - ((x + y) % 3) * 8
         }
         let fx = Double(x), fy = Double(y), t = Double(texture)
         return Int(110 + 45 * sin(0.37 * fx + 0.11 * fy + t) + 35 * cos(0.23 * fy - 0.17 * fx + 2 * t) + 12 * sin(0.9 * fx) * cos(0.7 * fy))
@@ -62,9 +64,11 @@ final class CartWatcherTests: XCTestCase {
         ds.compactMap { if case .moved(_, _, let b) = $0 { b } else { nil } }
     }
 
-    /// Can and apple at start, with chips "can" and "apple" attached to their items.
-    private func startWithChips() -> (CartWatcher, Scene) {
+    /// Can and apple at start, with chips "can" and "apple" attached to their items. Removal tests
+    /// run with auto-removal on (it is off by default).
+    private func startWithChips(autoRemove: Bool = true) -> (CartWatcher, Scene) {
         var (w, scene) = startWithCanAndApple()
+        w.autoRemove = autoRemove
         XCTAssertEqual(w.items.count, 2)
         w.attach(chipId: "can", toItem: w.itemId(for: scene.box(item: 0))!)
         w.attach(chipId: "apple", toItem: w.itemId(for: scene.box(item: 1))!)
@@ -484,6 +488,150 @@ final class CartWatcherTests: XCTestCase {
         XCTAssertEqual(removals(ds), [])
     }
 
+    // MARK: auto-removal off (the default)
+
+    func testAutoRemovalIsOffByDefault() {
+        XCTAssertFalse(CartWatcher().autoRemove)
+    }
+
+    func testItemOutOfViewStaysInTheCartWhenAutoRemovalIsOff() {
+        var (w, scene) = startWithChips(autoRemove: false)
+        scene.items = [can]
+        let ds = feed(&w, scene, [scene.box(item: 0)], from: 2.6, seconds: 6)
+        XCTAssertEqual(removals(ds), [])
+        XCTAssertEqual(triggers(ds), [])
+        XCTAssertTrue(ds.contains { if case .away(_, "apple") = $0 { true } else { false } })
+        XCTAssertEqual(w.items.first { $0.chipId == "apple" }?.away, true)
+    }
+
+    func testAwayItemSeenElsewhereIsAMoveNotAnAdd() {
+        var (w, scene) = startWithChips(autoRemove: false)
+        let appleItem = w.itemId(for: scene.box(item: 1))!
+        scene.items = [can]
+        _ = feed(&w, scene, [scene.box(item: 0)], from: 2.6, seconds: 4)
+        scene.items = [can, (x: 30, y: 72, w: 14, h: 14)]
+        let newBox = scene.box(item: 1)
+        let ds = feed(&w, scene, [scene.box(item: 0), newBox], from: 6.7, seconds: 3) { _, item in item == appleItem ? 0.2 : 1.5 }
+        XCTAssertEqual(triggers(ds), [])
+        XCTAssertEqual(moves(ds), [newBox])
+        XCTAssertFalse(ds.contains { if case .restored = $0 { true } else { false } }, "nothing was removed, nothing to restore")
+        XCTAssertEqual(w.items.first { $0.id == appleItem }?.away, false)
+    }
+
+    func testEmptiedSpotOfAnAwayItemIsNotANewItem() {
+        var (w, scene) = startWithChips(autoRemove: false)
+        let appleSpot = scene.box(item: 1)
+        scene.items = [can]
+        _ = feed(&w, scene, [scene.box(item: 0)], from: 2.6, seconds: 4)
+        // A stray box over the bare floor where the apple was.
+        let ds = feed(&w, scene, [scene.box(item: 0), appleSpot], from: 6.7, seconds: 3)
+        XCTAssertEqual(triggers(ds), [])
+    }
+
+    func testNewItemOnAnAwayItemsSpotIsAdded() {
+        var (w, scene) = startWithChips(autoRemove: false)
+        scene.items = [can]
+        _ = feed(&w, scene, [scene.box(item: 0)], from: 2.6, seconds: 4)
+        // A different (dark) item where the apple was; the prints don't match.
+        scene.items = [can, apple]
+        scene.dark = [1]
+        let ds = feed(&w, scene, [scene.box(item: 0), scene.box(item: 1)], from: 6.7, seconds: 3) { _, _ in 1.4 }
+        XCTAssertEqual(triggers(ds), [scene.box(item: 1)])
+        XCTAssertEqual(removals(ds), [])
+    }
+
+    // MARK: occlusion (only matters with auto-removal on)
+
+    func testItemStackedOnAnotherIsOneAddAndNoRemoval() {
+        var (w, scene) = startWithChips()
+        // A dark box placed half over the apple: the apple's spot changes and no box matches it.
+        let top = (x: 36, y: 44, w: 16, h: 18)
+        scene.items.append(top)
+        scene.dark = [2]
+        let topBox = scene.box(item: 2)
+        XCTAssertLessThan(CartWatcher.iou(topBox, scene.box(item: 1)), 0.3, "not enough overlap to count as the apple's own box")
+        let ds = feed(&w, scene, [scene.box(item: 0), topBox], from: 2.6, seconds: 6)
+        XCTAssertEqual(triggers(ds), [topBox])
+        XCTAssertEqual(removals(ds), [], "a hidden apple is not a removed apple")
+        let apple = w.items.first { $0.chipId == "apple" }
+        XCTAssertNotNil(apple?.occludedBy)
+
+        // The top item is taken away again: only it is removed, and the apple is not added twice.
+        w.attach(chipId: "top", toItem: w.itemId(for: topBox)!)
+        scene.items.removeLast()
+        scene.dark = []
+        let back = feed(&w, scene, [scene.box(item: 0), scene.box(item: 1)], from: 8.7, seconds: 6)
+        XCTAssertEqual(removals(back), ["top"])
+        XCTAssertEqual(triggers(back), [])
+        XCTAssertNil(w.items.first { $0.chipId == "apple" }?.occludedBy)
+        // And the apple can still be removed normally afterwards.
+        scene.items = [can]
+        XCTAssertEqual(removals(feed(&w, scene, [scene.box(item: 0)], from: 14.8, seconds: 3)), ["apple"])
+    }
+
+    // MARK: failed adds
+
+    func testFailedAddIsRetriedAndAddedOnSuccess() {
+        var (w, scene) = startWithChips()
+        scene.items.append(milk)
+        let boxes = [scene.box(item: 0), scene.box(item: 1), scene.box(item: 2)]
+        let first = feed(&w, scene, boxes, from: 2.6, seconds: 1.2)
+        XCTAssertEqual(triggers(first), [boxes[2]])
+        XCTAssertEqual(w.addFailed(item: w.itemId(for: boxes[2])!), .retry(after: 3, attempt: 1))
+        // Nothing for 3 s (the box waits on its retry), then one retry.
+        XCTAssertEqual(triggers(feed(&w, scene, boxes, from: 3.9, seconds: 2.7)), [])
+        let retry = feed(&w, scene, boxes, from: 6.8, seconds: 0.5)
+        XCTAssertEqual(triggers(retry), [boxes[2]])
+        XCTAssertTrue(retry.contains(.retry(boxes[2], attempt: 1)))
+        w.attach(chipId: "milk", toItem: w.itemId(for: boxes[2])!)
+        XCTAssertEqual(triggers(feed(&w, scene, boxes, from: 7.4, seconds: 10)), [])
+    }
+
+    func testThreeFailedAddsGiveUpWithoutLooping() {
+        var (w, scene) = startWithChips()
+        scene.items.append(milk)
+        let boxes = [scene.box(item: 0), scene.box(item: 1), scene.box(item: 2)]
+        var t = 2.6
+        var outcomes: [CartWatcher.AddFailure] = []
+        var allTriggers: [CGRect] = []
+        for _ in 0..<3 {
+            var got: [CGRect] = []
+            for _ in 0..<120 where got.isEmpty {
+                got = triggers(w.observe(.init(time: t, boxes: boxes, handPresent: false, thumb: scene.thumb)))
+                t += 0.1
+            }
+            allTriggers += got
+            guard let b = got.first, let id = w.itemId(for: b) else { break }
+            outcomes.append(w.addFailed(item: id))
+        }
+        XCTAssertEqual(outcomes, [.retry(after: 3, attempt: 1), .retry(after: 8, attempt: 2), .gaveUp(boxes[2])])
+        XCTAssertEqual(allTriggers.count, 3)
+        XCTAssertEqual(triggers(feed(&w, scene, boxes, from: t, seconds: 20)), [], "absorbed: no more tries")
+        XCTAssertTrue(w.retries.isEmpty)
+    }
+
+    func testFinalFailureIsAbsorbedWithoutRetry() {
+        var (w, scene) = startWithChips()
+        scene.items.append(milk)
+        let boxes = [scene.box(item: 0), scene.box(item: 1), scene.box(item: 2)]
+        _ = feed(&w, scene, boxes, from: 2.6, seconds: 1.2)
+        XCTAssertEqual(w.addFailed(item: w.itemId(for: boxes[2])!, retryable: false), .gaveUp(boxes[2]))
+        XCTAssertTrue(w.retries.isEmpty)
+        XCTAssertEqual(triggers(feed(&w, scene, boxes, from: 3.9, seconds: 15)), [])
+    }
+
+    func testRetryGivesUpWhenTheItemIsGone() {
+        var (w, scene) = startWithChips()
+        scene.items.append(milk)
+        let boxes = [scene.box(item: 0), scene.box(item: 1), scene.box(item: 2)]
+        _ = feed(&w, scene, boxes, from: 2.6, seconds: 1.2)
+        _ = w.addFailed(item: w.itemId(for: boxes[2])!)
+        scene.items.removeLast()
+        let ds = feed(&w, scene, [boxes[0], boxes[1]], from: 3.9, seconds: 10)
+        XCTAssertEqual(triggers(ds), [])
+        XCTAssertTrue(ds.contains(.gaveUp(boxes[2])))
+    }
+
     // MARK: pixel helpers
 
     func testAlignFindsShiftAndRegionChangeIgnoresIt() {
@@ -538,5 +686,21 @@ final class TapGateTests: XCTestCase {
         let busy = [CGRect(x: 200, y: 200, width: 100, height: 100)]
         XCTAssertFalse(g.allow(CGPoint(x: 250, y: 250), at: 0, busy: busy))
         XCTAssertTrue(g.allow(CGPoint(x: 50, y: 50), at: 0.5, busy: busy), "an ignored tap does not start the debounce")
+    }
+}
+
+final class AddFailureClassTests: XCTestCase {
+    func testWhichFailuresAreRetried() {
+        // Gemini saw nothing nameable: final.
+        XCTAssertFalse(ShopperCamera.isRetryable(DibsError.server(message: "no item", status: 422)))
+        // Cart closed / bad request: final.
+        XCTAssertFalse(ShopperCamera.isRetryable(DibsError.server(message: "cart closed", status: 409)))
+        XCTAssertFalse(ShopperCamera.isRetryable(DibsError.server(message: "bad request", status: 400)))
+        // Identify failed, other 5xx, timeouts, network: temporary.
+        XCTAssertTrue(ShopperCamera.isRetryable(DibsError.server(message: "identify failed", status: 502)))
+        XCTAssertTrue(ShopperCamera.isRetryable(DibsError.server(message: "rate limited", status: 503)))
+        XCTAssertTrue(ShopperCamera.isRetryable(DibsError.timeout))
+        XCTAssertTrue(ShopperCamera.isRetryable(DibsError.offline))
+        XCTAssertTrue(ShopperCamera.isRetryable(URLError(.networkConnectionLost)))
     }
 }
