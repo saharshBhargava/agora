@@ -53,6 +53,7 @@ async def ensure_demo_account(db: Database, settings: Settings) -> UUID:
         await _forecasts_and_lists(db, existing)
         await _commerce(db, existing)
         await _calendar(db, existing)
+        await _trips(db, existing)
         await _shopping_refresh(db, existing)
         return existing
     user_id = await ensure_user(db, DEMO_SUBJECT, VISIBLE_HANDLE, settings.demo_display_name)
@@ -128,6 +129,7 @@ async def _seed(db: Database, user_id: UUID) -> None:
     await _forecasts_and_lists(db, user_id)
     await _commerce(db, user_id)
     await _calendar(db, user_id)
+    await _trips(db, user_id)
     await _shopping_refresh(db, user_id)
 
 
@@ -284,6 +286,36 @@ async def _calendar(db: Database, user_id: UUID) -> None:
                 """INSERT INTO calendar_events (user_id, household_id, title, starts_at, ends_at, timezone)
                    VALUES ($1,$2,$3,$4,$5,'Etc/UTC')""", user_id, household_id, title,
                 start, start + timedelta(hours=duration))
+
+
+async def _trips(db: Database, user_id: UUID) -> None:
+    """Link a real shopping list to its private Calendar event without rewriting history."""
+    async with db.scoped(user_id) as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo.trips'), hashtext($1))", str(user_id))
+        if await conn.fetchval("SELECT 1 FROM replenishment_trips WHERE user_id = $1", user_id):
+            return
+        lst = await conn.fetchrow(
+            """SELECT * FROM shopping_lists WHERE household_id = ANY(app_household_ids())
+               AND status = 'open' ORDER BY created_at LIMIT 1""")
+        if lst is None:
+            return
+        event = await conn.fetchrow(
+            """SELECT * FROM calendar_events WHERE user_id = $1 AND household_id = $2
+               AND title = 'Weekly grocery trip' ORDER BY starts_at DESC LIMIT 1""", user_id, lst["household_id"])
+        if event is None:
+            start = (datetime.now(UTC) + timedelta(days=2)).replace(hour=18, minute=0, second=0, microsecond=0)
+            event = await conn.fetchrow(
+                """INSERT INTO calendar_events (user_id, household_id, title, description, location,
+                     starts_at, ends_at, timezone)
+                   VALUES ($1,$2,'Weekly grocery trip','Pick up bread and apples.','PCC Community Markets',
+                     $3,$4,'Etc/UTC') RETURNING *""", user_id, lst["household_id"], start, start + timedelta(hours=1))
+        await conn.execute(
+            """INSERT INTO replenishment_trips (household_id, list_id, user_id, list_name, list_updated_at,
+                 starts_at, ends_at, start_text, end_text, timezone, title, description, location, status, event_id)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'scheduled',$14)""",
+            lst["household_id"], lst["id"], user_id, lst["name"], lst["updated_at"],
+            event["starts_at"], event["ends_at"], event["starts_at"].isoformat(), event["ends_at"].isoformat(),
+            event["timezone"], event["title"], event["description"], event["location"], str(event["id"]))
 
 
 async def _shopping_refresh(db: Database, user_id: UUID) -> None:
