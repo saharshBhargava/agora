@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { inspect } from 'node:util';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../src/index.js';
@@ -10,7 +12,7 @@ import { StubPrice } from '../src/price/stub.js';
 import { StubVision } from '../src/vision/stub.js';
 import { cleanText } from '../src/team/clean.js';
 import {
-  TeamBackend, itemDetail, mapHousehold, runoutReason, shortReason, teamBackendFromEnv, teamBaseUrl,
+  TeamBackend, householdToken, itemDetail, mapHousehold, runoutReason, shortReason, teamBackendFromEnv, teamBaseUrl,
 } from '../src/team/backend.js';
 import { composePicks, historyPicks, type HouseholdPicks, type HouseholdSource } from '../src/wish-picks.js';
 import { createRun, wish } from '../src/run.js';
@@ -209,19 +211,210 @@ describe('TeamBackend', () => {
     ]);
   });
 
-  it('is off unless TEAM_API_BASE_URL and AGORA_DEMO_PASSWORD are both set and usable', () => {
+  it('is off unless TEAM_API_BASE_URL is set and usable; AGORA_DEMO_PASSWORD is optional', () => {
     const lines: string[] = [];
     const log = (l: string) => lines.push(l);
     expect(teamBackendFromEnv({}, { log })).toBeNull();
-    expect(teamBackendFromEnv({ TEAM_API_BASE_URL: 'https://api.example' }, { log })).toBeNull();
     expect(teamBackendFromEnv({ TEAM_API_BASE_URL: 'http://api.example', AGORA_DEMO_PASSWORD: 'x' }, { log })).toBeNull();
+    expect(teamBackendFromEnv({ TEAM_API_BASE_URL: 'https://api.example' }, { log })).toBeInstanceOf(TeamBackend);
     expect(teamBackendFromEnv({ TEAM_API_BASE_URL: 'https://api.example/v1/', AGORA_DEMO_PASSWORD: 'pw' }, { log })).toBeInstanceOf(TeamBackend);
-    expect(lines).toHaveLength(2);
+    expect(lines).toHaveLength(1);
     expect(lines.join()).not.toContain('pw');
     expect(teamBaseUrl('https://api.example/v1/')).toBe('https://api.example');
     expect(teamBaseUrl('http://localhost:8000')).toBe('http://localhost:8000');
     expect(teamBaseUrl('https://user:pw@api.example')).toBeNull();
     expect(teamBaseUrl('ftp://api.example')).toBeNull();
+  });
+});
+
+// ---- the signed-in person's own household (X-Household-Token) ----
+
+const TOK_A = 'tok-AAAAAAAAAAAAAAAAAAAAAAAA';
+const TOK_B = 'tok-BBBBBBBBBBBBBBBBBBBBBBBB';
+
+type Household = { lists: unknown; suggestions: unknown; runouts: unknown };
+/** A household whose every name carries `tag`, so one person's answer can't be mistaken for another's. */
+function householdOf(tag: string): Household {
+  return {
+    lists: [{
+      id: `l-${tag}`, name: `${tag} groceries`, merchant: { id: 'm', name: 'QFC', locality: null, scope: 'global' },
+      status: 'open', source: 'user', updated_at: '2026-10-17T10:00:00Z',
+      items: [{ title: `${tag} milk`, quantity: 1, unit: null, checked: false }],
+    }],
+    suggestions: [{ title: `${tag} granola`, status: 'suggested', rationale: `${tag} finishes it every week.` }],
+    runouts: { runouts: [{ item: { display_name: `${tag} eggs` }, forecast: { status: 'runs_out', runout_at: new Date(NOW + DAY).toISOString() } }] },
+  };
+}
+const demoHousehold: Household = { lists, suggestions, runouts };
+
+/**
+ * A team API where each bearer token has its own household. `tokens` maps token to household; any other
+ * bearer gets 401 (or `refuse`'s status). Dev login hands out `tok-demo`, the demo household's token.
+ */
+function bearerFetch(tokens: Record<string, Household>, refuse = 401) {
+  const calls: Call[] = [];
+  const all: Record<string, Household> = { 'tok-demo': demoHousehold, ...tokens };
+  const impl = (async (input: string | URL | Request, init: RequestInit = {}) => {
+    const url = String(input);
+    calls.push({ url, init });
+    const path = new URL(url).pathname;
+    if (path === '/v1/dev/login') return json({ access_token: 'tok-demo', token_type: 'bearer', expires_at: Math.floor(NOW / 1000) + 3600 });
+    const bearer = String((init.headers as Record<string, string> | undefined)?.authorization ?? '').replace(/^Bearer /, '');
+    const h = all[bearer];
+    if (!h) return json({ title: 'invalid_token' }, refuse);
+    if (path === '/v1/lists') return json(h.lists);
+    if (path === '/v1/wishlist/suggestions') return json(h.suggestions);
+    if (path === '/v1/forecasts/runouts') return json(h.runouts);
+    return json({}, 404);
+  }) as typeof fetch;
+  const logins = () => calls.filter((c) => c.url.endsWith('/v1/dev/login')).length;
+  return { impl, calls, logins };
+}
+
+describe('the person\'s own household token', () => {
+  const bearerOf = (c: Call) => (c.init.headers as Record<string, string>).authorization;
+
+  it('is sent as the bearer on the three reads, to the configured origin only, and never signs in', async () => {
+    const { impl, calls } = bearerFetch({ [TOK_A]: householdOf('Ann') });
+    // Even with the demo password configured, a person's token never goes through the demo login.
+    const team = new TeamBackend({ baseUrl: 'https://team.example', password: 'demo-password-1' }, { fetchImpl: impl, now: () => NOW, log: () => {} });
+    const picks = await team.picks(TOK_A);
+    expect(picks.lists.map((l) => l.name)).toEqual(['Ann groceries']);
+    expect(picks.suggestions.map((s) => s.name)).toEqual(['Ann eggs', 'Ann granola']);
+    expect(calls.map((c) => c.url).sort()).toEqual([
+      'https://team.example/v1/forecasts/runouts?within=7d',
+      'https://team.example/v1/lists?status=open',
+      'https://team.example/v1/wishlist/suggestions',
+    ]);
+    for (const c of calls) {
+      expect(bearerOf(c)).toBe(`Bearer ${TOK_A}`);
+      expect(c.init.redirect).toBe('error');
+    }
+  });
+
+  it('keeps households apart: one token\'s picks are never served for another, or for the demo path', async () => {
+    const { impl } = bearerFetch({ [TOK_A]: householdOf('Ann'), [TOK_B]: householdOf('Bo') });
+    const team = new TeamBackend({ baseUrl: 'https://team.example', password: 'demo-password-1' }, { fetchImpl: impl, now: () => NOW, log: () => {} });
+    expect((await team.picks(TOK_A)).lists[0]!.name).toBe('Ann groceries');
+    expect((await team.picks(TOK_B)).lists[0]!.name).toBe('Bo groceries');
+    expect((await team.picks()).lists.map((l) => l.name)).toEqual(['Saturday groceries', 'Household essentials']);
+    expect((await team.picks(TOK_A)).lists[0]!.name).toBe('Ann groceries');
+    expect((await team.picks(TOK_B)).suggestions[1]!.name).toBe('Bo granola');
+  });
+
+  it('caches each token\'s answer for 60 s, and concurrent callers for one token share one load', async () => {
+    let t = NOW;
+    const { impl, calls } = bearerFetch({ [TOK_A]: householdOf('Ann'), [TOK_B]: householdOf('Bo') });
+    const team = new TeamBackend({ baseUrl: 'https://team.example', password: null }, { fetchImpl: impl, now: () => t, log: () => {} });
+    const [x, y, z] = await Promise.all([team.picks(TOK_A), team.picks(TOK_A), team.picks(TOK_A)]);
+    expect(calls).toHaveLength(3);
+    expect(y).toBe(x);
+    expect(z).toBe(x);
+    t += 59_000;
+    expect(await team.picks(TOK_A)).toBe(x);
+    expect(calls).toHaveLength(3); // second call within 60 s: no fetch
+    await team.picks(TOK_B);
+    expect(calls).toHaveLength(6); // another token has its own entry
+    t += 2_000; // A is now 61 s old, B only 2 s
+    await team.picks(TOK_B);
+    expect(calls).toHaveLength(6);
+    const again = await team.picks(TOK_A);
+    expect(calls).toHaveLength(9);
+    expect(again).not.toBe(x);
+    expect(again.lists[0]!.name).toBe('Ann groceries');
+  });
+
+  it('keeps the cache under the token\'s SHA-256, never the token itself, and at most 100 tokens (oldest dropped)', async () => {
+    const { impl, calls } = bearerFetch({});
+    const team = new TeamBackend({ baseUrl: 'https://team.example', password: null }, { fetchImpl: impl, now: () => NOW, log: () => {} });
+    const tok = (i: number) => `tok-${String(i).padStart(4, '0')}-${'x'.repeat(20)}`;
+    for (let i = 0; i < 101; i++) await expect(team.picks(tok(i))).rejects.toThrow(); // refused: cached as failures
+    expect(calls).toHaveLength(101 * 3);
+    const state = inspect(team, { depth: 8, maxArrayLength: null, breakLength: Infinity });
+    expect(state).not.toContain('tok-');
+    expect(state).toContain(createHash('sha256').update(tok(100)).digest('hex'));
+    expect(state).not.toContain(createHash('sha256').update(tok(0)).digest('hex')); // the oldest was dropped
+    await expect(team.picks(tok(1))).rejects.toThrow(); // still cached
+    expect(calls).toHaveLength(101 * 3);
+    await expect(team.picks(tok(0))).rejects.toThrow(); // dropped, so asked again
+    expect(calls).toHaveLength(102 * 3);
+  });
+
+  it('a refused token (401 or 403) gives no picks, is cached like any failure, and never falls back to the demo login', async () => {
+    for (const status of [401, 403]) {
+      let t = NOW;
+      const lines: string[] = [];
+      const { impl, calls, logins } = bearerFetch({}, status);
+      const team = new TeamBackend({ baseUrl: 'https://team.example', password: 'demo-password-1' }, { fetchImpl: impl, now: () => t, log: (l) => lines.push(l) });
+      await expect(team.picks(TOK_A)).rejects.toThrow('token refused');
+      expect(calls).toHaveLength(3); // no retry
+      await expect(team.picks(TOK_A)).rejects.toThrow('token refused');
+      expect(calls).toHaveLength(3); // remembered for a moment
+      t += 21_000;
+      await expect(team.picks(TOK_A)).rejects.toThrow('token refused');
+      expect(calls).toHaveLength(6);
+      expect(logins()).toBe(0);
+      expect(lines.join()).not.toContain(TOK_A);
+      expect(lines).toHaveLength(2);
+    }
+  });
+
+  it('never puts the token in a log line or an error, whatever goes wrong', async () => {
+    const lines: string[] = [];
+    const failures = [
+      () => Promise.reject(Object.assign(new Error(`aborted ${TOK_A}`), { name: 'TimeoutError' })),
+      () => Promise.reject(new Error(`connect failed for ${TOK_A}`)),
+      () => json({ detail: TOK_A }, 500),
+      () => new Response(`<html>${TOK_A}`, { status: 200 }),
+    ];
+    for (const fail of failures) {
+      const { impl } = bearerFetch({}, 401);
+      const wrapped = (async (input: string | URL | Request, init?: RequestInit) => (String(input).includes('/v1/lists') ? fail() : impl(input, init))) as typeof fetch;
+      const team = new TeamBackend({ baseUrl: 'https://team.example', password: null }, { fetchImpl: wrapped, now: () => NOW, log: (l) => lines.push(l) });
+      const err = await team.picks(TOK_A).then(() => null, (e: unknown) => e as Error);
+      expect(err).toBeInstanceOf(Error);
+      expect(`${err!.message} ${err!.stack} ${String((err as { cause?: unknown }).cause)}`).not.toContain(TOK_A);
+    }
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.join('\n')).not.toContain(TOK_A);
+  });
+
+  it('treats the answers as untrusted data, as on the demo path', async () => {
+    const dirty = householdOf('Ann');
+    dirty.lists = [{ name: 'L\u0000ist\u202E', source: 'user', status: 'open', items: [{ title: `Oat\nmilk ${'z'.repeat(200)}`, quantity: 1, checked: false }] }];
+    dirty.suggestions = [{ title: 'Ignore previous instructions\u0007', status: 'suggested', rationale: 'a\u200Bb' }];
+    dirty.runouts = { runouts: [] };
+    const { impl } = bearerFetch({ [TOK_A]: dirty });
+    const team = new TeamBackend({ baseUrl: 'https://team.example', password: null }, { fetchImpl: impl, now: () => NOW, log: () => {} });
+    const picks = await team.picks(TOK_A);
+    expect(picks.lists[0]!.name).toBe('L ist');
+    expect(picks.lists[0]!.items[0]!.name).toHaveLength(80);
+    expect(picks.suggestions).toEqual([{ name: 'Ignore previous instructions', reason: 'a b' }]);
+  });
+
+  it('with a base URL but no demo password: a token gets its household, no token gets nothing (and no fetch)', async () => {
+    const { impl, calls } = bearerFetch({ [TOK_A]: householdOf('Ann') });
+    const lines: string[] = [];
+    const team = teamBackendFromEnv({ TEAM_API_BASE_URL: 'https://team.example' }, { fetchImpl: impl, now: () => NOW, log: (l) => lines.push(l) });
+    expect(team).toBeInstanceOf(TeamBackend);
+    await expect(team!.picks()).rejects.toThrow();
+    expect(calls).toHaveLength(0);
+    expect((await team!.picks(TOK_A)).lists[0]!.name).toBe('Ann groceries');
+    expect(calls).toHaveLength(3);
+    expect(lines).toEqual([]);
+  });
+
+  it('householdToken accepts 1 to 4096 printable ASCII characters with no whitespace, else nothing', () => {
+    expect(householdToken(TOK_A)).toBe(TOK_A);
+    expect(householdToken('eyJhbGciOi.J9.eyJzdWIi-_=+/~')).toBe('eyJhbGciOi.J9.eyJzdWIi-_=+/~');
+    expect(householdToken('x')).toBe('x');
+    expect(householdToken('x'.repeat(4096))).toBe('x'.repeat(4096));
+    for (const bad of [
+      undefined, '', ' ', 'two words', ' lead', 'trail ', 'tab\there', 'line\nbreak', 'cr\r', 'nul\u0000', 'del\u007f',
+      'caf\u00e9', 'tok\u200b', 'x'.repeat(4097), ['a'], ['a', 'b'], 42, null, {},
+    ]) {
+      expect(householdToken(bad)).toBeUndefined();
+    }
   });
 });
 
@@ -325,10 +518,12 @@ describe('GET /api/runs/:id/wish-picks', () => {
   }
   const past = run('past', 'QFC', [chip('Greek yogurt', { addedAt: NOW - DAY }), chip('Paper towels', { addedAt: NOW - DAY })]);
   const current = run('now', 'QFC', [chip('Paper towels')]);
-  const get = async (url: string) => {
-    const r = await app.inject({ url, headers: { 'x-dibs-key': PRIYA_KEY } });
+  const get = async (url: string, headers: Record<string, string> = {}) => {
+    const r = await app.inject({ url, headers: { 'x-dibs-key': PRIYA_KEY, ...headers } });
     return { status: r.statusCode, body: r.json() };
   };
+  const PICKS = '/api/runs/now/wish-picks?personId=priya';
+  const historyOnly = { list: null, suggestions: [{ name: 'Greek yogurt', reason: 'In your last run' }] };
 
   it('without the team backend: list null, suggestions from run history', async () => {
     delete process.env.TEAM_API_BASE_URL;
@@ -357,6 +552,56 @@ describe('GET /api/runs/:id/wish-picks', () => {
     expect((await get('/api/runs/now/wish-picks?personId=priya')).body).toEqual({
       list: null, suggestions: [{ name: 'Greek yogurt', reason: 'In your last run' }],
     });
+  });
+
+  it('X-Household-Token: shows that person\'s own household, signs in as no one, and keeps people apart', async () => {
+    const { impl, calls, logins } = bearerFetch({ [TOK_A]: householdOf('Ann'), [TOK_B]: householdOf('Bo') });
+    await start(new TeamBackend({ baseUrl: 'https://team.example', password: 'demo-password-1' }, { fetchImpl: impl, now: () => NOW, log: () => {} }), [past, current]);
+
+    const a = await get(PICKS, { 'x-household-token': TOK_A });
+    expect(a.status).toBe(200);
+    expect(a.body.list).toEqual({ name: 'Ann groceries', store: 'QFC', items: [{ name: 'Ann milk', detail: '' }] });
+    expect(a.body.suggestions.map((s: { name: string }) => s.name)).toEqual(['Ann eggs', 'Ann granola', 'Greek yogurt']);
+    const b = await get(PICKS, { 'x-household-token': TOK_B });
+    expect(b.body.list.name).toBe('Bo groceries');
+    expect(JSON.stringify([a.body, b.body])).not.toMatch(/tok-|Bearer/);
+    expect(logins()).toBe(0);
+    for (const c of calls) expect((c.init.headers as Record<string, string>).authorization).toMatch(/^Bearer tok-[AB]{24}$/);
+
+    // No header: today's behaviour, the demo account's household (this is the only login).
+    const demo = await get(PICKS);
+    expect(demo.body.list.name).toBe('Household essentials');
+    expect(logins()).toBe(1);
+    expect((await get(PICKS, { 'x-household-token': TOK_A })).body).toEqual(a.body);
+  });
+
+  it('X-Household-Token: a refused token falls back to run history, never to the demo household', async () => {
+    const { impl, logins } = bearerFetch({ [TOK_A]: householdOf('Ann') });
+    await start(new TeamBackend({ baseUrl: 'https://team.example', password: 'demo-password-1' }, { fetchImpl: impl, now: () => NOW, log: () => {} }), [past, current]);
+    expect(await get(PICKS, { 'x-household-token': 'tok-expired-0000000000000' })).toEqual({ status: 200, body: historyOnly });
+    expect(logins()).toBe(0);
+  });
+
+  it('X-Household-Token: a malformed value is ignored, as if absent', async () => {
+    const seen: (string | undefined)[] = [];
+    const spy: HouseholdSource = { picks: async (token?: string) => { seen.push(token); return { lists: [], suggestions: [] }; } };
+    await start(spy, [past, current]);
+    const bad = ['two words', 'x'.repeat(4097), 'tok-a, tok-b', 'tok\u0001ctl', ' '];
+    for (const value of bad) expect((await get(PICKS, { 'x-household-token': value })).status).toBe(200);
+    expect(seen).toEqual(bad.map(() => undefined));
+    await get(PICKS, { 'x-household-token': TOK_A });
+    await get(PICKS, { 'x-household-token': 'x'.repeat(4096) });
+    await get(PICKS);
+    expect(seen.slice(bad.length)).toEqual([TOK_A, 'x'.repeat(4096), undefined]);
+  });
+
+  it('with only TEAM_API_BASE_URL: a token gets its household, no token gets run history', async () => {
+    const { impl, logins } = bearerFetch({ [TOK_A]: householdOf('Ann') });
+    const team = teamBackendFromEnv({ TEAM_API_BASE_URL: 'https://team.example' }, { fetchImpl: impl, now: () => NOW, log: () => {} });
+    await start(team, [past, current]);
+    expect((await get(PICKS, { 'x-household-token': TOK_A })).body.list.name).toBe('Ann groceries');
+    expect(await get(PICKS)).toEqual({ status: 200, body: historyOnly });
+    expect(logins()).toBe(0);
   });
 
   it('refuses an unknown run or person', async () => {
