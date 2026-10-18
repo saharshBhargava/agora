@@ -2,7 +2,7 @@
 
 Dibs watches a shopper's basket with a phone camera, turns each item into a chip, and lets friends lift chips into their own tray so the bill splits itself. Every claimer's cap is a real card authorization; at settle, each share is captured and the rest is released.
 
-Dibs lives beside Agora in this repository: the native iPhone app in `ios/`, the Node server in `server/` (Fastify + WebSocket, JSON snapshot storage) and the web claimer/shopper in `web/` (Next.js static export served by the server). It has its own server and its own people, and does not use Agora's backend, accounts or Render service. Run every command below from the repository root.
+Dibs lives beside Agora in this repository: the native iPhone app is the **Dibs tab of the Agora app** (sources in `Agora/Dibs/`, tests in `AgoraTests/Dibs*.swift`), the Node server is in `server/` (Fastify + WebSocket, JSON snapshot storage) and the web claimer/shopper is in `web/` (Next.js static export served by the server; web join links keep working). It has its own server and its own people, and does not use Agora's backend, accounts or Render service. Run every command below from the repository root.
 
 In the live setup (`scripts/demo-server.sh`), the shopper's iPhone finds items on device with Apple Vision, the server names each crop with Gemini, the phone's hidden browser reads the price from qfc.com, claimers join on the web or in the app, and payments are simulated Visa authorizations and captures. Stub modes (three fixed props, a fixed price table) remain for offline testing.
 
@@ -33,15 +33,14 @@ It rebuilds web and server when they are stale, reads `GEMINI_API_KEY` from `ser
 
 The "+ Wish" page (`GET /api/runs/:id/wish-picks`) suggests items from this server's past runs at the same store. To also show the household's shopping list, wishlist suggestions and run-out forecasts from the team API (`backend/` on main), put `TEAM_API_BASE_URL` and `AGORA_DEMO_PASSWORD` in `server/.env` (see Env flags). The server signs in as the API's demo account, caches answers for 60 s, and falls back to run history when the API is slow (4 s) or down.
 
-### Native iOS app
+### Native iOS app (the Agora app's Dibs tab)
 
 ```sh
-brew install xcodegen
-cp ios/Local.xcconfig.example ios/Local.xcconfig   # signing team, bundle id, DIBS_SERVER_URL (gitignored)
-cd ios && xcodegen generate && open Dibs.xcodeproj
+cp Config/Local.xcconfig.example Config/Local.xcconfig   # AGORA_BUNDLE_ID, DEVELOPMENT_TEAM, DIBS_SERVER_URL (gitignored)
+ruby scripts/generate-project.rb && open Agora.xcodeproj  # scheme Agora; Dibs is the cart tab
 ```
 
-`ios/Config/Dibs.xcconfig` defaults to `http://localhost:3000`; set `DIBS_SERVER_URL` in `Local.xcconfig` to the tunnel URL for a real phone. Launch arguments: `-DibsAutoShop YES` starts a run and opens the shopper camera, `-DibsDebugCrops YES` shows detection crops, `-DibsAutoRemove YES` removes items that leave the frame (off by default), `-DibsStoreSetup YES` picks the QFC store in the price browser (off by default). Tests: `xcodebuild test -project ios/Dibs.xcodeproj -scheme Dibs -destination 'platform=iOS Simulator,name=<iPhone>'`.
+`DIBS_SERVER_URL` is empty in `Config/Agora.xcconfig`, so the tab falls back to `http://localhost:3000`; set it in `Config/Local.xcconfig` to the tunnel URL for a real phone (it reaches the app as Info.plist `DibsServerURL`). `dibs://join?run=…` links open the Dibs tab on its join screen. Launch arguments: `-DibsAutoShop YES` starts a run and opens the shopper camera, `-DibsDebugCrops YES` shows detection crops, `-DibsAutoRemove YES` removes items that leave the frame (off by default), `-DibsStoreSetup YES` picks the QFC store in the price browser (off by default). Tests run with Agora's: `xcodebuild test -project Agora.xcodeproj -scheme Agora -destination 'platform=iOS Simulator,name=<iPhone>'` (Dibs classes are `AgoraTests/Dibs*`; fixtures are `Fixtures/dibs-*.json`).
 
 ### Camera demo: drop order matters
 
@@ -111,7 +110,7 @@ State is in memory with a JSON snapshot; a redeploy loses runs, so create the ru
 
 ## Install on phones
 
-HTTPS is required for the camera, which the tunnel (or Railway) provides. The native app in `ios/` is the main shopper path; the steps below are the web (Add to Home Screen) path.
+HTTPS is required for the camera, which the tunnel (or Railway) provides. The native app (the Agora app's Dibs tab) is the main shopper path; the steps below are the web (Add to Home Screen) path.
 
 1. Create a run: `curl -X POST https://<domain>/api/runs` returns `runId`, `shopperId` and the shopper's `key`.
 2. Shopper phone: open `https://<domain>/shopper?run=<runId>&person=<shopperId>#key=<key>` in Safari (the page saves the key and drops it from the address bar; the fragment never reaches the server), Share, Add to Home Screen, then open it from the home screen and allow the camera. Starting the run on the phone itself ("Start a run") needs no key in the link. On this phone set Settings → Display & Brightness → Auto-Lock → Never (the page also holds a screen wake lock where Safari allows it). Clip it above the basket.

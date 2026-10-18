@@ -6,7 +6,7 @@ name: iOS
 # hands off to deploy.yml.
 on:
   pull_request:
-    paths: ["Agora/**", "AgoraTests/**", "Agora.xcodeproj/**", "Config/**", "assets/**", "scripts/generate-project.rb", ".github/workflows/ios.yml"]
+    paths: ["Agora/**", "AgoraTests/**", "Agora.xcodeproj/**", "Config/**", "Fixtures/**", "assets/**", "scripts/generate-project.rb", ".github/workflows/ios.yml"]
 
 permissions:
   contents: read
@@ -21,7 +21,7 @@ jobs:
         run: |
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for devices in d["devices"].values() for x in devices if x["name"].startswith("iPhone")))')
           echo "SIMULATOR_ID=$DEVICE" >> "$GITHUB_ENV"
-      - name: Build and test authentication and provider boundaries
+      - name: Build and test authentication, provider boundaries and the Dibs tab
         run: |
           set -o pipefail
           # Xcode 16.4's iOS 18.5 simulator misses the Swift WebKit overlay for older deployment targets.
@@ -39,7 +39,27 @@ jobs:
             -only-testing:AgoraTests/WatchTests \
             -only-testing:AgoraTests/TripPlannerTests \
             -only-testing:AgoraTests/TripStoreTests \
-            -only-testing:AgoraTests/AgoraClientTests > build-test.log 2>&1 || { tail -n 160 build-test.log; exit 1; }
+            -only-testing:AgoraTests/AgoraClientTests \
+            -only-testing:AgoraTests/DibsTabTests \
+            -only-testing:AgoraTests/DibsAPITests \
+            -only-testing:AgoraTests/DibsWishPicksAPITests \
+            -only-testing:AgoraTests/DibsAppModelTests \
+            -only-testing:AgoraTests/DibsJoinLinkTests \
+            -only-testing:AgoraTests/DibsHomeRoutingTests \
+            -only-testing:AgoraTests/DibsRunTextTests \
+            -only-testing:AgoraTests/DibsModelTests \
+            -only-testing:AgoraTests/DibsQuantityTests \
+            -only-testing:AgoraTests/DibsClaimLogicTests \
+            -only-testing:AgoraTests/DibsShopperLogicTests \
+            -only-testing:AgoraTests/DibsSettleLogicTests \
+            -only-testing:AgoraTests/DibsWishLogicTests \
+            -only-testing:AgoraTests/DibsRunStoreTests \
+            -only-testing:AgoraTests/DibsPriceWorkerTests \
+            -only-testing:AgoraTests/DibsCartWatcherTests \
+            -only-testing:AgoraTests/DibsTapGateTests \
+            -only-testing:AgoraTests/DibsAddFailureClassTests \
+            -only-testing:AgoraTests/DibsFrameEncoderTests \
+            -only-testing:AgoraTests/DibsScanGeometryTests > build-test.log 2>&1 || { tail -n 160 build-test.log; exit 1; }
       - name: Capture onboarding screen
         run: |
           # Xcode may shut down the selected device after tests or run tests in a clone.

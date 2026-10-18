@@ -1,8 +1,8 @@
 name: dibs
 
-# Dibs (ios/, server/, web/) is a separate app from Agora; this workflow never deploys anything.
-# Server + web run on PRs and on main (a few minutes on Linux). The iOS simulator suite runs on
-# PRs only, like ios.yml, because macOS minutes are expensive.
+# Dibs server/ and web/ (separate from Agora's backend); this workflow never deploys anything.
+# Server + web run on PRs and on main (a few minutes on Linux). The Dibs iOS code is the Agora app's
+# Dibs tab (Agora/Dibs/), so its simulator tests run in ios.yml with the rest of AgoraTests.
 on:
   push:
     branches: [main]
@@ -21,7 +21,6 @@ on:
     paths:
       - "server/**"
       - "web/**"
-      - "ios/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -56,38 +55,3 @@ jobs:
         run: pnpm -r test
       - name: Smoke (builds web + server, starts on a free port with stubs)
         run: scripts/smoke.sh
-
-  ios:
-    if: github.event_name == 'pull_request'
-    runs-on: macos-15
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - name: Use the newest installed Xcode (Dibs is Swift 6 with complete concurrency checking)
-        run: |
-          XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
-          sudo xcode-select -s "$XCODE"
-          xcodebuild -version
-      - name: Generate the project
-        run: |
-          brew install xcodegen
-          cd ios && xcodegen generate
-      - name: Choose available iPhone simulator
-        run: |
-          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for devices in d["devices"].values() for x in devices if x["name"].startswith("iPhone")))')
-          echo "SIMULATOR_ID=$DEVICE" >> "$GITHUB_ENV"
-      - name: Build and run the Dibs tests
-        run: |
-          set -o pipefail
-          # Same simulator WebKit-overlay workaround as ios.yml; the app's iOS 17 target is unchanged.
-          xcodebuild test -project ios/Dibs.xcodeproj -scheme Dibs \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-            -derivedDataPath build -resultBundlePath build/DibsTests.xcresult \
-            CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=18.4 > build-test.log 2>&1 || { tail -n 160 build-test.log; exit 1; }
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: dibs-ios-tests
-          path: |
-            build/DibsTests.xcresult
-            build-test.log

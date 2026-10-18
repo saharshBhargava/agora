@@ -15,7 +15,7 @@ Documentation map:
 - [backend/README.md](backend/README.md): code layout, API overview, local development and tests.
 - [API contracts](docs/api/) and [frontend requests](docs/frontend-requests.md): implemented APIs versus UI/planned work.
 - [Backend spec](docs/backend-spec.md): design/roadmap, including unimplemented proposals; not a deployment manifest.
-- [Dibs README](docs/dibs/README.md): the separate shared-grocery-run app in `ios/`, `server/`, `web/` (see "Dibs" below).
+- [Dibs README](docs/dibs/README.md): the shared-grocery-run app: the Agora app's Dibs tab (`Agora/Dibs/`), `server/`, `web/` (see "Dibs" below).
 
 ## Shipping to production (continuous delivery)
 
@@ -112,13 +112,13 @@ of existing settings, changing `render.yaml` is not necessary and must not intro
 Record separately: repository baseline, actual live commit, migration state, dated verification, and unverified
 work. Do not claim a merge was deployed, a backup was tested, or a roadmap item was implemented without evidence.
 
-## Dibs (separate app in `ios/`, `server/`, `web/`)
+## Dibs (the Agora app's Dibs tab in `Agora/Dibs/`, plus `server/`, `web/`)
 
 Dibs is its own app with its own Node server, storage and people; Agora's rules above (RLS, migrations,
 demo seed, audit/notify) apply to `backend/`, not to Dibs. Details: [docs/dibs/README.md](docs/dibs/README.md).
 
-- Tests: `pnpm install && pnpm -r test`, `pnpm -C server exec tsc --noEmit`, `scripts/smoke.sh`; iOS with
-  `cd ios && xcodegen generate` then `xcodebuild test -scheme Dibs` on a simulator. CI: `.github/workflows/dibs.yml`.
+- Tests: `pnpm install && pnpm -r test`, `pnpm -C server exec tsc --noEmit`, `scripts/smoke.sh`; iOS Dibs tests
+  (`AgoraTests/Dibs*`) run in the Agora scheme. CI: `.github/workflows/dibs.yml` (server/web), `ios.yml` (iOS).
 - Hosting is a laptop + tunnel (`scripts/demo-server.sh`). Do not add a Render service for it, and do not point
   Render at the root `Dockerfile` (that image is Dibs; `render.yaml` must keep `rootDir: backend`).
 - Keep `PAYMENTS=sim` (the Cybersource sandbox mode needs its own keys). Secrets (`GEMINI_API_KEY`,
