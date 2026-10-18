@@ -301,7 +301,7 @@ struct ItemCarouselItem<Artwork: View>: View {
     var supportingText: String? = nil
     var detailColor: Color = .secondary
     @ViewBuilder var artwork: (CGFloat) -> Artwork
-    @ScaledMetric(relativeTo: .body) private var imageSize: CGFloat = 100
+    @ScaledMetric(relativeTo: .body) private var imageSize: CGFloat = 90
     @ScaledMetric(relativeTo: .body) private var itemWidth: CGFloat = 120
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
