@@ -304,8 +304,7 @@ def cmd_deploy(args) -> int:
         if state != "live":
             excerpt = render.failure_logs(result, render.service_info().get("ownerId"))
             if excerpt:  # in the log too, so `gh run view --log-failed` shows the cause
-                log("error lines from Render:
-" + excerpt)
+                log("error lines from Render:\n" + excerpt)
             still = smoke(os.environ["AGORA_API_URL"], previous_commit) if os.environ.get("AGORA_API_URL") else []
             annotate("error", f"Release {commit[:12]} failed on Render ({state}). Production stayed on "
                               f"{(previous_commit or '?')[:12]}" + (" and is healthy." if not still else
