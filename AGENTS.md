@@ -20,3 +20,14 @@ migrations must stay backward compatible. Details: [docs/deployment.md](docs/dep
 For operations read [docs/deployment.md](docs/deployment.md); for client integration read
 [docs/frontend-handoff.md](docs/frontend-handoff.md). The backend spec and original planning notes include
 unimplemented proposals: they are context, not proof that a feature exists or authorization to deploy it.
+
+## Dibs (side-by-side demo)
+
+This repo also contains **Dibs** under `ios/`, `server/`, and `web/` — a separate shop-together camera/claim/settle
+demo. Runbook: [docs/dibs/README.md](docs/dibs/README.md). Merge roadmap: [docs/dibs/merge-plan.md](docs/dibs/merge-plan.md).
+
+- Dibs is **not** on Render. Do not point `render.yaml` at the root Node `Dockerfile` or add a second free
+  Render service for it (WebSocket + durable disk need a tunnel or paid/volume hosting).
+- Path-filtered CI is `.github/workflows/dibs.yml`. Agora `backend.yml` / `ios.yml` / `deploy.yml` ignore Dibs paths.
+- Do not fold Dibs into the Agora SwiftUI target or FastAPI schema in the same PR as a side-by-side land;
+  later phases in the merge plan cover nesting and a "Shop together" tab.

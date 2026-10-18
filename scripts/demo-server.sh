@@ -7,7 +7,7 @@
 #
 # Builds web and server first when their output is missing or older than the source (FORCE_BUILD=1
 # always rebuilds). Loads server/.env (GEMINI_API_KEY) without printing it. DEMO_PORT overrides 3000.
-# SIM_FAIL_CAPTURE=<names> passes through (see README) to show a partly settled run.
+# SIM_FAIL_CAPTURE=<names> passes through (see docs/dibs/README.md) to show a partly settled run.
 # Optional, in server/.env (values never printed): TEAM_API_BASE_URL (team household API origin) and
 # AGORA_DEMO_PASSWORD (its demo-account password) fill the wish page with the household's shopping list
 # and suggestions; without them it suggests from past runs.

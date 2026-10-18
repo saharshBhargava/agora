@@ -15,6 +15,8 @@ Documentation map:
 - [backend/README.md](backend/README.md): code layout, API overview, local development and tests.
 - [API contracts](docs/api/) and [frontend requests](docs/frontend-requests.md): implemented APIs versus UI/planned work.
 - [Backend spec](docs/backend-spec.md): design/roadmap, including unimplemented proposals; not a deployment manifest.
+- [Dibs](docs/dibs/README.md): side-by-side shop-together demo (`ios/`, `server/`, `web/`); not on Render.
+  [Merge plan](docs/dibs/merge-plan.md) for later nesting / Agora tab / FastAPI port.
 
 ## Shipping to production (continuous delivery)
 
@@ -36,7 +38,8 @@ Merging to `main` **is** the release. Read [docs/deployment.md](docs/deployment.
   need expand → contract across two releases, with `-- agora: allow-breaking <reason>` on the contract step.
   The PR's `release-rehearsal` job enforces this and proves the previous release still runs on your schema.
 - Keep CI and Render usage lean: no preview environments or extra Render services (they share 750 free
-  hours), no new frequent schedules, and no smoke checks that write to production.
+  hours), no new frequent schedules, and no smoke checks that write to production. The root Node
+  `Dockerfile` belongs to Dibs; leave `render.yaml` `rootDir: backend` alone so Render never builds it.
 - Backups run daily (`db-backup`, encrypted). Restoring and the laptop fallback are in docs/deployment.md.
 
 ## Preserve the current integration
