@@ -15,6 +15,7 @@ import { LiveView } from '@/components/LiveView';
 import { WishSheet } from '@/components/WishSheet';
 import type { Chip } from '@/lib/types';
 import { visibleChip } from '@/lib/visible';
+import { useClock } from '@/lib/useClock';
 
 const NOTICE_MS = 4000;
 const RAISE_STEP_CENTS = 2000;
@@ -59,7 +60,8 @@ export default function ClaimScreen() {
     return () => window.removeEventListener('keydown', on);
   }, [overCap]);
 
-  const chips = useMemo(() => (run?.chips ?? []).filter((c) => visibleChip(c)), [run]);
+  const nowMs = useClock(run?.chips);
+  const chips = useMemo(() => (run?.chips ?? []).filter((c) => visibleChip(c, { now: nowMs })), [run, nowMs]);
   const highlight = useHighlight(chips, identifyingRegion ?? null);
 
   if (!runId) return <p className="error" role="alert">This link is missing its run.</p>;

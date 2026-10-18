@@ -15,6 +15,7 @@ import { UnclaimedList } from '@/components/UnclaimedList';
 import { UndoToast } from '@/components/UndoToast';
 import type { Chip } from '@/lib/types';
 import { visibleChip } from '@/lib/visible';
+import { useClock } from '@/lib/useClock';
 
 const UNDO_MS = 5000;
 const NOTICE_MS = 4000;
@@ -61,7 +62,8 @@ export default function ShopperScreen() {
     return () => clearTimeout(t);
   }, [tip]);
 
-  const chips = useMemo(() => (run?.chips ?? []).filter((c) => visibleChip(c, { shopper: true })), [run]);
+  const nowMs = useClock(run?.chips);
+  const chips = useMemo(() => (run?.chips ?? []).filter((c) => visibleChip(c, { shopper: true, now: nowMs })), [run, nowMs]);
   const highlight = useHighlight(chips, identifyingRegion ?? null);
 
   if (!runId || !personId) return <p className="error" role="alert">This link is missing its run.</p>;
