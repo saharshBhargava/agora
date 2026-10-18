@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "test": "pnpm -C server test"
+    "test": "pnpm -r test"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
