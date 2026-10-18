@@ -417,15 +417,29 @@ The designated demo account is backfilled with refresh status without resetting 
 
 ### Replenishment shopping trips
 
-Migration `0015_replenishment_trips.sql` adds household-visible, owner-managed trip reservations and outcomes.
-The demo backfill links a realistic trip to its shopping list and private Calendar event without resetting
-existing history. Calendar credentials stay on the phone. The server stores reviewed event details and
-provider references, and never calls Google from these trip endpoints.
+In iOS, open **Home → Plan shopping trips**, choose shopping hours and time including travel, then tap
+**Find shopping times**. Run-out forecasts generate store lists; the planner checks Calendar free/busy and
+proposes non-overlapping trips, with warnings when a deadline cannot be met. Open a list to review its
+items, or **Review trip → Add to Calendar** to approve the exact event. Availability is checked again before
+saving. The designated account follows the same flow using its private persisted Calendar.
 
-See [the API contract](../docs/api/replenishment-trips.md) for concurrency, recovery, RLS and outcome rules.
-The native planner must reserve the reviewed list before creating its Calendar event, then report the outcome.
-The backend release does not include the native planner UI. No unattended server scheduling, store-hours lookup
-or route optimization is included.
+Migration `0015_replenishment_trips.sql` adds household-visible, owner-managed trip reservations and outcomes.
+The demo backfill links a realistic trip to its shopping list and private Calendar event. Calendar credentials
+stay on the phone. The server stores reviewed event details and provider references, and never calls Google
+from these trip endpoints. See [the contract](../docs/api/replenishment-trips.md) for concurrency, recovery,
+RLS and outcome rules. No unattended server scheduling, store-hours lookup or route optimization is included.
+
+To test the native flow against a real isolated API/database, start:
+
+```bash
+AGORA_TEST_DATABASE_URL=postgresql://localhost/postgres uv run python -m tests.support.ios_inventory_server
+```
+
+Run `AgoraTests/TripLiveTests` in the iOS Simulator. It signs into the local designated account, generates
+lists, plans and approves a trip, verifies the persisted Calendar event, restores the session and checks
+duplicate prevention and list updates. Its transport only redirects a synthetic test origin to loopback;
+normal app HTTPS validation is unchanged. `TripTests` covers native Google HTTP contracts with fixtures,
+deadline/busy-slot planning, DST and failure recovery. Live Google credentials are not needed for these tests.
 
 Price-watch web discovery uses `app/web_search.py` for provider routing and `app/watch_model.py` for
 the OpenAI-compatible reasoning transport. Search-provider keys are independent of the reasoning model;

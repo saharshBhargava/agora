@@ -86,7 +86,7 @@ a Gmail account just to let the frontend team sign in. See [frontend handoff](fr
 | Model routing | `Agora/Models/` abstraction; Gemini/OpenAI-compatible connections, profiles, per-feature assignment; demo override | Do not revert to Gemini-only controllers or send demo captures to external models |
 | Recognition details | Readable brand/variant/package-size fields composed into reviewed item names; shared validation and Gemini-compatible schema | Do not restore the earlier broad-name-only prompt or unsupported generation-schema constraints |
 | Wishlist | Backend lifecycle, priority ranking, suggestions and feedback; native Wishlist and Suggested views (`Agora/Shopping/`, 7bc3f8e); realistic demo rows | Reviewed price watches, source verification and offer inbox are implemented; real discovery needs a backend model connection |
-| Forecasts/lists | Backend run-outs, histories, list CRUD and generation; demo backfill | Full native run-out/list screens/integration remain requested |
+| Forecasts/lists | Backend run-outs, histories, list CRUD and generation; demo backfill; native per-store list generation and checklists in Shopping trips | Dedicated forecast-history screens remain requested |
 | Commerce | Backend policy, mandates, approval/outcome lifecycle, pause/resume, budgets/spend, stable provider idempotency | Native commerce approval/mandate/budget UI remains requested; no real Stripe/Visa provider wired |
 | Calendar | Native tools and approval; demo-private routes + persistence; ordinary native Google route; Home trip summaries and reviewed list-to-trip planner | Calendar creation requires explicit review; store hours and travel routes are not inferred |
 | Suggestions/price watches | Six-hour backend replenishment jobs (00/06/12/18 UTC, `0014_wishlist_refresh.sql`), `POST /v1/wishlist/refresh`, on-demand model ideas (7bc3f8e) | Price watches add migration 0016, six-provider discovery, bounded model research and optional APNs. Deployment verification is recorded separately below |
@@ -135,3 +135,17 @@ endpoint is deployed and requires authentication. This supersedes the older live
 above. No production reset or real purchase was performed. Background inference configuration and actual
 APNs delivery are not established by these deployment checks. A later documentation-only commit need not
 change the running image.
+
+## Native shopping-trip integration — October 18, 2026 UTC
+
+The iOS planner connects existing run-out/list and trip APIs to Calendar availability, reviewed event
+creation, durable outcomes and read-only recovery after uncertain writes. Home exposes upcoming trips and
+per-store lists with checkable items. Demo traffic uses the private Calendar; ordinary accounts use their
+primary Google Calendar. The backend and its demo backfill already shipped in PR #22; this client change
+adds no database migration. This records source implementation, not distribution of a new iOS build.
+
+Trip validation: 57 selected simulator tests passed on an isolated checkout of current main plus the trip
+client, including the real local PostgreSQL/API flow (not skipped), Calendar recovery, account boundaries,
+shopping and watch regressions. The live-flow test verified explicit approval, one persisted Calendar
+event, session restoration, duplicate prevention and checklist updates. The trip client and tests match
+those in PR #27. This did not write to production or exercise real Google credentials.
