@@ -326,3 +326,19 @@ succeeded. Read-only production `/readyz` verification reported that exact merge
 enabled, migration `0019_watch_browser_fallback.sql` and no pending migrations. Chat adds no migration
 of its own. No production reset or test writes were performed. The native tools require a rebuilt iOS app;
 this verifies the backend release, not distribution of an iOS build or live credentialed model inference.
+
+
+## Existing inventory image recovery — release candidate, October 18, 2026
+
+Active inventory repairs missing image bindings at worker startup and household inventory loads. Empty
+automatic results older than seven days retry, and startup revisits old search-version misses while
+respecting the current negative cache. The existing image pipeline searches online and selects a result
+without requiring edits or a manual image choice. Explicit selections, removals, photos and successful
+images remain preserved. Demo seed/backfill restores labeled sample images without external searches.
+No migration is needed.
+
+The shared checkout passed 679 backend tests, Ruff, nine native image tests and a disposable demo CLI
+reset. A live search probe against an ordinary disposable local account automatically recovered existing
+Barilla spaghetti and PS5 items and served Walmart/PlayStation source images with HTTP 200. The native
+continued-polling improvement remains local and requires a rebuilt app; this backend release does not
+distribute the iOS client. Deployment verification will be recorded after the managed release succeeds.

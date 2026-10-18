@@ -148,6 +148,7 @@ UUID-based Agora asset paths, so credentials cannot be sent to an image's extern
 Every selection writes an audit event without personal content and emits `image.updated`. Job completion
 also emits `image.updated`; version checks prevent stale work replacing a renamed item or user override.
 Native visible thumbnails poll pending work for up to 90 seconds and retain a neutral unavailable placeholder on errors.
+The local native recovery change continues checking while visible and active; it requires a rebuilt app.
 
 The designated demo account receives deterministic Agora illustrations and never makes external image
 searches. Seed/backfill is idempotent and preserves user overrides. The image editor labels sample and
@@ -188,3 +189,11 @@ new web searches. This is idempotent, emits `image.updated`, and increments the 
 worker cannot undo the selection. Explicit choices, removals and photos are preserved. New searches and
 shared-cache results use the same ranking. No additional schema migration is needed. Clients must render
 a version-2 candidate asset when the descriptor says `best_match`, and retain **Change image** as an override.
+
+Active inventory also repairs missing image bindings at worker startup and when `GET /v1/inventory` loads
+the household. Empty automatic results older than seven days are queued again during those checks.
+Startup retries unresolved inventory from older search versions when no current lookup cooldown exists.
+The same bounded online discovery, cache, automatic selection and authenticated image bytes used for
+suggestions and watches handle these jobs; users need not edit or recreate an existing inventory item.
+Recovery is idempotent and preserves ready images, photos, explicit removals and saved alternatives.
+Demo seed/backfill repairs missing inventory bindings with labeled sample illustrations, without web searches.
