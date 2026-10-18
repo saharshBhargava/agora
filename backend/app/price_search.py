@@ -48,6 +48,7 @@ class SearchResult:
     checked_count: int = 0
     errors: list[str] = field(default_factory=list)
     interaction_urls: list[str] = field(default_factory=list)
+    browser_urls: list[str] = field(default_factory=list)
 
 
 class SearchError(Exception):
@@ -389,12 +390,10 @@ class PriceSearchProvider:
 
     @property
     def discovery_available(self):
-        return self.model_available and self.router.available
+        return self.router.available
 
     @property
     def discovery_status(self):
-        if not self.model_available:
-            return 'model_not_configured'
         return 'available' if self.router.available else 'search_not_configured'
 
     async def generate(self, body: dict) -> dict:
@@ -466,16 +465,52 @@ class PriceSearchProvider:
                 if self.model_available:
                     await research(self, criteria, known_urls, result)
                 else:
-                    # Public product links can be monitored without a model/search credential.
+                    # Search and source verification also work without a reasoning model.
                     urls = [criteria["product_url"]] if criteria.get("product_url") else list(known_urls)
-                    if not urls:
-                        raise SearchError("research_model_not_configured")
+                    if not criteria.get("product_url") and self.router.available:
+                        # Prefer distinct retailers and product pages over repeated category pages.
+                        from app.web_search import SearchBudget
+                        budget = SearchBudget(self.settings.watch_provider_request_budget)
+                        suffixes = (' buy price', ' buy online product in stock', ' retailer product page price')
+                        for suffix in suffixes[:self.settings.watch_max_searches]:
+                            remaining = self.settings.watch_max_pages - result.checked_count
+                            if remaining <= 0:
+                                break
+                            sources = await self.search_sources(
+                                f"{criteria['query']}{suffix}"[:200], criteria, 8, budget=budget)
+                            urls = self.retailer_urls(urls + [source['url'] for source in sources])
+                            batch = [url for url in urls if url not in result.browser_urls][:min(3, remaining)]
+                            await self._check(batch, criteria, result)
+                            if self.has_usable_price(criteria, result) or not sources:
+                                break
+                        return result
+                    elif not urls:
+                        raise SearchError("search_not_configured")
                     await self._check(urls, criteria, result)
         except TimeoutError:
             result.errors.append("search_timeout")
         except SearchError as error:
             result.errors.append(str(error))
         return result
+
+    @staticmethod
+    def retailer_urls(urls: list[str]) -> list[str]:
+        unique = list(dict.fromkeys(urls))
+        categories = r'/browse/|/category/|/consoles/?$|/store/b/|/SubCategory/|/hardware/|/pcmcat'
+        products = r'/p/|/products?/|/dp/|/ip/|/buy-consoles/|/d/'
+        unique.sort(key=lambda url: -1 if re.search(products, url, re.I)
+                    else 1 if re.search(categories, url, re.I) else 0)
+        seen, first, rest = set(), [], []
+        for url in unique:
+            host = (urlsplit(url).hostname or '').removeprefix('www.')
+            (rest if host in seen else first).append(url)
+            seen.add(host)
+        return first + rest
+
+    @staticmethod
+    def has_usable_price(criteria: dict, result: SearchResult) -> bool:
+        from app.watch_ops import PRICE_REASONS, evaluate
+        return any(evaluate(criteria, offer)['reason'] in PRICE_REASONS for offer in result.offers)
 
     async def _check(self, urls: list[str], criteria: dict, result: SearchResult):
         from app.watch_research import PageEvidence
@@ -484,6 +519,8 @@ class PriceSearchProvider:
             if result.checked_count >= self.settings.watch_max_pages:
                 break
             result.checked_count += 1
+            if url not in result.browser_urls and len(result.browser_urls) < 5:
+                result.browser_urls.append(url)
             try:
                 final_url, html = await self.fetcher.fetch(url, criteria.get("allowed_domains", []))
                 PageEvidence(html, final_url, criteria.get("allowed_domains", [])).as_dict()
