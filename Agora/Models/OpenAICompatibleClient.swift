@@ -18,8 +18,12 @@ final class OpenAICompatibleClient: ModelClient {
         self.key = key; self.http = http ?? URLSessionCaptionHTTPClient()
     }
 
-    /// HTTP is allowed only for literal private addresses and local hostnames. HTTPS supports hosted servers.
-    static func validateEndpoint(_ endpoint: String) throws -> URL {
+    /// HTTP is allowed only when every destination address is private/loopback. HTTPS supports hosted servers.
+    ///
+    /// Literal private IPs and `localhost` / `*.localhost` (RFC 6761 loopback names) are accepted without DNS.
+    /// Other hostnames are resolved; every result must be private. Link-local (`169.254/16`, `fe80::/10`) is rejected.
+    /// Pass `addressesForHost` in tests to inject DNS results.
+    static func validateEndpoint(_ endpoint: String, addressesForHost: ((String) throws -> [String])? = nil) throws -> URL {
         guard endpoint == endpoint.trimmingCharacters(in: .whitespacesAndNewlines),
               endpoint.utf8.count <= 2048, !endpoint.contains("\\"),
               let components = URLComponents(string: endpoint),
@@ -32,20 +36,112 @@ final class OpenAICompatibleClient: ModelClient {
         }
         host = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
         if scheme == "http" {
-            let segments = host.split(separator: ".", omittingEmptySubsequences: false)
-            let octets = segments.compactMap { Int($0) }
-            let ipv4 = segments.count == 4 && octets.count == 4 && segments.allSatisfy { !$0.isEmpty && ($0 == "0" || !$0.hasPrefix("0")) && $0.utf8.allSatisfy { (48...57).contains($0) } } && octets.allSatisfy { (0...255).contains($0) }
-            let privateIPv4 = ipv4 && (octets[0] == 127 || octets[0] == 10 || (octets[0] == 172 && (16...31).contains(octets[1])) || (octets[0] == 192 && octets[1] == 168) || (octets[0] == 169 && octets[1] == 254))
-            var address = in6_addr()
-            let ipv6 = host.withCString { inet_pton(AF_INET6, $0, &address) } == 1
-            let privateIPv6 = ipv6 && (host == "::1" || host.hasPrefix("fc") || host.hasPrefix("fd") || host.hasPrefix("fe80:"))
-            guard privateIPv4 || privateIPv6 || host == "localhost" || host.hasSuffix(".localhost") || host.hasSuffix(".local") else {
-                throw failure("endpoint", "Use HTTPS for servers outside your local network.")
-            }
+            try assertPrivateHTTPHost(host, addressesForHost: addressesForHost)
         }
         var base = url
         if base.path.isEmpty || base.path == "/" { base.appendPathComponent("v1") }
         return base
+    }
+
+    private static func assertPrivateHTTPHost(_ host: String, addressesForHost: ((String) throws -> [String])?) throws {
+        if isIPLiteral(host) {
+            guard isAllowedPrivateAddress(host) else {
+                throw failure("endpoint", "Use HTTPS for servers outside your local network.")
+            }
+            return
+        }
+        if host == "localhost" || host.hasSuffix(".localhost") { return }
+        let resolve = addressesForHost ?? { try lookupAddresses(host: $0) }
+        let addresses: [String]
+        do { addresses = try resolve(host) }
+        catch let error as CaptionFailure { throw error }
+        catch {
+            throw failure("endpoint", "Could not resolve that local server address. Use a private IP (for example 192.168.x.x) or HTTPS.")
+        }
+        guard !addresses.isEmpty, addresses.allSatisfy(isAllowedPrivateAddress) else {
+            throw failure("endpoint", "Use HTTPS for servers outside your local network.")
+        }
+    }
+
+    private static func isIPLiteral(_ host: String) -> Bool {
+        parseIPv4(host) != nil || parseIPv6(host) != nil
+    }
+
+    /// Loopback and RFC 1918 / unique-local only. No link-local (`169.254`, `fe80`).
+    static func isAllowedPrivateAddress(_ host: String) -> Bool {
+        if let octets = parseIPv4(host) {
+            return octets[0] == 127
+                || octets[0] == 10
+                || (octets[0] == 172 && (16...31).contains(octets[1]))
+                || (octets[0] == 192 && octets[1] == 168)
+        }
+        guard let bytes = parseIPv6(host) else { return false }
+        // IPv4-mapped ::ffff:a.b.c.d → apply the IPv4 private check.
+        if bytes.prefix(10).allSatisfy({ $0 == 0 }) && bytes[10] == 0xff && bytes[11] == 0xff {
+            return isAllowedPrivateAddress("\(bytes[12]).\(bytes[13]).\(bytes[14]).\(bytes[15])")
+        }
+        // ::1
+        if bytes.dropLast().allSatisfy({ $0 == 0 }) && bytes[15] == 1 { return true }
+        // fc00::/7 unique local
+        return (bytes[0] & 0xfe) == 0xfc
+    }
+
+    private static func parseIPv4(_ host: String) -> [Int]? {
+        let segments = host.split(separator: ".", omittingEmptySubsequences: false)
+        let octets = segments.compactMap { Int($0) }
+        guard segments.count == 4, octets.count == 4,
+              segments.allSatisfy({ !$0.isEmpty && ($0 == "0" || !$0.hasPrefix("0")) && $0.utf8.allSatisfy { (48...57).contains($0) } }),
+              octets.allSatisfy({ (0...255).contains($0) }) else { return nil }
+        return octets
+    }
+
+    private static func parseIPv6(_ host: String) -> [UInt8]? {
+        var address = in6_addr()
+        guard host.withCString({ inet_pton(AF_INET6, $0, &address) }) == 1 else { return nil }
+        return withUnsafeBytes(of: &address) { Array($0) }
+    }
+
+    private static func lookupAddresses(host: String) throws -> [String] {
+        var hints = addrinfo(
+            ai_flags: 0,
+            ai_family: AF_UNSPEC,
+            ai_socktype: SOCK_STREAM,
+            ai_protocol: IPPROTO_TCP,
+            ai_addrlen: 0,
+            ai_canonname: nil,
+            ai_addr: nil,
+            ai_next: nil
+        )
+        var info: UnsafeMutablePointer<addrinfo>?
+        let code = host.withCString { getaddrinfo($0, nil, &hints, &info) }
+        guard code == 0, let first = info else {
+            throw failure("endpoint", "Could not resolve that local server address. Use a private IP (for example 192.168.x.x) or HTTPS.")
+        }
+        defer { freeaddrinfo(first) }
+        var addresses: [String] = []
+        var cursor: UnsafeMutablePointer<addrinfo>? = first
+        while let node = cursor {
+            defer { cursor = node.pointee.ai_next }
+            guard let addr = node.pointee.ai_addr else { continue }
+            var numeric = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            let status = getnameinfo(
+                addr,
+                socklen_t(node.pointee.ai_addrlen),
+                &numeric,
+                socklen_t(numeric.count),
+                nil,
+                0,
+                NI_NUMERICHOST
+            )
+            guard status == 0 else { continue }
+            var value = String(cString: numeric).lowercased()
+            if let zone = value.firstIndex(of: "%") { value = String(value[..<zone]) }
+            if !value.isEmpty { addresses.append(value) }
+        }
+        guard !addresses.isEmpty else {
+            throw failure("endpoint", "Could not resolve that local server address. Use a private IP (for example 192.168.x.x) or HTTPS.")
+        }
+        return addresses
     }
 
     static func availableModels(endpoint: String, key: String?, http: CaptionHTTPClient? = nil) async throws -> [String] {

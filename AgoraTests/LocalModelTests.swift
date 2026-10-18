@@ -232,13 +232,24 @@ final class LocalModelTests: XCTestCase {
     }
 
     func testEndpointValidation() throws {
-        for url in ["http://localhost:11434", "http://127.0.0.1:1234/v1", "http://192.168.1.5:8080/v1", "http://10.0.1.2/v1", "http://172.16.1.2/v1", "http://macbook.local/v1", "http://[::1]:8080", "http://[fd12::1]:8080", "https://models.example.com/api/v1"] {
+        for url in ["http://localhost:11434", "http://127.0.0.1:1234/v1", "http://192.168.1.5:8080/v1", "http://10.0.1.2/v1", "http://172.16.1.2/v1", "http://[::1]:8080", "http://[fd12::1]:8080", "https://models.example.com/api/v1"] {
             XCTAssertNoThrow(try OpenAICompatibleClient.validateEndpoint(url), url)
         }
-        for url in ["", "file:///tmp/model", "ftp://localhost", "http://example.com/v1", "http://10.1.2.3.evil.example/v1", "http://010.0.0.1/v1", "http://172.32.1.2/v1", "https://user:pass@host/v1", "http://localhost/v1?key=secret", "http://localhost/v1#fragment", "http://localhost:0/v1"] {
+        for url in ["", "file:///tmp/model", "ftp://localhost", "http://8.8.8.8/v1", "http://169.254.169.254/v1", "http://[fe80::1]:8080/v1", "http://172.32.1.2/v1", "http://010.0.0.1/v1", "https://user:pass@host/v1", "http://localhost/v1?key=secret", "http://localhost/v1#fragment", "http://localhost:0/v1"] {
             XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint(url), url)
         }
         XCTAssertEqual(try OpenAICompatibleClient.validateEndpoint("http://localhost:1234").absoluteString, "http://localhost:1234/v1")
+        XCTAssertNoThrow(try OpenAICompatibleClient.validateEndpoint("http://macbook.local/v1", addressesForHost: { _ in ["192.168.1.10"] }))
+        XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint("http://macbook.local/v1", addressesForHost: { _ in ["8.8.8.8"] }))
+        XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint("http://macbook.local/v1", addressesForHost: { _ in ["192.168.1.10", "93.184.216.34"] }))
+        XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint("http://evil.local/v1", addressesForHost: { _ in ["169.254.1.1"] }))
+        XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint("http://example.com/v1", addressesForHost: { _ in ["93.184.216.34"] }))
+        XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint("http://missing.local/v1", addressesForHost: { _ in [] }))
+        XCTAssertTrue(OpenAICompatibleClient.isAllowedPrivateAddress("10.0.0.1"))
+        XCTAssertFalse(OpenAICompatibleClient.isAllowedPrivateAddress("169.254.1.1"))
+        XCTAssertFalse(OpenAICompatibleClient.isAllowedPrivateAddress("fe80::1"))
+        XCTAssertTrue(OpenAICompatibleClient.isAllowedPrivateAddress("::ffff:192.168.0.5"))
+        XCTAssertFalse(OpenAICompatibleClient.isAllowedPrivateAddress("::ffff:8.8.8.8"))
     }
 
     func testModelListingUsesSameEndpointAndOptionalKey() async throws {
