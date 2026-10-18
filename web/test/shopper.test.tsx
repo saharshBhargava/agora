@@ -102,12 +102,12 @@ test('Camera sends no frames while disabled', async () => {
   expect(send).not.toHaveBeenCalled();
 });
 
-test('Camera shows a friendly message and demo link when permission is denied', async () => {
+test('Camera shows a friendly message and a sample-items link when permission is denied', async () => {
   Object.defineProperty(navigator, 'mediaDevices', {
     value: { getUserMedia: vi.fn(async () => { throw new Error('denied'); }) }, configurable: true,
   });
   render(<Camera send={vi.fn(() => true)} enabled region={null} mockHref="?mock=1" />);
-  expect(await screen.findByRole('link', { name: 'Use demo props' })).toHaveAttribute('href', '?mock=1');
+  expect(await screen.findByRole('link', { name: 'Use sample items' })).toHaveAttribute('href', '?mock=1');
 });
 
 test('tapToFrame maps a tap through object-fit cover to frame pixels', () => {
@@ -141,7 +141,7 @@ test('non-shopper person is pointed to the claim page', () => {
 test('Checkout calls the checkout route; last call shows a banner', async () => {
   const { api } = await import('@/lib/api');
   const { rerender } = render(<ShopperScreen />);
-  fireEvent.click(screen.getByRole('button', { name: 'Checkout' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Check out' }));
   await act(async () => {});
   expect(api.checkout).toHaveBeenCalledWith('r1', 'shop');
   setSock(baseRun({ state: 'lastCall', lastCallEndsAt: Date.now() + 5000 }), { lastCallEndsAt: Date.now() + 5000 });
@@ -207,7 +207,7 @@ test('after the receipt the shopper sees Go to settle instead of the board, keep
     const { unmount } = render(<ShopperScreen />);
     expect(screen.getByRole('link', { name: 'Go to settle' })).toHaveAttribute('href', '/settle?run=r1&person=shop&mock=1');
     expect(screen.queryByLabelText(/^Eggs/)).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Checkout' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Check out' })).toBeNull();
     unmount();
   }
 });
@@ -265,4 +265,44 @@ test('Camera holds a wake lock and re-acquires the camera when visible again or 
   expect(tracks[2].stop).toHaveBeenCalled();
   expect(sentinels.at(-1)!.release).toHaveBeenCalled();
   delete (navigator as unknown as { wakeLock?: unknown }).wakeLock;
+});
+
+test('the sheet shows what the housemates cover and one bar segment per claimer', () => {
+  const people = [
+    ...baseRun().people,
+    { id: 'p', name: 'Priya', initial: 'P', isShopper: false, authorizedCents: 4000, authId: 'x', approvalCode: null, payoutPan: null },
+    { id: 'm', name: 'Marcus', initial: 'M', isShopper: false, authorizedCents: 4000, authId: 'y', approvalCode: null, payoutPan: null },
+  ];
+  setSock(baseRun({
+    people,
+    chips: [
+      mk({ id: 'e', name: 'Eggs', priceCents: 872, claimers: ['p', 'm'], state: 'claimed' }),
+      mk({ id: 't', name: 'Towels', priceCents: 2399, claimers: ['m'], state: 'claimed' }),
+      mk({ id: 'k', name: 'Milk', priceCents: 429 }),
+      mk({ id: 'g', name: 'Gum', priceCents: 199, claimers: ['shop'], state: 'claimed' }),
+      mk({ id: 'w', name: 'Bagels', priceCents: null, state: 'wish', wishedBy: 'p' }),
+    ],
+  }));
+  const { container } = render(<ShopperScreen />);
+  expect(screen.getByTestId('covered')).toHaveTextContent('$32.71 of $38.99');
+  const bar = screen.getByRole('img', { name: 'Priya covers $4.36, Marcus covers $28.35, $6.28 unclaimed' });
+  const segs = bar.querySelectorAll('[data-segment]');
+  expect([...segs].map((s) => s.getAttribute('data-segment'))).toEqual(['p', 'm']);
+  expect((segs[0] as HTMLElement).style.width).toBe(`${(436 / 3899) * 100}%`);
+  expect(screen.getByText('Streaming to Priya and Marcus')).toBeInTheDocument();
+  expect(screen.getByText('Nobody yet · stays yours')).toBeInTheDocument();
+  expect(screen.getByText('Priya wants this')).toBeInTheDocument();
+  expect(container.querySelector('.tray')).toBeNull();
+});
+
+test('the crosshair button explains tap-to-identify', () => {
+  render(<ShopperScreen />);
+  fireEvent.click(screen.getByRole('button', { name: 'Tap an item the camera missed' }));
+  expect(screen.getByText('Tap the item on the screen to identify it')).toBeInTheDocument();
+});
+
+test('sample items read "Drop an item into the cart" and never say demo', () => {
+  const { container } = render(<ShopperScreen />);
+  expect(screen.getByText('Drop an item into the cart')).toBeInTheDocument();
+  expect(container.textContent).not.toMatch(/demo|mock|fake|seed/i);
 });

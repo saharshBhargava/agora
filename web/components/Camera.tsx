@@ -13,12 +13,15 @@ export type CameraProps = {
   enabled: boolean;
   /** The region the server is identifying, in frame pixels. */
   region: Box | null;
-  /** Link target for the "Use demo props" fallback. */
+  /** Optional white label over the region ("Kirkland Eggs · $8.72"); a pending outline pulses. */
+  label?: string | null;
+  pending?: boolean;
+  /** Link target for the "Use sample items" fallback. */
   mockHref: string;
 };
 
 /** Rear camera preview. Streams a 640 px JPEG frame every 500 ms; tapping the preview sends identifyAt. No shutter. */
-export function Camera({ send, enabled, region, mockHref }: CameraProps) {
+export function Camera({ send, enabled, region, label, pending = true, mockHref }: CameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
@@ -134,8 +137,8 @@ export function Camera({ send, enabled, region, mockHref }: CameraProps) {
   if (denied) {
     return (
       <div className="camera-denied">
-        <p>The camera is off. Allow camera access to stream the cart, or try the demo props.</p>
-        <a className="btn btn-secondary" href={mockHref}>Use demo props</a>
+        <p>The camera is off. Allow camera access to stream the cart, or drop in sample items.</p>
+        <a className="btn btn-sm btn-secondary" href={mockHref}>Use sample items</a>
       </div>
     );
   }
@@ -159,13 +162,17 @@ export function Camera({ send, enabled, region, mockHref }: CameraProps) {
   return (
     <div className="camera" ref={boxRef} onClick={onTap} role="button" tabIndex={0} aria-label="Live view. Tap an item to identify it.">
       <video ref={videoRef} className="camera-video" autoPlay muted playsInline />
-      {outline && <span className="camera-outline" style={outline} />}
-      <span className="watching"><span className="watching-dot" aria-hidden="true" />watching</span>
+      {outline && <span className={`camera-outline${pending ? ' camera-outline-pending' : ''}`} style={outline} />}
+      {outline && label && (
+        <span className="region-label camera-label" style={{ left: outline.left, top: outline.top }}>
+          <span className="region-label-dot" aria-hidden="true" />{label}
+        </span>
+      )}
     </div>
   );
 }
 
-/** Demo props for `?mock=1`: posts a bundled image with a hint, no basket needed. */
+/** Sample items for `?mock=1`: posts a bundled image with a hint, no basket needed. */
 export function MockProps({ onPick, busy }: { onPick: (name: PropName, imageBase64: string) => void | Promise<void>; busy: boolean }) {
   const props: { name: PropName; label: string }[] = [
     { name: 'eggs', label: 'Eggs' },
@@ -174,13 +181,13 @@ export function MockProps({ onPick, busy }: { onPick: (name: PropName, imageBase
   ];
   return (
     <div className="mock-props">
-      <p className="muted">Demo mode. Drop a prop into the cart.</p>
+      <p className="mock-props-title">Drop an item into the cart</p>
       <div className="mock-props-row">
         {props.map((p) => (
           <button
             key={p.name}
             type="button"
-            className="btn btn-secondary"
+            className="mock-pill"
             disabled={busy}
             onClick={async () => onPick(p.name, await propBase64(p.name))}
           >

@@ -33,13 +33,13 @@ export function UnclaimedList({
           <li key={c.id} className="card unclaimed-row">
             <div className="unclaimed-info">
               <span className="unclaimed-name">{c.name}</span>
-              <span className="muted">{c.priceCents === null ? '~$?' : formatCents(c.priceCents)}</span>
+              <span className="money" style={{ letterSpacing: 0 }}>{c.priceCents === null ? '~$?' : formatCents(c.priceCents)}</span>
             </div>
             <div className="unclaimed-actions">
-              <button type="button" className={`btn ${c.putBack ? 'btn-secondary' : ''}`} aria-pressed={!c.putBack} disabled={c.putBack}>
+              <button type="button" className={`btn btn-sm ${c.putBack ? 'btn-secondary' : ''}`} aria-pressed={!c.putBack} disabled={c.putBack}>
                 Mine
               </button>
-              <button type="button" className={`btn ${c.putBack ? '' : 'btn-secondary'}`} aria-pressed={c.putBack} disabled={c.putBack} onClick={() => onPutBack(c.id)}>
+              <button type="button" className={`btn btn-sm ${c.putBack ? '' : 'btn-secondary'}`} aria-pressed={c.putBack} disabled={c.putBack} onClick={() => onPutBack(c.id)}>
                 Put back
               </button>
             </div>

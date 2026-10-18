@@ -6,6 +6,7 @@ import {
 import type { Chip as ChipT, Person } from '@/lib/types';
 import { Chip } from './Chip';
 import { Grid } from './Grid';
+import { CartRows, CartRowView } from './CartRows';
 import { RemoveZone } from './RemoveZone';
 import { Tray, TrayChipView, type TrayApi, type TrayProps } from './Tray';
 
@@ -19,6 +20,8 @@ export type BoardExtras = {
   onRemove?: (chipId: string) => void;
   /** A plain tap on a grid chip. */
   onTap?: (chipId: string) => void;
+  /** 'shelf' (claimers: one scrolling row of chips plus the tray) or 'rows' (shopper: cart rows, no tray). */
+  layout?: 'shelf' | 'rows';
 };
 
 export function Board({
@@ -27,6 +30,7 @@ export function Board({
   removeZone,
   onRemove,
   onTap,
+  layout = 'shelf',
   ...tray
 }: { chips: ChipT[]; people: Person[] } & Omit<TrayProps, 'chips' | 'people'> & { trayChips?: ChipT[] } & BoardExtras) {
   const sensors = useSensors(
@@ -52,21 +56,27 @@ export function Board({
       onDragCancel={() => setActive(null)}
     >
       {removeZone && active && <RemoveZone />}
-      <Grid
-        onTap={onTap}
-        chips={chips}
-        me={tray.me}
-        people={people}
-        onClaim={(id) => {
-          const c = chips.find((x) => x.id === id);
-          if (c && !c.claimers.includes(tray.me)) trayApi.current?.claim(c);
-        }}
-      />
-      <Tray {...trayProps} chips={mine} people={people} apiRef={trayApi} />
+      {layout === 'rows' ? (
+        <CartRows chips={chips} me={tray.me} people={people} onTap={onTap} onRemoveKey={onRemove} />
+      ) : (
+        <Grid
+          onTap={onTap}
+          chips={chips}
+          me={tray.me}
+          people={people}
+          onClaim={(id) => {
+            const c = chips.find((x) => x.id === id);
+            if (c && !c.claimers.includes(tray.me)) trayApi.current?.claim(c);
+          }}
+        />
+      )}
+      {layout === 'shelf' && <Tray {...trayProps} chips={mine} people={people} apiRef={trayApi} />}
       <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }}>
         {active ? (
           active.from === 'tray' ? (
-            <TrayChipView chip={active.chip} me={tray.me} className="chip-lifted chip-overlay" tabIndex={-1} />
+            <TrayChipView chip={active.chip} me={tray.me} people={people} className="chip-lifted chip-overlay" tabIndex={-1} />
+          ) : layout === 'rows' ? (
+            <CartRowView chip={active.chip} me={tray.me} people={people} className="chip-lifted chip-overlay" tabIndex={-1} />
           ) : (
             <Chip chip={active.chip} me={tray.me} people={people} lifted className="chip-overlay" tabIndex={-1} />
           )
