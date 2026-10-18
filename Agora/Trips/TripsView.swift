@@ -345,6 +345,13 @@ private struct TripRecordRow: View {
                         Button("Review saved trip") { reviewingSavedTrip = true }
                             .disabled(store.busy)
                     }
+                    Button("Release reservation", role: .destructive) {
+                        Task { await store.release(trip) }
+                    }
+                    .disabled(store.busy)
+                    .accessibilityIdentifier("trips.release.\(trip.id)")
+                    Text("Only release after confirming this trip is not in Calendar. Releasing incorrectly can lead to a duplicate event.")
+                        .font(.caption2).foregroundStyle(.secondary)
                 }
             }
             if let raw = trip.eventUrl, let url = URL(string: raw), url.scheme == "https",
@@ -370,8 +377,12 @@ private struct TripRecordRow: View {
                             reviewingSavedTrip = false
                             Task { await store.resume(trip) }
                         }
+                        Button("Release reservation", role: .destructive) {
+                            reviewingSavedTrip = false
+                            Task { await store.release(trip) }
+                        }
                     } footer: {
-                        Text("Checks for this exact event first. If it has not been saved, checks your availability and submits the same saved request.")
+                        Text("Finish checks for this exact event first. If it has not been saved, checks your availability and submits the same saved request. Release only if the slot has passed or Calendar has no matching event.")
                     }
                 }
                 .navigationTitle("Review saved trip")

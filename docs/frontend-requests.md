@@ -455,7 +455,9 @@ Agora Calendar. Planning alone creates no Calendar events. No invitations are se
 Saved trips appear on Home and in Shopping trips after app restart. A reserved trip can be reviewed again
 to finish the same saved request; recovery first looks for the original event and keeps its deterministic
 identity. Uncertain outcomes offer **Check Calendar status**, which only reads the provider and never
-creates another event. Account or household switches invalidate reviews and pending local state.
+creates another event. When that read finds no matching event—or a reserved slot can no longer finish—
+**Release reservation** reports `failed` so the list can be planned again. Do not auto-release on
+timeouts. Account or household switches invalidate reviews and pending local state.
 
 Store lists can be opened and items checked/unchecked with their replenishment explanations visible.
 This does not increment inventory or record a purchase. Existing wishlist and shopping suggestion flows
