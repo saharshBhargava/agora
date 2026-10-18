@@ -21,7 +21,7 @@ pnpm -r test
 
 Web screens work without the server at `?mock=1` (props in `web/public/props/`).
 
-Live demo server (Gemini vision, QFC prices from the iOS price worker, 5 s last call, 60 s "Added twice?" window, simulated payments, port 3000):
+Live demo server (Gemini vision, QFC prices from the iOS price worker, 5 s last call, the same item seen again counted as ×2 on its row, simulated payments, port 3000):
 
 ```sh
 scripts/demo-server.sh https://<tunnel>   # or PUBLIC_URL=https://<tunnel> scripts/demo-server.sh
@@ -50,6 +50,8 @@ The prop images are generated placeholders. To use real photos: put `eggs.jpg`, 
 | `PUBLIC_URL` | none | Public origin used in the join QR code (`/api/runs/:id/qr`). When unset, the QR uses the request's `x-forwarded-proto` and `host`. |
 | `DATA_DIR` | `server/.data` | Where runs (`runs.json`) and the payments simulator's authorizations (`sim-payments.json`) are kept, so a restart can still settle. |
 | `RAISE_CAP` | on | Set `off` to disable raising a cap. |
+| `MERGE_DUPLICATES` | `1` (demo script) | `1`: when the camera identifies a product already in the cart, that chip's quantity goes up by one (×2, ×3, up to 20) instead of adding a second chip; no "Added twice?" card. A wish waiting for the product takes the new item instead. Unset: a same-name item within `DUPLICATE_MS` (default 5000) becomes its own chip with the "Added twice? Keep both / Remove one" card. |
+| `MERGE_WINDOW_MS` | `3000` | With `MERGE_DUPLICATES=1`: a detection that starts within this long of the chip's last count is the same item seen twice (a merged box, a double tap) and does not count again. |
 | `SIM_FAIL_CAPTURE` | none | With `PAYMENTS=sim`, a comma list of claimer names (case-insensitive, e.g. `Marcus,Priya`) whose capture and incremental fail at settle, so the run ends partly settled with "Retry Marcus". Checked on each Confirm, so clear it and restart to let Retry succeed. |
 
 ## Deploy to Railway

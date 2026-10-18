@@ -1,10 +1,11 @@
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { identifyPipeline, resumePriceLookups, type PipelineDeps } from '../src/pipeline.js';
 import { StubPrice } from '../src/price/stub.js';
 import { seedRun } from '../src/seed.js';
+import { claim, join as joinRun, wish } from '../src/run.js';
 import { createStore } from '../src/store.js';
 import { StubVision } from '../src/vision/stub.js';
 import { DiffDetector } from '../src/vision/detect-diff.js';
@@ -134,6 +135,88 @@ describe('identifyPipeline', () => {
     } finally {
       delete process.env.MERGE_DUPLICATES;
     }
+  });
+
+  describe('with MERGE_DUPLICATES=1', () => {
+    afterEach(() => {
+      delete process.env.MERGE_DUPLICATES;
+      delete process.env.MERGE_WINDOW_MS;
+    });
+
+    it('counts the same product seen again as one more on the same chip, never a second chip or a duplicate card', async () => {
+      process.env.MERGE_DUPLICATES = '1';
+      const { store, run, deps } = setup();
+      let t = 1000;
+      deps.now = () => t;
+      const ev = await eggs();
+      const seen = async (at: number) => {
+        t = at;
+        await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+        return store.get(run.id)!.chips;
+      };
+      const [first] = await seen(1000);
+      // Within 3 s of the last count it is the same detection (a merged box, a double tap): no change.
+      expect((await seen(2500)).map((c) => [c.id, c.quantity])).toEqual([[first.id, 1]]);
+      expect((await seen(10_000)).map((c) => [c.id, c.quantity])).toEqual([[first.id, 2]]);
+      expect((await seen(11_000)).map((c) => [c.id, c.quantity])).toEqual([[first.id, 2]]);
+      const chips = await seen(60_000);
+      expect(chips.map((c) => [c.id, c.quantity])).toEqual([[first.id, 3]]);
+      expect(chips[0].duplicateOf).toBeNull();
+      expect(chips[0].priceCents).toBe(872); // still the unit price
+    });
+
+    it('MERGE_WINDOW_MS sets the same-detection window', async () => {
+      process.env.MERGE_DUPLICATES = '1';
+      process.env.MERGE_WINDOW_MS = '20000';
+      const { store, run, deps } = setup();
+      let t = 1000;
+      deps.now = () => t;
+      const ev = await eggs();
+      await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+      t = 15_000;
+      await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+      expect(store.get(run.id)!.chips.map((c) => c.quantity)).toEqual([1]);
+    });
+
+    it('a waiting wish for the product takes the new item instead of counting it again', async () => {
+      process.env.MERGE_DUPLICATES = '1';
+      const { store, run, deps } = setup();
+      let t = 1000;
+      deps.now = () => t;
+      const ev = await eggs();
+      await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+      const first = store.get(run.id)!.chips[0];
+      const priya = { id: 'p', name: 'Priya', initial: 'P', isShopper: false, authorizedCents: 4000, authId: 'auth-p', approvalCode: '888888', payoutPan: null };
+      store.update(run.id, (r) => {
+        const joined = joinRun(r, priya);
+        return 'error' in joined ? joined : wish(joined, 'p', first.name, 2000, 'w1');
+      });
+      t = 10_000;
+      await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+      const chips = store.get(run.id)!.chips;
+      expect(chips.find((c) => c.id === 'w1')).toBeUndefined();
+      expect(chips).toHaveLength(2);
+      expect(chips.find((c) => c.id === first.id)!.quantity).toBe(1);
+      expect(chips.find((c) => c.id !== first.id)).toMatchObject({ claimers: ['p'], quantity: 1, duplicateOf: null });
+    });
+
+    it('re-checks the claimers of a counted chip against their caps', async () => {
+      process.env.MERGE_DUPLICATES = '1';
+      const { store, run, deps } = setup();
+      let t = 1000;
+      deps.now = () => t;
+      const ev = await eggs();
+      await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+      const first = store.get(run.id)!.chips[0];
+      const lee = { id: 'l', name: 'Lee', initial: 'L', isShopper: false, authorizedCents: 1000, authId: 'auth-l', approvalCode: '888888', payoutPan: null };
+      store.update(run.id, (r) => {
+        const joined = joinRun(r, lee);
+        return 'error' in joined ? joined : claim(joined, first.id, 'l', 2000);
+      });
+      t = 10_000;
+      await identifyPipeline(deps, run.id, ev.frameBase64, ev.region);
+      expect(store.get(run.id)!.chips[0]).toMatchObject({ quantity: 2, claimers: ['l'], overCap: ['l'] });
+    });
   });
 
   it('drops the chip when vision finds no clear item, instead of leaving it identifying', async () => {

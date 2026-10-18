@@ -20,8 +20,9 @@ import { createFrameRelay, shouldSendFrame } from './relay.js';
 import { parseClientMsg } from './protocol.js';
 import {
   backToCart, checkout, claim, fixable, fixChip, join as joinRun, leave, lock, putBack, removeChip,
-  setAuthorization, undoRemove, wish,
+  setAuthorization, setQuantity, undoRemove, wish,
 } from './run.js';
+import { MAX_QUANTITY } from './money.js';
 import { seedRun } from './seed.js';
 import { applyReceipt, fixReceiptLine, isLive, matchReceipt, parseReceiptLines, settle } from './settle.js';
 import { createStore } from './store.js';
@@ -377,6 +378,21 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     },
   );
 
+  // How many of the item are in the cart: the shopper's − / + stepper. Caps are re-checked like a price fix.
+  app.post<{ Params: { id: string; chipId: string }; Body: { personId?: string; quantity?: unknown } }>(
+    '/api/runs/:id/chips/:chipId/quantity',
+    async (req, reply) => {
+      if (!guard(reply, req.params.id, req.body?.personId, true)) return;
+      const quantity = req.body?.quantity;
+      if (typeof quantity !== 'number' || !Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY) {
+        return reply.code(400).send({ error: 'invalid quantity' });
+      }
+      const res = store.update(req.params.id, (r) => setQuantity(r, req.params.chipId, quantity));
+      if ('error' in res) return res.error === 'unknown chip' ? reply.code(404).send({ error: res.error }) : fail(reply, res.error);
+      return res.run;
+    },
+  );
+
   app.post<{ Params: { id: string; chipId: string }; Body: { personId: string } }>(
     '/api/runs/:id/chips/:chipId/putback',
     async (req, reply) => {
@@ -425,9 +441,12 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     // just leaves the overlap matcher on its own.
     let proposals: unknown[] | null = null;
     if (vision.matchReceipt) {
-      const chips = (store.get(run.id)?.chips ?? run.chips)
+      // A retake sends the cart's own counts, not the ones an earlier photo set.
+      const cur = store.get(run.id) ?? run;
+      const counts = cur.receipt?.cartQuantities ?? {};
+      const chips = cur.chips
         .filter(isLive)
-        .map((c) => ({ id: c.id, name: c.name, priceCents: c.priceCents }));
+        .map((c) => ({ id: c.id, name: c.name, priceCents: c.priceCents, quantity: counts[c.id] ?? c.quantity }));
       try {
         if (chips.length > 0) proposals = await vision.matchReceipt(lines, chips);
       } catch (e) {

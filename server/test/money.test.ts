@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allocateTax, capAllows, personTotals, roomFor, splitChip } from '../src/money.js';
+import { allocateTax, capAllows, lineCents, MAX_QUANTITY, personTotals, roomFor, splitChip } from '../src/money.js';
 
 const obj = (m: Map<string, number>) => Object.fromEntries(m);
 
@@ -61,5 +61,27 @@ describe('personTotals', () => {
 describe('roomFor regression', () => {
   it('keeps tax in integer basis points', () => {
     expect(roomFor([100], 1000, 0.1)).toBe(890);
+  });
+});
+
+describe('quantity: lineCents and personTotals', () => {
+  it('a line total is the unit price times the quantity; unpriced is null', () => {
+    expect(lineCents({ priceCents: 110, quantity: 2 })).toBe(220);
+    expect(lineCents({ priceCents: 110, quantity: 1 })).toBe(110);
+    expect(lineCents({ priceCents: null, quantity: 3 })).toBeNull();
+  });
+  it('a quantity missing from an older stored chip counts as 1', () => {
+    expect(lineCents({ priceCents: 429 })).toBe(429);
+  });
+  it("the receipt's exact total wins over unit times quantity", () => {
+    expect(lineCents({ priceCents: 110, quantity: 2, receiptTotalCents: 219 })).toBe(219);
+    expect(lineCents({ priceCents: 110, quantity: 2, receiptTotalCents: null })).toBe(220);
+  });
+  it('personTotals splits the line total, leftover cents to the earliest claimers', () => {
+    const totals = personTotals([{ priceCents: 110, quantity: 2, claimers: ['a', 'b', 'c'] }]);
+    expect(obj(totals)).toEqual({ a: 74, b: 73, c: 73 });
+  });
+  it('caps a quantity at 20', () => {
+    expect(MAX_QUANTITY).toBe(20);
   });
 });

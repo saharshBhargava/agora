@@ -22,7 +22,12 @@ export type Chip = {
   priceSource: 'sticker' | 'web' | 'receipt' | 'none';
   photoUrl: string | null;
   region: Box | null;
+  /** How many of this item are in the cart (1 to 20). `priceCents` is the price of one. */
   quantity: number;
+  /** The receipt's exact line total for this chip, tax included; once set it replaces priceCents × quantity. */
+  receiptTotalCents?: number | null;
+  /** When the camera last counted this item (ms); a re-detection within the merge window is the same item. */
+  lastSeenAt?: number;
   /** Ordered by claim time. */
   claimers: string[];
   state: ChipState;
@@ -57,6 +62,8 @@ export type ReceiptState = {
   unmatchedLines: number[];
   /** Lines the shopper claimed as their own. */
   mine?: number[];
+  /** Each chip's count before the receipt changed it: how many items' worth of lines it may take. */
+  cartQuantities?: Record<string, number>;
 };
 
 export type SettleStep = 'joined' | 'settling' | 'incremented' | 'reversed' | 'captured' | 'failed';

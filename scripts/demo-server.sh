@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Starts the production server for the live demo: Gemini vision, the browser-agent price worker for
-# QFC, 5 s last call, a 60 s "Added twice?" window, simulated payments, on port 3000.
+# QFC, 5 s last call, the same item seen again counted on its row (×2, MERGE_DUPLICATES), simulated
+# payments, on port 3000.
 #
 #   scripts/demo-server.sh https://<tunnel>      # or: PUBLIC_URL=https://<tunnel> scripts/demo-server.sh
 #

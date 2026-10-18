@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addChip, checkout, claim, createRun, join, lock, putBack, setAuthorization } from '../src/run.js';
+import { addChip, checkout, claim, createRun, join, lock, putBack, setAuthorization, sharesFor } from '../src/run.js';
 import { applyReceipt, fixReceiptLine, matchReceipt, parseReceiptLines, settle } from '../src/settle.js';
 import { SimPayments } from '../src/payments/sim.js';
 import type { PaymentsProvider } from '../src/payments/provider.js';
@@ -221,6 +221,147 @@ describe('fixReceiptLine', () => {
     out = fixReceiptLine(out, 3, 'mine');
     expect(out.receipt!.unmatchedLines).toEqual([]);
     expect(out.receipt!.mine).toEqual([3]);
+  });
+});
+
+describe('quantity on the receipt', () => {
+  /** a and b split two apples (110 each on the sticker); b also takes towels. */
+  function appleRun(appleQuantity = 2): Run {
+    let r = createRun({ id: 's', name: 'Sam', initial: 'S', payoutPan: null }, 'QFC', '4111111111111111', 0);
+    r = ok(join(r, person('a')));
+    r = ok(join(r, person('b')));
+    r = addChip(r, { ...chip('apple', 'Cosmic Crisp Apple', 110), quantity: appleQuantity }, 0);
+    r = addChip(r, chip('towels', 'Paper Towels 12 pk', 2399), 100);
+    r = ok(claim(r, 'apple', 'a', 1));
+    r = ok(claim(r, 'apple', 'b', 2));
+    r = ok(claim(r, 'towels', 'b', 3));
+    return lock(checkout(r, 1000, 0), 1000);
+  }
+
+  it('a line with the same quantity keeps the exact line total even when it does not divide', () => {
+    const run = appleRun(2);
+    const lines = parseReceiptLines([
+      { text: 'COSMIC CRISP APPLE', cents: 219, quantity: 2 },
+      { text: 'PAPER TOWELS', cents: 2399, quantity: 1 },
+    ]);
+    const out = applyReceipt(run, matchReceipt(run, lines));
+    expect(get(out, 'apple')).toMatchObject({ quantity: 2, receiptTotalCents: 219, priceSource: 'receipt', state: 'matched' });
+    expect(get(out, 'apple').priceCents).toBe(110); // the unit, for display; money uses the line total
+    const shares = sharesFor(out);
+    expect([shares.get('a'), shares.get('b')]).toEqual([110, 109 + 2399]);
+  });
+
+  it('the receipt wins when its quantity differs from the cart count', () => {
+    const run = appleRun(2);
+    const lines = parseReceiptLines([{ text: 'COSMIC CRISP APPLE', cents: 330, quantity: 3 }]);
+    const out = applyReceipt(run, matchReceipt(run, lines));
+    expect(get(out, 'apple')).toMatchObject({ quantity: 3, receiptTotalCents: 330, priceCents: 110 });
+    expect(sharesFor(out).get('a')).toBe(165);
+  });
+
+  it('a chip counted twice can take two separate one-item lines', () => {
+    const run = appleRun(2);
+    const lines = parseReceiptLines([
+      { text: 'COSMIC CRISP APPLE', cents: 110, quantity: 1 },
+      { text: 'PAPER TOWELS', cents: 2399, quantity: 1 },
+      { text: 'COSMIC CRISP APPLE', cents: 109, quantity: 1 },
+    ]);
+    const m = matchReceipt(run, lines);
+    expect(m.matches.map((x) => [x.lineIndex, x.chipId])).toEqual([[0, 'apple'], [1, 'towels'], [2, 'apple']]);
+    expect(m.unmatchedLines).toEqual([]);
+    const out = applyReceipt(run, m);
+    expect(get(out, 'apple')).toMatchObject({ quantity: 2, receiptTotalCents: 219 });
+  });
+
+  it('a one-item chip still takes one line; the second same-name line is left for the shopper', () => {
+    const run = appleRun(1);
+    const lines = parseReceiptLines([
+      { text: 'COSMIC CRISP APPLE', cents: 110, quantity: 1 },
+      { text: 'COSMIC CRISP APPLE', cents: 110, quantity: 1 },
+    ]);
+    const m = matchReceipt(run, lines);
+    expect(m.matches.map((x) => [x.lineIndex, x.chipId])).toEqual([[0, 'apple']]);
+    expect(m.unmatchedLines).toEqual([1]);
+  });
+
+  it('the model may give a counted chip as many lines as its count, no more', () => {
+    const run = appleRun(2);
+    const lines = parseReceiptLines([
+      { text: 'CC APL', cents: 110, quantity: 1 },
+      { text: 'CC APL', cents: 110, quantity: 1 },
+      { text: 'CC APL', cents: 110, quantity: 1 },
+    ]);
+    const m = matchReceipt(run, lines, [
+      { lineIndex: 0, chipId: 'apple', confidence: 0.9 },
+      { lineIndex: 1, chipId: 'apple', confidence: 0.9 },
+      { lineIndex: 2, chipId: 'apple', confidence: 0.9 },
+    ]);
+    expect(m.matches.map((x) => x.lineIndex)).toEqual([0, 1]);
+    expect(m.unmatchedLines).toEqual([2]);
+  });
+
+  it('spreads tax per line over every purchased line, and settle captures the exact totals', async () => {
+    const run = appleRun(2);
+    const lines = parseReceiptLines([
+      { text: 'COSMIC CRISP APPLE', cents: 219, quantity: 2 },
+      { text: 'PAPER TOWELS', cents: 2399, quantity: 1 },
+      { text: 'TIDE PODS', cents: 1382, quantity: 1 },
+      { text: 'TAX', cents: 400, quantity: 1 },
+    ]);
+    const out = applyReceipt(run, matchReceipt(run, lines));
+    // 400 over 4000 of purchases is 10%: apples 219 + 21, towels 2399 + 240 (leftover cents to the largest lines).
+    const apple = get(out, 'apple').receiptTotalCents!;
+    const towels = get(out, 'towels').receiptTotalCents ?? get(out, 'towels').priceCents!;
+    expect(apple - 219 + (towels - 2399)).toBeLessThanOrEqual(400);
+    const { calls, p } = recorder();
+    const settled = await settle(out, p, (id, step) => `${id}-${step}`, async () => undefined);
+    const captured = calls.filter((c) => c[0] === 'capture').reduce((s, c) => s + (c[2] as number), 0);
+    expect(captured).toBe(apple + towels);
+    expect(settled.settle.a.capturedCents + settled.settle.b.capturedCents).toBe(apple + towels);
+    expect(settled.settle.a.capturedCents).toBe(Math.ceil(apple / 2));
+  });
+
+  it('pairing a second line to a counted chip keeps its first line; on a one-item chip it moves', () => {
+    const lines = parseReceiptLines([
+      { text: 'COSMIC CRISP APPLE', cents: 110, quantity: 1 },
+      { text: 'APL', cents: 109, quantity: 1 },
+    ]);
+    let run = appleRun(2);
+    let out = applyReceipt(run, matchReceipt(run, lines));
+    expect(get(out, 'apple').quantity).toBe(1); // only one line so far: the receipt says one
+    expect(out.receipt!.unmatchedLines).toEqual([1]);
+    out = fixReceiptLine(out, 1, { chipId: 'apple' });
+    expect(out.receipt!.matches.map((x) => [x.lineIndex, x.chipId])).toEqual([[0, 'apple'], [1, 'apple']]);
+    expect(out.receipt!.unmatchedLines).toEqual([]);
+    expect(get(out, 'apple')).toMatchObject({ quantity: 2, receiptTotalCents: 219 });
+
+    run = appleRun(1);
+    out = applyReceipt(run, matchReceipt(run, lines));
+    out = fixReceiptLine(out, 1, { chipId: 'apple' });
+    expect(out.receipt!.matches.map((x) => [x.lineIndex, x.chipId])).toEqual([[1, 'apple']]);
+    expect(out.receipt!.unmatchedLines).toEqual([0]);
+    expect(get(out, 'apple')).toMatchObject({ quantity: 1, priceCents: 109 });
+  });
+
+  it('a chip that loses its line goes back to its cart count with no receipt total', () => {
+    const run = appleRun(2);
+    const lines = parseReceiptLines([{ text: 'COSMIC CRISP APPLE', cents: 330, quantity: 3 }]);
+    let out = applyReceipt(run, matchReceipt(run, lines));
+    out = fixReceiptLine(out, 0, 'mine');
+    expect(get(out, 'apple')).toMatchObject({ state: 'unmatched', quantity: 2, receiptTotalCents: null });
+  });
+
+  it('a retake matches against the cart counts, not the counts the first photo set', () => {
+    const run = appleRun(2);
+    let out = applyReceipt(run, matchReceipt(run, parseReceiptLines([{ text: 'COSMIC CRISP APPLE', cents: 110, quantity: 1 }])));
+    expect(get(out, 'apple').quantity).toBe(1);
+    const full = parseReceiptLines([
+      { text: 'COSMIC CRISP APPLE', cents: 110, quantity: 1 },
+      { text: 'COSMIC CRISP APPLE', cents: 110, quantity: 1 },
+    ]);
+    out = applyReceipt(out, matchReceipt(out, full));
+    expect(out.receipt!.matches).toHaveLength(2);
+    expect(get(out, 'apple')).toMatchObject({ quantity: 2, receiptTotalCents: 220 });
   });
 });
 

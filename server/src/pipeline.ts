@@ -2,7 +2,7 @@
 import sharp from 'sharp';
 import type { PriceProvider } from './price/provider.js';
 import type { ServerMsg } from './protocol.js';
-import { recentSameName, addChip, setChipLive, setChipPrice } from './run.js';
+import { addChip, countAgain, liveSameName, sameDetection, setChipLive, setChipPrice, wishFor } from './run.js';
 import type { Store } from './store.js';
 import type { Box } from './types.js';
 import type { VisionProvider } from './vision/provider.js';
@@ -108,11 +108,16 @@ async function identifyLive(
     return { chipId: null, error: nothing ? 'no item' : 'identify failed' };
   }
   if (process.env.MERGE_DUPLICATES === '1') {
+    // The same product already in the cart is counted on its chip ("×2") instead of getting a second
+    // chip. A detection that started within MERGE_WINDOW_MS of the chip's last count is the same item
+    // seen twice (a merged box, a re-detection, a double tap) and changes nothing. A wish waiting for
+    // the product takes a second one instead, so the wisher gets their own.
     const cur = store.get(runId);
-    const same = cur ? recentSameName(cur, found.name, now(), id, Number(process.env.MERGE_WINDOW_MS) || 10_000) : undefined;
-    if (same) {
-      // The camera saw the same product again (a merged box, a re-detection, a double tap): keep one chip.
-      store.update(runId, (r) => ({ ...r, chips: r.chips.filter((c) => c.id !== id) }));
+    const same = cur ? liveSameName(cur, found.name, id) : undefined;
+    const windowMs = Number(process.env.MERGE_WINDOW_MS) > 0 ? Number(process.env.MERGE_WINDOW_MS) : 3000;
+    const detectedAt = cur?.chips.find((c) => c.id === id)?.addedAt ?? now();
+    if (cur && same && (sameDetection(same, detectedAt, windowMs) || !wishFor(cur, found.name))) {
+      store.update(runId, (r) => countAgain({ ...r, chips: r.chips.filter((c) => c.id !== id) }, same.id, detectedAt, windowMs));
       return { chipId: same.id };
     }
   }

@@ -2,6 +2,18 @@
 
 const sum = (xs: number[]): number => xs.reduce((a, b) => a + b, 0);
 
+/** The most of one item a chip can count (the shopper's stepper and the camera both stop here). */
+export const MAX_QUANTITY = 20;
+
+/**
+ * A chip's line total: the receipt's exact total once it is read, else the unit price times the
+ * quantity (missing on chips stored before quantities existed: 1). Null while unpriced.
+ */
+export function lineCents(chip: { priceCents: number | null; quantity?: number; receiptTotalCents?: number | null }): number | null {
+  if (chip.receiptTotalCents !== undefined && chip.receiptTotalCents !== null) return chip.receiptTotalCents;
+  return chip.priceCents === null ? null : chip.priceCents * (chip.quantity ?? 1);
+}
+
 /** Split a price among claimers: floor share, leftover cents one each to the earliest claimers. */
 export function splitChip(priceCents: number, claimerIdsByClaimTime: string[]): Map<string, number> {
   const out = new Map<string, number>();
@@ -42,11 +54,13 @@ export function allocateTax(lineCents: number[], taxCents: number): number[] {
   return out;
 }
 
-/** Each person's total across chips, splitting each chip among its claimers. */
-export function personTotals(chips: { priceCents: number; claimers: string[] }[]): Map<string, number> {
+/** Each person's total across chips, splitting each chip's line total among its claimers. */
+export function personTotals(
+  chips: { priceCents: number; quantity?: number; receiptTotalCents?: number | null; claimers: string[] }[],
+): Map<string, number> {
   const totals = new Map<string, number>();
   for (const chip of chips) {
-    for (const [id, cents] of splitChip(chip.priceCents, chip.claimers)) {
+    for (const [id, cents] of splitChip(lineCents(chip) ?? 0, chip.claimers)) {
       totals.set(id, (totals.get(id) ?? 0) + cents);
     }
   }

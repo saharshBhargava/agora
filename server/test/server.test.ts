@@ -174,6 +174,38 @@ describe('dibs server', () => {
     expect(payments.calls.length).toBe(calls);
   });
 
+  it('POST /chips/:chipId/quantity: shopper only, 1 to 20, while the cart is open, re-checking caps', async () => {
+    const { runId, shopperId, A } = await setup(); // Ann holds 3000
+    const eggs = (await post(`/api/runs/${runId}/chips`, { imageBase64: '', hint: 'eggs' })).body; // 872
+    const wa = connect(runId, A);
+    await wa.opened;
+    wa.send({ t: 'claim', chipId: eggs.id });
+    for (let i = 0; i < 200 && (await getRun(runId)).chips[0].claimers.length === 0; i++) await sleep(10);
+    const url = `/api/runs/${runId}/chips/${eggs.id}/quantity`;
+
+    expect(await post(url, { personId: A, quantity: 2 })).toEqual({ status: 403, body: { error: 'shopper only' } });
+    for (const quantity of [0, 21, 1.5, '2', null, undefined]) {
+      expect(await post(url, { personId: shopperId, quantity })).toEqual({ status: 400, body: { error: 'invalid quantity' } });
+    }
+    expect((await post(`/api/runs/${runId}/chips/nope/quantity`, { personId: shopperId, quantity: 2 })).status).toBe(404);
+    expect((await post(`/api/runs/nope/chips/${eggs.id}/quantity`, { personId: shopperId, quantity: 2 })).status).toBe(404);
+
+    const two = await post(url, { personId: shopperId, quantity: 2 });
+    expect(two.status).toBe(200);
+    expect(two.body.chips[0]).toMatchObject({ quantity: 2, priceCents: 872, overCap: [] });
+    expect(sharesFor(two.body).get(A)).toBe(1744);
+    await wa.waitFor((m) => m.t === 'run' && (m.run as Run).chips[0]?.quantity === 2);
+
+    const four = await post(url, { personId: shopperId, quantity: 4 }); // 3488 > 3000
+    expect(four.body.chips[0]).toMatchObject({ quantity: 4, overCap: [A] });
+    expect((await post(url, { personId: shopperId, quantity: 3 })).body.chips[0].overCap).toEqual([]);
+
+    await post(`/api/runs/${runId}/checkout`, { personId: shopperId });
+    expect((await post(url, { personId: shopperId, quantity: 2 })).status).toBe(200); // last call still takes it
+    await wa.waitFor((m) => m.t === 'locked');
+    expect(await post(url, { personId: shopperId, quantity: 1 })).toEqual({ status: 409, body: { error: 'cart closed' } });
+  });
+
   it('POST /chips answers 422 for nothing there and 502 for a temporary failure', async () => {
     for (const [message, status] of [['identify: no clear item', 422], ['down', 502]] as const) {
       await app.close();

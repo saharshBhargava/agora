@@ -1,13 +1,15 @@
 // Pure run and chip state machines. Immutable updates, `now` injected, no I/O.
-import { capAllows, roomFor, splitChip } from './money.js';
+import { capAllows, lineCents, MAX_QUANTITY, roomFor, splitChip } from './money.js';
 import type { Chip, ChipState, Person, Run } from './types.js';
 
 type NewChip = Pick<Chip, 'id' | 'name' | 'priceCents' | 'priceSource' | 'photoUrl' | 'region' | 'quantity'>;
 type Err<E extends string> = { error: E };
 
 const UNDO_MS = 5000;
-/** Same-name chips added within this window show the "Added twice?" card. */
+/** Same-name chips added within this window show the "Added twice?" card (only without MERGE_DUPLICATES). */
 const DUPLICATE_MS = Number(process.env.DUPLICATE_MS) > 0 ? Number(process.env.DUPLICATE_MS) : 5000;
+/** With MERGE_DUPLICATES=1 the same product seen again is counted on its chip, so nothing is flagged. */
+const flagsDuplicates = (): boolean => process.env.MERGE_DUPLICATES !== '1';
 
 const normalize = (name: string): string => name.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[^a-z0-9]/g, '');
 const accepting = (run: Run): boolean => run.state === 'open' || run.state === 'lastCall';
@@ -21,21 +23,21 @@ const mapChip = (run: Run, id: string, fn: (c: Chip) => Chip): Run => ({
   chips: run.chips.map((c) => (c.id === id ? fn(c) : c)),
 });
 
-/** Full prices of the priced chips in a person's tray (unpriced count nothing). */
+/** Full line totals of the priced chips in a person's tray (unpriced count nothing). */
 function trayPrices(run: Run, personId: string, exceptChipId?: string): number[] {
   return run.chips
     .filter((c) => c.id !== exceptChipId && hasClaims(c) && c.claimers.includes(personId) && c.priceCents !== null)
-    .map((c) => c.priceCents as number);
+    .map((c) => lineCents(c) as number);
 }
 
-/** True when the person's tray, with this chip at its current price, fits their authorization. */
+/** True when the person's tray, with this chip at its current line total, fits their authorization. */
 function fits(run: Run, chip: Chip, personId: string): boolean {
   const p = person(run, personId);
   if (!p) return false;
   if (p.isShopper) return true;
   if (p.authorizedCents === null) return false;
   const tray = trayPrices(run, personId, chip.id);
-  return capAllows(tray, chip.priceCents ?? 0, p.authorizedCents, run.taxRate);
+  return capAllows(tray, lineCents(chip) ?? 0, p.authorizedCents, run.taxRate);
 }
 
 const claimedState = (c: Chip): ChipState => (c.claimers.length > 0 ? 'claimed' : 'open');
@@ -110,7 +112,7 @@ export function setAuthorization(run: Run, personId: string, authorizedCents: nu
 export function addChip(run: Run, input: NewChip, now: number): Run {
   if (!accepting(run)) return run;
   const key = normalize(input.name);
-  const dup = key === '' ? undefined : run.chips.find(
+  const dup = key === '' || !flagsDuplicates() ? undefined : run.chips.find(
     (c) => c.state !== 'wish' && c.state !== 'removed' && normalize(c.name) === key && now - c.addedAt <= DUPLICATE_MS,
   );
   const chip: Chip = {
@@ -140,7 +142,7 @@ export function setChipLive(
   if (!chip || chip.dropped || !accepting(run)) return run;
   // An identifying chip that gets a name is checked against live chips seen in the last 5 s.
   const key = normalize(name);
-  const dup = chip.state !== 'identifying' || chip.duplicateOf || key === '' ? undefined : run.chips.find(
+  const dup = chip.state !== 'identifying' || chip.duplicateOf || key === '' || !flagsDuplicates() ? undefined : run.chips.find(
     (c) => c.id !== chipId && !c.dropped && c.state !== 'wish' && c.state !== 'removed' && c.state !== 'identifying' &&
       normalize(c.name) === key && now - c.addedAt <= DUPLICATE_MS,
   );
@@ -293,12 +295,12 @@ export function putBack(run: Run, chipId: string): Run {
   return mapChip(run, chipId, (c) => ({ ...c, putBack: true }));
 }
 
-/** Each person's share across claimed, non-removed, non-put-back, priced chips (everyone present, 0 if none). */
+/** Each person's share of the line totals of claimed, non-removed, non-put-back, priced chips (everyone present, 0 if none). */
 export function sharesFor(run: Run): Map<string, number> {
   const out = new Map<string, number>(run.people.map((p) => [p.id, 0]));
   for (const c of run.chips) {
     if (!hasClaims(c) || c.dropped || c.priceCents === null || c.state === 'wish' || c.state === 'identifying') continue;
-    for (const [id, cents] of splitChip(c.priceCents, c.claimers)) out.set(id, (out.get(id) ?? 0) + cents);
+    for (const [id, cents] of splitChip(lineCents(c) as number, c.claimers)) out.set(id, (out.get(id) ?? 0) + cents);
   }
   return out;
 }
@@ -318,14 +320,56 @@ export function unclaimed(run: Run): Chip[] {
 }
 
 /**
- * A live chip already in the cart with the same name, added within the duplicate window.
- * With MERGE_DUPLICATES=1 the pipeline folds a re-detection into it instead of adding a second chip.
+ * A live chip already in the cart with the same name, however long ago it was added. With
+ * MERGE_DUPLICATES=1 the pipeline counts a new identification of it on that chip instead of adding one.
  */
-export function recentSameName(run: Run, name: string, now: number, excludeId: string, windowMs = DUPLICATE_MS): Chip | undefined {
+export function liveSameName(run: Run, name: string, excludeId: string): Chip | undefined {
   const key = normalize(name);
   if (key === '') return undefined;
   return run.chips.find(
     (c) => c.id !== excludeId && c.state !== 'wish' && c.state !== 'removed' && c.state !== 'identifying' &&
-      !c.dropped && normalize(c.name) === key && now - c.addedAt <= windowMs,
+      !c.dropped && normalize(c.name) === key,
   );
+}
+
+/** An open wish with this name, waiting for the item. */
+export function wishFor(run: Run, name: string): Chip | undefined {
+  const key = normalize(name);
+  return key === '' ? undefined : run.chips.find((c) => c.state === 'wish' && normalize(c.name) === key);
+}
+
+/** A detection that started within `windowMs` of the chip's last count is the same physical item seen twice. */
+export function sameDetection(chip: Chip, detectedAt: number, windowMs: number): boolean {
+  return detectedAt - (chip.lastSeenAt ?? chip.addedAt) <= windowMs;
+}
+
+/**
+ * Sets how many of the item are in the cart (shopper only, enforced by the server) and re-checks every
+ * claimer's cap the way a price change does: the line total is what counts against a hold.
+ */
+export function setQuantity(
+  run: Run,
+  chipId: string,
+  quantity: number,
+): Run | Err<'cart closed' | 'unknown chip' | 'not adjustable' | 'invalid quantity'> {
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY) return { error: 'invalid quantity' };
+  if (!accepting(run)) return { error: 'cart closed' };
+  const chip = run.chips.find((c) => c.id === chipId);
+  if (!chip) return { error: 'unknown chip' };
+  if (chip.state === 'wish' || chip.state === 'removed' || chip.dropped) return { error: 'not adjustable' };
+  if (chip.quantity === quantity) return run;
+  return refreshOverCap(mapChip(run, chipId, (c) => ({ ...c, quantity })), chipId);
+}
+
+/**
+ * The camera identified this chip's product again in a detection that started at `detectedAt`: one
+ * more of it, unless that is within `windowMs` of the chip's last count (the same item seen twice) or
+ * the count is already at the most. Claimers are re-checked against their caps.
+ */
+export function countAgain(run: Run, chipId: string, detectedAt: number, windowMs: number): Run {
+  const chip = run.chips.find((c) => c.id === chipId);
+  if (!chip || !accepting(run) || sameDetection(chip, detectedAt, windowMs)) return run;
+  const quantity = Math.min(MAX_QUANTITY, (chip.quantity ?? 1) + 1);
+  const counted = mapChip(run, chipId, (c) => ({ ...c, quantity, lastSeenAt: detectedAt }));
+  return quantity === chip.quantity ? counted : refreshOverCap(counted, chipId);
 }

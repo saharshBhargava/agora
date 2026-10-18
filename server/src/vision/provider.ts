@@ -5,7 +5,7 @@ import { StubVision } from './stub.js';
 export type Identified = { name: string; priceCents: number | null; cropBase64: string; confidence: number; barcode: string | null };
 export type RawReceiptLine = { text: string; cents: number; quantity: number };
 export type MatchLine = RawReceiptLine & { isTax: boolean };
-export type MatchChip = { id: string; name: string; priceCents: number | null };
+export type MatchChip = { id: string; name: string; priceCents: number | null; quantity?: number };
 
 /** `cartNames`: names already in the run, so the same product keeps one name across detections. */
 /** `wishNames`: open wishes; an item that is one of them is named exactly like the wish so it fills it. */

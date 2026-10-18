@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addChip, setChipLive, backToCart, checkout, claim, createRun, fixChip, join, leave, lock, putBack,
-  removeChip, roomsFor, setAuthorization, setChipPrice, sharesFor, undoRemove, unclaimed, wish,
+  addChip, setChipLive, backToCart, checkout, claim, countAgain, createRun, fixChip, join, leave, liveSameName, lock,
+  putBack, removeChip, roomsFor, setAuthorization, setChipPrice, setQuantity, sharesFor, undoRemove, unclaimed, wish,
 } from '../src/run.js';
 import type { Chip, Run } from '../src/types.js';
 
@@ -295,5 +295,99 @@ describe('fix round 1', () => {
     r = lock(checkout(r, 1000, 50), 1050);
     expect(setChipLive(r, 'm', 'Butter', 599, 'web', 1100)).toBe(r);
     expect(fixChip(r, 'm', 'Butter', 599, 1100)).toBe(r);
+  });
+});
+
+describe('quantity', () => {
+  const apples = (q = 2, price: number | null = 110) => addChip(seeded(), { ...chip('apple', 'Cosmic Crisp Apple', price), quantity: q }, 400);
+
+  it('shares split the line total (unit price times quantity), leftover cents to the earliest claimers', () => {
+    let r = ok(claim(apples(), 'apple', 'a', 1));
+    expect(sharesFor(r).get('a')).toBe(220);
+    r = ok(claim(r, 'apple', 'b', 2));
+    r = ok(claim(r, 'apple', 's', 3));
+    expect([sharesFor(r).get('a'), sharesFor(r).get('b'), sharesFor(r).get('s')]).toEqual([74, 73, 73]);
+  });
+  it('room counts the full line total', () => {
+    const r = ok(claim(apples(3), 'apple', 'a', 1));
+    expect(roomsFor(r).get('a')).toBe(4000 - 330);
+  });
+  it('the cap check uses the line total, not the unit price', () => {
+    let r = addChip(seeded(), { ...chip('wine', 'Red Wine', 1500), quantity: 3 }, 400);
+    expect(claim(r, 'wine', 'a', 1)).toEqual({ error: 'over cap' }); // 4500 > 4000
+    r = ok(setQuantity(r, 'wine', 2));
+    expect(get(ok(claim(r, 'wine', 'a', 2)), 'wine').claimers).toEqual(['a']);
+  });
+
+  it('setQuantity sets the count and re-checks every claimer like a price change', () => {
+    let r = ok(claim(seeded(), 'towels', 'a', 1)); // 2399 of a's 4000
+    r = ok(setQuantity(r, 'towels', 2)); // 4798 > 4000
+    expect(get(r, 'towels')).toMatchObject({ quantity: 2, overCap: ['a'], claimers: ['a'] });
+    expect(sharesFor(r).get('a')).toBe(4798);
+    r = ok(setQuantity(r, 'towels', 1));
+    expect(get(r, 'towels')).toMatchObject({ quantity: 1, overCap: [] });
+  });
+  it('setQuantity works in last call and refuses once locked', () => {
+    expect(get(ok(setQuantity(checkout(seeded(), 10, 50), 'milk', 3)), 'milk').quantity).toBe(3);
+    const locked = lock(checkout(seeded(), 10, 50), 60);
+    expect(setQuantity(locked, 'milk', 3)).toEqual({ error: 'cart closed' });
+  });
+  it('setQuantity refuses bad counts, unknown chips, wishes and removed chips', () => {
+    for (const q of [0, 21, 1.5, -1, Number.NaN]) expect(setQuantity(seeded(), 'milk', q)).toEqual({ error: 'invalid quantity' });
+    expect(setQuantity(seeded(), 'nope', 2)).toEqual({ error: 'unknown chip' });
+    expect(setQuantity(wish(seeded(), 'a', 'bagels', 1, 'w1'), 'w1', 2)).toEqual({ error: 'not adjustable' });
+    expect(setQuantity(removeChip(seeded(), 'milk', 1), 'milk', 2)).toEqual({ error: 'not adjustable' });
+  });
+  it('setQuantity to the same count is a no-op', () => {
+    const r = seeded();
+    expect(setQuantity(r, 'milk', 1)).toBe(r);
+  });
+
+  it('countAgain adds one when the item is seen again outside the window, and not inside it', () => {
+    let r = apples(1); // added at 400
+    r = countAgain(r, 'apple', 2000, 3000); // 1.6 s after: the same detection
+    expect(get(r, 'apple').quantity).toBe(1);
+    r = countAgain(r, 'apple', 9000, 3000);
+    expect(get(r, 'apple')).toMatchObject({ quantity: 2, lastSeenAt: 9000 });
+    r = countAgain(r, 'apple', 10_000, 3000); // 1 s after the last count
+    expect(get(r, 'apple').quantity).toBe(2);
+    r = countAgain(r, 'apple', 20_000, 3000);
+    expect(get(r, 'apple').quantity).toBe(3);
+  });
+  it('countAgain stops at 20 and flags a claimer the new count puts over cap', () => {
+    let r = ok(claim(seeded(), 'towels', 'a', 1));
+    r = countAgain(r, 'towels', 10_000, 3000);
+    expect(get(r, 'towels')).toMatchObject({ quantity: 2, overCap: ['a'] });
+    r = ok(setQuantity(r, 'towels', 20));
+    r = countAgain(r, 'towels', 30_000, 3000);
+    expect(get(r, 'towels').quantity).toBe(20);
+  });
+  it('countAgain leaves a locked run alone', () => {
+    const r = lock(checkout(apples(1), 1000, 50), 1050);
+    expect(countAgain(r, 'apple', 9000, 3000)).toBe(r);
+  });
+
+  it('liveSameName finds a live chip by normalized name at any age, never a wish, removed or identifying chip', () => {
+    let r = apples(1);
+    expect(liveSameName(r, '  cosmic CRISP apple! ', 'x')?.id).toBe('apple');
+    expect(liveSameName(r, 'Cosmic Crisp Apple', 'apple')).toBeUndefined();
+    r = removeChip(r, 'apple', 500);
+    expect(liveSameName(r, 'Cosmic Crisp Apple', 'x')).toBeUndefined();
+    r = wish(seeded(), 'a', 'Bagels', 1, 'w1');
+    expect(liveSameName(r, 'bagels', 'x')).toBeUndefined();
+    expect(liveSameName(seeded(), '', 'x')).toBeUndefined();
+  });
+
+  it('with MERGE_DUPLICATES=1 a same-name chip is never flagged as a duplicate', () => {
+    process.env.MERGE_DUPLICATES = '1';
+    try {
+      let r = addChip(seeded(), chip('milk2', 'Milk', 429), 400);
+      expect(get(r, 'milk2').duplicateOf).toBeNull();
+      r = addChip(r, chip('m', '', null), 500);
+      r = setChipLive(r, 'm', 'Milk', 429, 'sticker', 600);
+      expect(get(r, 'm').duplicateOf).toBeNull();
+    } finally {
+      delete process.env.MERGE_DUPLICATES;
+    }
   });
 });

@@ -132,6 +132,17 @@ describe('GeminiVision.matchReceipt', () => {
     ]));
     expect(sent).toContain(JSON.stringify(chips));
   });
+  it('sends a counted chip with its quantity so it may take that many lines', async () => {
+    const reqs: Req[] = [];
+    const v = new GeminiVision({ apiKey: 'k', fetchImpl: fakeFetch(textReply(JSON.stringify({ matches: [] })), reqs) });
+    await v.matchReceipt(lines, [{ id: 'a', name: 'Cosmic Crisp Apple', priceCents: 110, quantity: 2 }, { ...chips[1], quantity: 1 }]);
+    const sent = reqs[0].body.contents[0].parts[0].text as string;
+    expect(sent).toContain(JSON.stringify([
+      { id: 'a', name: 'Cosmic Crisp Apple', priceCents: 110, quantity: 2 },
+      { id: 'c2', name: 'Bananas', priceCents: null },
+    ]));
+    expect(reqs[0].body.systemInstruction.parts[0].text).toMatch(/may match that many lines/);
+  });
   it('throws when the reply has no matches array', async () => {
     const v = new GeminiVision({ apiKey: 'k', fetchImpl: fakeFetch(textReply('{"lines":[]}')) });
     await expect(v.matchReceipt(lines, chips)).rejects.toThrow();
