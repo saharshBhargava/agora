@@ -118,6 +118,16 @@ final class AppModel {
         path = [.start(RunRef(runId: created.runId, personId: created.shopperId))]
     }
 
+    /// `-DibsAutoShop YES` (unattended device testing): a new run with this phone as shopper, straight
+    /// to the shopper camera through the normal routes, so checkout, receipt and settle all work.
+    func autoShop() async throws {
+        intent += 1
+        let created = try await DebugLaunch.startAutoShop(api: api)
+        let ref = RunRef(runId: created.runId, personId: created.personId)
+        remember(ref)
+        path = [.shopper(ref)]
+    }
+
     /// Saves this phone's person for the run and makes it the run to resume.
     func remember(_ ref: RunRef) {
         ServerConfig.savePersonId(ref.personId, runId: ref.runId, defaults: defaults)

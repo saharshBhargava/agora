@@ -7,9 +7,12 @@ struct DibsApp: App {
     var body: some Scene {
         WindowGroup {
             if DebugLaunch.autoShop {
-                // Unattended device testing: `-DibsAutoShop YES` skips Home and opens the shopper camera.
-                AutoShopRoot(base: ServerConfig.current())
+                // Unattended device testing: `-DibsAutoShop YES` starts a run and opens the shopper camera
+                // inside the normal routes (receipt and settle included).
+                RootView()
+                    .environment(model)
                     .preferredColorScheme(.light)
+                    .task { do { try await model.autoShop() } catch { DibsLog.event("autoshop failed: \(error)") } }
             } else {
                 RootView()
                     .environment(model)
