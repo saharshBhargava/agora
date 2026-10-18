@@ -30,7 +30,7 @@ public protocol RunSocketing: AnyObject {
     nonisolated var teardown: @Sendable () -> Void { get }
 }
 
-/// The live run socket: `<base as ws/wss>/ws?run=&person=`, reconnecting with backoff
+/// The live run socket: `<base as ws/wss>/ws?run=&person=&key=`, reconnecting with backoff
 /// 0.5, 1, 2, 4, 8 s (capped at 8) and stopping for good on close code 1008.
 /// Pings every 10 s; a ping or send failure, or an unanswered ping, drops and reconnects.
 @MainActor
@@ -42,14 +42,17 @@ public final class RunSocket: RunSocketing {
         backoffSchedule[min(max(attempt, 0), backoffSchedule.count - 1)]
     }
 
-    /// `<base as ws/wss>/ws?run=<id>&person=<id>`.
-    public nonisolated static func url(base: URL, runId: String, personId: String) -> URL {
+    /// `<base as ws/wss>/ws?run=<id>&person=<id>&key=<key>`. The key proves this phone is that person.
+    public nonisolated static func url(base: URL, runId: String, personId: String, key: String? = nil) -> URL {
         var comps = URLComponents(url: base, resolvingAgainstBaseURL: false)!
         comps.scheme = comps.scheme?.lowercased() == "https" ? "wss" : "ws"
         var path = comps.path
         while path.hasSuffix("/") { path.removeLast() }
         comps.path = path + "/ws"
-        comps.queryItems = [URLQueryItem(name: "run", value: runId), URLQueryItem(name: "person", value: personId)]
+        // Percent-encoded by hand: URLQueryItem leaves "+" alone, which a server reads as a space.
+        var items = [URLQueryItem(name: "run", value: DibsAPI.encode(runId)), URLQueryItem(name: "person", value: DibsAPI.encode(personId))]
+        if let key { items.append(URLQueryItem(name: "key", value: DibsAPI.encode(key))) }
+        comps.percentEncodedQueryItems = items
         return comps.url!
     }
 
@@ -74,8 +77,9 @@ public final class RunSocket: RunSocketing {
     private var session: URLSession? { resources.session }
     private var task: URLSessionWebSocketTask? { resources.task }
 
-    public init(base: URL, runId: String, personId: String, heartbeatInterval: TimeInterval = 10, pingTimeout: TimeInterval = 8) {
-        url = Self.url(base: base, runId: runId, personId: personId)
+    public init(base: URL, runId: String, personId: String, key: String? = nil,
+                heartbeatInterval: TimeInterval = 10, pingTimeout: TimeInterval = 8) {
+        url = Self.url(base: base, runId: runId, personId: personId, key: key)
         self.heartbeatInterval = heartbeatInterval
         self.pingTimeout = pingTimeout
         delegate.owner = self

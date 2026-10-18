@@ -8,6 +8,9 @@ final class PriceStub: URLProtocol, @unchecked Sendable {
         let method: String
         let path: String
         let body: Data?
+        /// The `x-dibs-run` and `x-dibs-key` headers (which run's shopper is asking).
+        var run: String? = nil
+        var key: String? = nil
         var json: [String: Any] { body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:] }
     }
 
@@ -41,7 +44,9 @@ final class PriceStub: URLProtocol, @unchecked Sendable {
         comps.query = nil
         let key = "\(method) \(path)"
         let reply = Self.lock.withLock { () -> Reply in
-            Self._requests.append(Recorded(method: method, path: path, body: body))
+            Self._requests.append(Recorded(method: method, path: path, body: body,
+                                           run: request.value(forHTTPHeaderField: "x-dibs-run"),
+                                           key: request.value(forHTTPHeaderField: "x-dibs-key")))
             guard var queue = Self._routes[key], let first = queue.first else { return .json(404, #"{"error":"no route"}"#) }
             if queue.count > 1 { queue.removeFirst(); Self._routes[key] = queue }
             return first
@@ -212,6 +217,29 @@ final class PriceWorkerTests: XCTestCase {
         XCTAssertNil(worker.currentName)
     }
 
+    func testRequestsNameTheRunAndCarryItsShopperKey() async throws {
+        let suite = "dibs.priceworker.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [PriceStub.self]
+        let keyed = DibsAPI(base: URL(string: "https://dibs.example.com/")!, session: URLSession(configuration: config),
+                            keys: RunKeys(defaults: defaults))
+        keyed.keys.save("shopper-secret", runId: "run-7")
+        worker.use(api: keyed, runId: "run-7")
+        PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
+        PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":110}"#))
+
+        await poll()
+
+        let sent = PriceStub.requests.filter { $0.path.hasPrefix("/api/price-requests") }
+        XCTAssertEqual(sent.map { "\($0.method) \($0.path)" }, ["GET /api/price-requests?open=1", "POST /api/price-requests/r1/extract"])
+        for r in sent {
+            XCTAssertEqual(r.run, "run-7", r.path)
+            XCTAssertEqual(r.key, "shopper-secret", r.path)
+        }
+    }
+
     func testNotRenderedReloadsOnceThenReads() async throws {
         let fake = browser!
         worker = makeWorker(wait: 0.2) { fake }
@@ -293,7 +321,7 @@ final class PriceWorkerTests: XCTestCase {
         let home = URL(string: "https://www.qfc.com/")!
         worker = makeWorker(pool: 2, warmUp: home) { let b = FakeBrowser(); made.append(b); return b }
         PriceStub.route("GET /api/price-requests?open=1", .json(200, "[]"))
-        worker.start(api: api)
+        worker.start(api: api, runId: "run-1")
         await waitFor(made.first?.warmedUp.isEmpty == false)
         try await Task.sleep(for: .milliseconds(60))
         worker.stop()
@@ -301,7 +329,7 @@ final class PriceWorkerTests: XCTestCase {
         XCTAssertEqual(made.first?.warmedUp, [home])
         XCTAssertEqual(made.flatMap(\.storeCalls), [], "store switching is off by default")
 
-        worker.start(api: api)   // same launch: no second home-page load
+        worker.start(api: api, runId: "run-1")   // same launch: no second home-page load
         try await Task.sleep(for: .milliseconds(100))
         worker.stop()
         XCTAssertEqual(made.flatMap(\.warmedUp), [home])
@@ -312,7 +340,7 @@ final class PriceWorkerTests: XCTestCase {
         worker = makeWorker(warmUp: URL(string: "https://www.qfc.com/")) { fake }
         PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
         PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":110}"#))
-        worker.start(api: api)
+        worker.start(api: api, runId: "run-1")
         await waitFor(self.worker.lastOutcome != nil)
         try await Task.sleep(for: .milliseconds(60))
         worker.stop()
@@ -591,7 +619,7 @@ final class PriceWorkerTests: XCTestCase {
     func testStartPollsUntilStopped() async throws {
         PriceStub.route("GET /api/price-requests?open=1", .json(200, "[]"), .json(200, openOne))
         PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":110}"#))
-        worker.start(api: api)
+        worker.start(api: api, runId: "run-1")
         XCTAssertTrue(worker.isRunning)
         let deadline = Date().addingTimeInterval(5)
         while worker.lastOutcome == nil && Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
@@ -710,7 +738,7 @@ final class PriceWorkerTests: XCTestCase {
         PriceStub.route("GET /api/price-requests?open=1", .json(200, openOne))
         PriceStub.route("POST /api/price-requests/r1/extract", .json(200, #"{"found":true,"priceCents":110}"#))
         PriceStub.route("POST /api/price-requests/r1/agent-step", .json(500, #"{"error":"must not be called"}"#))
-        worker.start(api: api)
+        worker.start(api: api, runId: "run-1")
         let t0 = Date()
         await waitFor(self.worker.lastOutcome != nil)
         XCTAssertLessThan(Date().timeIntervalSince(t0), 1.5)
@@ -727,7 +755,7 @@ final class PriceWorkerTests: XCTestCase {
         storeFake.storeResults = [.failed("store button"), .failed("store button"), .failed("store button"), .set]
         worker = storeWorker(storeFake: storeFake)
         PriceStub.route("GET /api/price-requests?open=1", .json(200, "[]"))
-        worker.start(api: api)
+        worker.start(api: api, runId: "run-1")
         await waitFor(storeFake.storeCalls.count >= 3)
         try await Task.sleep(for: .milliseconds(150))
         XCTAssertEqual(storeFake.storeCalls.count, 3)
@@ -741,7 +769,7 @@ final class PriceWorkerTests: XCTestCase {
         storeFake.storeResults = [.failed("store row"), .set]
         worker = storeWorker(storeFake: storeFake)
         PriceStub.route("GET /api/price-requests?open=1", .json(200, "[]"))
-        worker.start(api: api)
+        worker.start(api: api, runId: "run-1")
         await waitFor(self.worker.activeStore != nil)
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(storeFake.storeCalls.count, 2)

@@ -73,9 +73,10 @@ public final class RunStore {
 
     public convenience init(api: DibsAPI) {
         let base = api.base
+        let keys = api.keys
         self.init(
             fetchRun: { runId in try await api.getRun(runId) },
-            makeSocket: { runId, personId in RunSocket(base: base, runId: runId, personId: personId) }
+            makeSocket: { runId, personId in RunSocket(base: base, runId: runId, personId: personId, key: keys.key(runId: runId)) }
         )
     }
 

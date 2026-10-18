@@ -152,6 +152,8 @@ final class ModelTests: XCTestCase {
                        "wss://dibs.example.com/ws?run=r%201&person=p%262")
         XCTAssertEqual(RunSocket.url(base: URL(string: "http://localhost:3000/")!, runId: "r", personId: "p").absoluteString,
                        "ws://localhost:3000/ws?run=r&person=p")
+        XCTAssertEqual(RunSocket.url(base: URL(string: "https://dibs.example.com")!, runId: "r", personId: "p", key: "a+b/c=").absoluteString,
+                       "wss://dibs.example.com/ws?run=r&person=p&key=a%2Bb%2Fc%3D")
     }
 
     func testBackoffSchedule() {
@@ -179,6 +181,11 @@ final class ModelTests: XCTestCase {
         ServerConfig.savePersonId("p1", runId: "r1", defaults: defaults)
         XCTAssertEqual(defaults.string(forKey: "dibs.person.r1"), "p1")
         XCTAssertEqual(ServerConfig.personId(runId: "r1", defaults: defaults), "p1")
+        let keys = RunKeys(defaults: defaults)
+        XCTAssertNil(keys.key(runId: "r1"))
+        keys.save("secret", runId: "r1")
+        XCTAssertEqual(keys.key(runId: "r1"), "secret")
+        XCTAssertNil(keys.key(runId: "r2"))
     }
 
     // MARK: Colors

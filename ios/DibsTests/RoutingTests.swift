@@ -89,7 +89,18 @@ final class HomeRoutingTests: XCTestCase {
     func testLastRunWithAPersonIsSaved() {
         HomeRouting.saveLastRun("r1", defaults: defaults)
         ServerConfig.savePersonId("priya", runId: "r1", defaults: defaults)
+        RunKeys(defaults: defaults).save("priya-key", runId: "r1")
         XCTAssertEqual(HomeRouting.savedRun(defaults: defaults), RunRef(runId: "r1", personId: "priya"))
+    }
+
+    func testARunSavedWithoutItsKeyIsNotResumed() async {
+        // Saved before the server handed out keys: the phone can't act in it, so Home, not a dead screen.
+        HomeRouting.saveLastRun("r1", defaults: defaults)
+        ServerConfig.savePersonId("priya", runId: "r1", defaults: defaults)
+        XCTAssertNil(HomeRouting.savedRun(defaults: defaults))
+        let open = makeRun()
+        let route = await HomeRouting.launchRoute(defaults: defaults) { _ in open }
+        XCTAssertNil(route)
     }
 
     func testRouteForAClaimer() {
@@ -130,6 +141,7 @@ final class HomeRoutingTests: XCTestCase {
     func testLaunchWithASavedPersonResumesTheRun() async {
         HomeRouting.saveLastRun("r1", defaults: defaults)
         ServerConfig.savePersonId("priya", runId: "r1", defaults: defaults)
+        RunKeys(defaults: defaults).save("priya-key", runId: "r1")
         let open = makeRun()
         let route = await HomeRouting.launchRoute(defaults: defaults) { id in
             XCTAssertEqual(id, "r1")
@@ -141,6 +153,7 @@ final class HomeRoutingTests: XCTestCase {
     func testLaunchWithASavedPersonButSettledRunStaysHome() async {
         HomeRouting.saveLastRun("r1", defaults: defaults)
         ServerConfig.savePersonId("priya", runId: "r1", defaults: defaults)
+        RunKeys(defaults: defaults).save("priya-key", runId: "r1")
         let settled = makeRun(.settled)
         let route = await HomeRouting.launchRoute(defaults: defaults) { _ in settled }
         XCTAssertNil(route)
@@ -150,6 +163,7 @@ final class HomeRoutingTests: XCTestCase {
     func testLaunchIntoAPartlySettledRunGoesToSettle() async {
         HomeRouting.saveLastRun("r1", defaults: defaults)
         ServerConfig.savePersonId("priya", runId: "r1", defaults: defaults)
+        RunKeys(defaults: defaults).save("priya-key", runId: "r1")
         let partly = makeRun(.partlySettled)
         let route = await HomeRouting.launchRoute(defaults: defaults) { _ in partly }
         XCTAssertEqual(route, .settle(RunRef(runId: "r1", personId: "priya")))
@@ -159,6 +173,7 @@ final class HomeRoutingTests: XCTestCase {
     func testLaunchWhenTheServerIsUnreachableStaysHome() async {
         HomeRouting.saveLastRun("r1", defaults: defaults)
         ServerConfig.savePersonId("priya", runId: "r1", defaults: defaults)
+        RunKeys(defaults: defaults).save("priya-key", runId: "r1")
         let route = await HomeRouting.launchRoute(defaults: defaults) { _ in throw DibsError.offline }
         XCTAssertNil(route)
     }

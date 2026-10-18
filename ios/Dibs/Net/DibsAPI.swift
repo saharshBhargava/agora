@@ -30,12 +30,14 @@ public enum TestCard {
 public struct JoinResult: Decodable, Sendable, Equatable {
     public struct Auth: Decodable, Sendable, Equatable {
         public let status: String
-        public let authId: String
+        public let authId: String?
         public let approvalCode: String
         public let authorizedCents: Int
     }
 
     public let personId: String
+    /// This person's secret for the run. `DibsAPI.join` keeps it in `keys`.
+    public let key: String
     public let auth: Auth
 }
 
@@ -59,18 +61,25 @@ public enum ReceiptTarget: Encodable, Sendable, Equatable {
 }
 
 /// REST client for the Dibs server, one method per call in web/lib/api.ts.
+///
+/// Every request under `/api/runs/<id>` carries this phone's key for that run (`x-dibs-key`, from
+/// `keys`); `createRun` and `join` save the key the server hands out.
 public struct DibsAPI: Sendable {
     public let base: URL
     public let session: URLSession
     public let timeout: TimeInterval
     /// For addChip and receipt, which wait on Gemini on the server.
     public let slowTimeout: TimeInterval
+    /// This phone's key for each run it is in.
+    public let keys: RunKeys
 
-    public init(base: URL, session: URLSession = .shared, timeout: TimeInterval = 10, slowTimeout: TimeInterval = 45) {
+    public init(base: URL, session: URLSession = .shared, timeout: TimeInterval = 10, slowTimeout: TimeInterval = 45,
+                keys: RunKeys = RunKeys()) {
         self.base = base
         self.session = session
         self.timeout = timeout
         self.slowTimeout = slowTimeout
+        self.keys = keys
     }
 
     // MARK: URLs
@@ -100,15 +109,26 @@ public struct DibsAPI: Sendable {
 
     static func runPath(_ runId: String) -> String { "/api/runs/\(encode(runId))" }
 
+    /// The run a request path acts on: `/api/runs/<id>[/...][?...]`, decoded; nil for anything else.
+    static func runId(inPath path: String) -> String? {
+        let prefix = "/api/runs/"
+        guard path.hasPrefix(prefix) else { return nil }
+        let rest = path.dropFirst(prefix.count)
+        let id = rest.prefix { $0 != "/" && $0 != "?" }
+        guard !id.isEmpty else { return nil }
+        return String(id).removingPercentEncoding
+    }
+
     // MARK: calls
 
-    private struct Created: Decodable { let runId: String; let shopperId: String }
+    private struct Created: Decodable { let runId: String; let shopperId: String; let key: String }
     private struct Empty: Encodable {}
     private struct PersonBody: Encodable { let personId: String }
 
     public func createRun() async throws -> (runId: String, shopperId: String) {
         // Fastify rejects a JSON content-type with an empty body, so send an empty object.
         let r: Created = try await call("POST", "/api/runs", body: Empty())
+        keys.save(r.key, runId: r.runId)
         return (r.runId, r.shopperId)
     }
 
@@ -118,8 +138,10 @@ public struct DibsAPI: Sendable {
 
     public func join(runId: String, name: String, capCents: Int, decline: Bool = false) async throws -> JoinResult {
         struct Body: Encodable { let name: String; let card: TestCard.Card; let capCents: Int }
-        return try await call("POST", "\(Self.runPath(runId))/join",
-                              body: Body(name: name, card: decline ? TestCard.declined : TestCard.approved, capCents: capCents))
+        let result: JoinResult = try await call("POST", "\(Self.runPath(runId))/join",
+                                                body: Body(name: name, card: decline ? TestCard.declined : TestCard.approved, capCents: capCents))
+        keys.save(result.key, runId: runId)
+        return result
     }
 
     public func addChip(runId: String, imageBase64: String, hint: String? = nil) async throws -> Chip {
@@ -198,6 +220,9 @@ public struct DibsAPI: Sendable {
         var req = URLRequest(url: url(path), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout ?? self.timeout)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "accept")
+        if let runId = Self.runId(inPath: path), let key = keys.key(runId: runId) {
+            req.setValue(key, forHTTPHeaderField: "x-dibs-key")
+        }
         if let body {
             req.setValue("application/json", forHTTPHeaderField: "content-type")
             req.httpBody = try JSONEncoder().encode(body)

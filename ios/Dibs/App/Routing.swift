@@ -87,10 +87,12 @@ public enum HomeRouting {
         defaults.removeObject(forKey: lastRunKey)
     }
 
-    /// The last run and this phone's person in it, when both are saved.
+    /// The last run and this phone's person in it, when both are saved along with the person's key
+    /// (a run saved before the server handed out keys can't be acted in, so it is not resumed).
     public static func savedRun(defaults: UserDefaults = .standard) -> RunRef? {
         guard let runId = defaults.string(forKey: lastRunKey),
-              let personId = ServerConfig.personId(runId: runId, defaults: defaults) else { return nil }
+              let personId = ServerConfig.personId(runId: runId, defaults: defaults),
+              RunKeys(defaults: defaults).key(runId: runId) != nil else { return nil }
         return RunRef(runId: runId, personId: personId)
     }
 

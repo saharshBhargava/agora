@@ -61,3 +61,25 @@ public enum ServerConfig {
         defaults.set(personId, forKey: personKey(runId: runId))
     }
 }
+
+/// This phone's secret key for each run it is in (one person per run per phone), in `UserDefaults`
+/// key `dibs.key.<runId>`. The server hands a key out once, from create run or join; every action in
+/// the run must carry it, because person ids are public (every run snapshot lists them).
+public struct RunKeys: @unchecked Sendable {
+    // UserDefaults is thread-safe; it is only not marked Sendable.
+    private let defaults: UserDefaults
+
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    public static func storageKey(runId: String) -> String { "dibs.key.\(runId)" }
+
+    public func key(runId: String) -> String? {
+        defaults.string(forKey: Self.storageKey(runId: runId))
+    }
+
+    public func save(_ key: String, runId: String) {
+        defaults.set(key, forKey: Self.storageKey(runId: runId))
+    }
+}

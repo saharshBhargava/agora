@@ -152,7 +152,7 @@ struct ShopperView: View {
         .sensoryFeedback(.impact(weight: .medium), trigger: dragOverCamera) { _, over in over }
         .task {
             store.connect(runId: runId, personId: personId)
-            priceWorker.start(api: api)
+            priceWorker.start(api: api, runId: runId)
             // The phone rides clipped to the cart: keep it from auto-locking while it streams.
             UIApplication.shared.isIdleTimerDisabled = true
             let cam = camera ?? ShopperCamera(store: store, api: api, runId: runId)

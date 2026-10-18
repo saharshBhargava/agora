@@ -9,6 +9,8 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
         let body: Data?
         let contentType: String?
         let timeout: TimeInterval
+        /// The `x-dibs-key` header: this phone's secret for the run.
+        var key: String? = nil
     }
 
     struct Reply: Sendable {
@@ -34,7 +36,8 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
         let reply = Self.lock.withLock { () -> Reply in
             Self._requests.append(Recorded(method: request.httpMethod ?? "GET", url: request.url!, body: body,
                                            contentType: request.value(forHTTPHeaderField: "content-type"),
-                                           timeout: request.timeoutInterval))
+                                           timeout: request.timeoutInterval,
+                                           key: request.value(forHTTPHeaderField: "x-dibs-key")))
             return Self._reply
         }
         if let error = reply.error {
@@ -67,13 +70,22 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
 final class APITests: XCTestCase {
     private var api: DibsAPI!
     private var runJSON = ""
+    private var defaults: UserDefaults!
+    private var suite = ""
 
     override func setUpWithError() throws {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [StubProtocol.self]
-        api = DibsAPI(base: URL(string: "https://dibs.example.com/")!, session: URLSession(configuration: config))
+        suite = "dibs.apitests.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suite)
+        api = DibsAPI(base: URL(string: "https://dibs.example.com/")!, session: URLSession(configuration: config),
+                      keys: RunKeys(defaults: defaults))
         runJSON = String(decoding: try fixtureData("run"), as: UTF8.self)
         StubProtocol.reset()
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suite)
     }
 
     private var last: StubProtocol.Recorded { StubProtocol.requests.last! }
@@ -91,13 +103,62 @@ final class APITests: XCTestCase {
     // MARK: one test per call in web/lib/api.ts
 
     func testCreateRun() async throws {
-        StubProtocol.reply(200, #"{"runId":"r1","shopperId":"jake"}"#)
+        StubProtocol.reply(200, #"{"runId":"r1","shopperId":"9f1c-shopper","key":"shopper-secret"}"#)
         let created = try await api.createRun()
         XCTAssertEqual(created.runId, "r1")
-        XCTAssertEqual(created.shopperId, "jake")
+        XCTAssertEqual(created.shopperId, "9f1c-shopper")
         assertRequest("POST", "/api/runs")
         XCTAssertEqual(last.contentType, "application/json")
         XCTAssertEqual(try lastBody(), [:])
+        XCTAssertNil(last.key)
+        XCTAssertEqual(api.keys.key(runId: "r1"), "shopper-secret", "the shopper's key is kept for the run")
+    }
+
+    // MARK: per-person keys
+
+    func testJoinKeepsTheKeyForTheRun() async throws {
+        StubProtocol.reply(200, #"{"personId":"p1","key":"priya-secret","auth":{"status":"AUTHORIZED","authId":null,"approvalCode":"888888","authorizedCents":4000}}"#)
+        let res = try await api.join(runId: "r1", name: "Priya", capCents: 4000)
+        XCTAssertEqual(res.key, "priya-secret")
+        XCTAssertNil(res.auth.authId)
+        XCTAssertEqual(api.keys.key(runId: "r1"), "priya-secret")
+        XCTAssertEqual(defaults.string(forKey: "dibs.key.r1"), "priya-secret")
+    }
+
+    func testEveryRunCallCarriesThisPhonesKeyForThatRun() async throws {
+        api.keys.save("k-r1", runId: "r 1")
+        let calls: [(String, () async throws -> Void)] = [
+            (#"{"id":"c1","name":"Eggs","state":"open"}"#, { _ = try await self.api.addChip(runId: "r 1", imageBase64: "") }),
+            (runJSON, { _ = try await self.api.fixChip(runId: "r 1", chipId: "c1", personId: "s", name: "Eggs") }),
+            (runJSON, { _ = try await self.api.setQuantity(runId: "r 1", chipId: "c1", personId: "s", quantity: 2) }),
+            (runJSON, { _ = try await self.api.putBack(runId: "r 1", chipId: "c1", personId: "s") }),
+            (runJSON, { _ = try await self.api.checkout(runId: "r 1", personId: "s") }),
+            (runJSON, { _ = try await self.api.back(runId: "r 1", personId: "s") }),
+            (#"{"authorizedCents":6000}"#, { _ = try await self.api.raise(runId: "r 1", personId: "p", capCents: 6000) }),
+            (runJSON, { _ = try await self.api.wish(runId: "r 1", name: "Bagels", byPersonId: "p") }),
+            (#"{"lines":[],"matches":[],"unmatchedLines":[]}"#, { _ = try await self.api.receipt(runId: "r 1", imageBase64: "") }),
+            (#"{"lines":[],"matches":[],"unmatchedLines":[]}"#, { _ = try await self.api.fixReceiptLine(runId: "r 1", lineIndex: 0, target: .mine) }),
+            (runJSON, { _ = try await self.api.confirm(runId: "r 1", personId: "s") }),
+            (#"{"list":null,"suggestions":[]}"#, { _ = try await self.api.wishPicks(runId: "r 1", personId: "p") }),
+        ]
+        for (i, (reply, call)) in calls.enumerated() {
+            StubProtocol.reset()
+            StubProtocol.reply(200, reply)
+            try await call()
+            XCTAssertEqual(last.key, "k-r1", "call \(i) \(last.url.path)")
+        }
+    }
+
+    func testAnotherRunsCallsCarryNoKey() async throws {
+        api.keys.save("k-r1", runId: "r1")
+        StubProtocol.reply(200, runJSON)
+        _ = try await api.checkout(runId: "r2", personId: "s")
+        XCTAssertNil(last.key)
+        XCTAssertEqual(DibsAPI.runId(inPath: "/api/runs/a%20b/chips/c1/fix"), "a b")
+        XCTAssertEqual(DibsAPI.runId(inPath: "/api/runs/r1/wish-picks?personId=p"), "r1")
+        XCTAssertEqual(DibsAPI.runId(inPath: "/api/runs/r1"), "r1")
+        XCTAssertNil(DibsAPI.runId(inPath: "/api/runs"))
+        XCTAssertNil(DibsAPI.runId(inPath: "/api/price-requests"))
     }
 
     func testGetRun() async throws {
@@ -109,7 +170,7 @@ final class APITests: XCTestCase {
     }
 
     func testJoinSendsTestCard() async throws {
-        StubProtocol.reply(200, #"{"personId":"p1","auth":{"status":"AUTHORIZED","authId":"a1","approvalCode":"888888","authorizedCents":4000}}"#)
+        StubProtocol.reply(200, #"{"personId":"p1","key":"k","auth":{"status":"AUTHORIZED","authId":"a1","approvalCode":"888888","authorizedCents":4000}}"#)
         let res = try await api.join(runId: "r1", name: "Priya", capCents: 4000)
         XCTAssertEqual(res.personId, "p1")
         XCTAssertEqual(res.auth.authorizedCents, 4000)

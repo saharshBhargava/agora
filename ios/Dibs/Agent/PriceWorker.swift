@@ -42,9 +42,14 @@ protocol PriceBrowsing: AnyObject {
 
 /// The price-request routes. JSON stays untyped so model parts (and their thoughtSignature)
 /// go back to the server byte-for-byte as they came.
+///
+/// The server lists and answers only the lookups of one run, for that run's shopper: every request
+/// names the run (`x-dibs-run`) and carries this phone's key for it (`x-dibs-key`).
 @MainActor
 struct PriceAPI {
     let api: DibsAPI
+    /// The run this phone shops; nil sends no run (the server then refuses).
+    var runId: String? = nil
 
     func open() async throws -> [PriceRequest] {
         let data = try await send("GET", "/api/price-requests?open=1", json: nil, timeout: api.timeout)
@@ -73,6 +78,10 @@ struct PriceAPI {
         var req = URLRequest(url: api.url(path), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "accept")
+        if let runId {
+            req.setValue(runId, forHTTPHeaderField: "x-dibs-run")
+            if let key = api.keys.key(runId: runId) { req.setValue(key, forHTTPHeaderField: "x-dibs-key") }
+        }
         if let json {
             req.setValue("application/json", forHTTPHeaderField: "content-type")
             req.httpBody = try JSONSerialization.data(withJSONObject: json)
@@ -95,7 +104,8 @@ struct PriceAPI {
 }
 
 /// Finds store prices for the server's open price requests with in-app browsers.
-/// Runs on the shopper's phone while a run is open: `start(api:)` / `stop()`.
+/// Runs on the shopper's phone while a run is open: `start(api:runId:)` / `stop()`. It answers that
+/// run's lookups only.
 ///
 /// Up to 2 StoreBrowsers take one request each: the second is made only when two requests are open
 /// at once, and browsers idle for 2 min are closed. The home page is warmed at most once per launch,
@@ -246,8 +256,8 @@ final class PriceWorker {
         self.makeStoreBrowser = makeStoreBrowser ?? makeBrowser
     }
 
-    func start(api: DibsAPI) {
-        self.api = PriceAPI(api: api)
+    func start(api: DibsAPI, runId: String) {
+        self.api = PriceAPI(api: api, runId: runId)
         guard loop == nil else { return }
         isRunning = true
         PriceLog.event("price worker start \(api.base.absoluteString)")
@@ -317,7 +327,7 @@ final class PriceWorker {
     }
 
     /// Sets the server without starting the poll loop (tests drive `pollOnce` directly).
-    func use(api: DibsAPI) { self.api = PriceAPI(api: api) }
+    func use(api: DibsAPI, runId: String? = nil) { self.api = PriceAPI(api: api, runId: runId) }
 
     /// One poll: fetch open requests and start each due one on a free browser. Returns without
     /// waiting for the lookups (see `isIdle`).

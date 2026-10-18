@@ -30,7 +30,7 @@ final class AppModel {
         self.bundledServer = bundledServer
         let saved = defaults.string(forKey: ServerConfig.serverKey).flatMap(ServerConfig.validate)
         let server = saved ?? bundledServer ?? ServerConfig.fallback
-        let api = DibsAPI(base: server)
+        let api = DibsAPI(base: server, keys: RunKeys(defaults: defaults))
         self.server = server
         self.api = api
         self.store = RunStore(api: api)
@@ -95,7 +95,8 @@ final class AppModel {
 
     private func proceed(_ link: JoinLink) async {
         let mine = intent
-        if let personId = ServerConfig.personId(runId: link.runId, defaults: defaults) {
+        // Back into the run only with this phone's key for it; without one (a run from before keys), join again.
+        if let personId = ServerConfig.personId(runId: link.runId, defaults: defaults), api.keys.key(runId: link.runId) != nil {
             let api = self.api
             let route = await HomeRouting.resume(RunRef(runId: link.runId, personId: personId)) { try await api.getRun($0) }
             guard mine == intent else { return }
@@ -191,7 +192,7 @@ final class AppModel {
         guard url != server else { return }
         store.disconnect()
         server = url
-        api = DibsAPI(base: url)
+        api = DibsAPI(base: url, keys: RunKeys(defaults: defaults))
         store = RunStore(api: api)
         path = []
     }
