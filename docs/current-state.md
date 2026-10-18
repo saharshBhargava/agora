@@ -1,5 +1,33 @@
 # Current state — mandatory read before resuming work
 
+## Automatic background replenishment — source verified October 18, 2026
+
+The worker now creates and maintains store-grouped lists after inventory/forecast updates, at startup,
+and through the existing six-hour sweep. It includes fresh recorded zeroes, restock-threshold items and
+seven-day run-out predictions; preferred store → last purchase store → unassigned Groceries. No open app,
+chat request or model credentials are needed. Gemini and other native chat providers receive the actual
+lists, stores, sources, checked flags and saved explanations in `shopping_context`.
+
+Duplicate titles/links are suppressed across open lists. New stock/store evidence updates machine-owned
+lines; restocks remove obsolete machine-owned lines. User edits transfer lines to user control. Checks,
+removals and list completion/archive dismiss the current observation until newer stock evidence arrives.
+Wishlist decisions and paused agents are respected. Jobs are durable, scoped, serialized and capped;
+no new periodic schedule was added. Migration **0020_automatic_replenishment.sql** is additive. Demo
+backfill adds a detergent restock and a dismissed rice example once, preserving existing data.
+
+Validation: **693 backend tests and Ruff passed** on disposable local PostgreSQL. **134 simulator tests
+passed**, including all iOS CI suites and live API/worker integration. The new end-to-end scenario saved
+an empty item and eleven declining observations, observed the correct saved-store list without calling
+chat or list generation, verified Gemini's context, checked off one line, and confirmed restocking removed
+only the other automatic line. A final focused simulator rerun passed after store/quantity reconciliation;
+Lists/detail screenshots were inspected. Demo reset ran only against the disposable loopback database.
+Logs: `/tmp/agora-auto-lists-backend-final.log`, `/tmp/agora-auto-lists-ci.log`,
+`/tmp/agora-auto-lists-final.log`; matching simulator `.xcresult` bundles are in `/tmp/`.
+No live Gemini inference is claimed: background list creation is server-driven, and the model context is
+verified through the native tools. Source verification is separate from deployment; deployment evidence
+will be recorded after main's release. Native copy/context changes require rebuilding the app.
+
+
 ## Consumption predictions in Home and chat — source integration, October 18, 2026
 
 Validated on main `75a3f88` and reconciled with the documentation update at `82853b6`.

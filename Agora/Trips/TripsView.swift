@@ -10,7 +10,7 @@ struct TripsView: View {
     var body: some View {
         List {
             Section {
-                Text("Make a shopping list or generate one from items running out, then find time to shop. Review each trip before adding it to your calendar.")
+                Text("Restock lists update automatically. Calendar trips need your approval.")
                     .foregroundStyle(.secondary)
                 DisclosureGroup("Shopping times") {
                     Stepper("Look ahead \(options.days) days", value: $options.days, in: 1...14)

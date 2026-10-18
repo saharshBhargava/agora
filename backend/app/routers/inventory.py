@@ -232,6 +232,7 @@ async def update_item(item_id: UUID, body: ItemPatch, request: Request, user: Pr
             await audit(conn, "inventory.item_updated", actor_id=user.user_id, household_id=household_id,
                         target_type="inventory_item", target_id=item_id, meta={"fields": sorted(changes)})
             await notify(conn, household_id, "inventory.updated", item_id)
+            await forecasting.request_refresh(conn, household_id, user.user_id, [item_id])
         row = await conn.fetchrow(ITEM_SELECT + "WHERE i.id = $1", item_id)
     return ItemOut(**item_fields(row))
 
