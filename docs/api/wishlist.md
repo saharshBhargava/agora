@@ -9,9 +9,13 @@ feedback teaches the agent without changing an item's status.
 All routes are under `/v1/wishlist`, need `Authorization: Bearer <token>`, and return RFC 7807
 `application/problem+json` errors. Every change publishes a `wishlist.updated` event on `GET /v1/events`.
 
-Active items can now have a separately confirmed [price watch](price-watches.md). Adding/editing a wishlist
-target alone does not authorize monitoring. Changes to an item's identity, quantity, target or deadline
-invalidate the watch's earlier confirmation; purchasing/removing the item completes its watch.
+Every active item automatically gets a [price watch](price-watches.md). Adding an item or accepting a
+suggestion atomically saves the watch and queues its first web price check. Targets are optional: without
+one, source prices are displayed without target-price alerts. Default research is for new items with US
+delivery; users can refine these preferences in watch settings. Identity, quantity, target and deadline
+edits update research and fence stale results. Explicit pauses are preserved; purchasing/removing completes
+the watch. Pending suggestions do not start research. Saving never authorizes a purchase or push permission.
+If the check budget is exhausted, the item still saves and its watch waits for a later scheduled check.
 
 The examples below were captured from the running app (`kedar` dev account). IDs and timestamps will differ.
 
