@@ -11,7 +11,7 @@ import httpx
 
 from app.db import notify
 from app.errors import Problem, not_found
-from app.image_identity import SEARCH_VERSION, VERIFICATION_VERSION, ImageIdentity
+from app.image_identity import SEARCH_VERSION, VERIFICATION_VERSION, ImageIdentity, image_rank
 from app.image_research import ImageFetcher, discover, verify_download
 from app.jobs import enqueue
 from app.price_search import SearchError
@@ -97,7 +97,7 @@ async def descriptor(conn, kind, item_id, *, inherit=True):
         return {**result, "inherited": True}
     asset = await conn.fetchrow("SELECT * FROM item_image_assets WHERE id=$1", state["asset_id"]) if state else None
     # Old/rolled-back workers may still write legacy assets. Fail closed on every read.
-    if asset and asset["match_kind"] == "product" and not state["user_selected"] and not exact_asset(asset):
+    if asset and asset["match_kind"] == "product" and not state["user_selected"] and not candidate_asset(asset):
         asset = None
     choices = []
     if state:
@@ -119,8 +119,8 @@ async def descriptor(conn, kind, item_id, *, inherit=True):
         if asset and exact_asset(asset)
         else "demo"
         if asset and asset["match_kind"] == "representative"
-        else "needs_confirmation"
-        if choices
+        else "best_match"
+        if asset
         else "unresolved"
     )
     return {
@@ -128,13 +128,11 @@ async def descriptor(conn, kind, item_id, *, inherit=True):
         "identity": effective_identity.model_dump(exclude_none=True),
         "missing_identity": effective_identity.missing(),
         "unresolved_reason": (
-            "choose_variant"
-            if choices
-            else "search_pending"
+            "search_pending"
             if state and state["status"] == "queued"
             else (state["last_error"] if state and state["last_error"] else "no_verified_match")
         )
-        if match_status in ("unresolved", "needs_confirmation")
+        if match_status == "unresolved"
         else None,
         "display_path": asset_info(asset)["path"] if asset else None,
         "status": (state["status"] if state and (asset or state["status"] != "ready") else "fallback"),
@@ -181,6 +179,23 @@ class ItemImageService:
         # Repair queued bindings at boot without rerunning successful or user-selected images.
         async with self.db.system() as conn:
             await conn.execute("SELECT pg_advisory_xact_lock(hashtext('images.start'))")
+            # Earlier releases saved useful candidates but waited for a manual choice.
+            # Adopt them without repeating web research; preserve every explicit user override.
+            pending = await conn.fetch("""SELECT kind,item_id,version,candidates FROM item_images
+                WHERE status='fallback' AND asset_id IS NULL AND NOT user_selected
+                AND EXISTS(SELECT 1 FROM item_image_assets a WHERE a.id=ANY(item_images.candidates)
+                  AND a.verification->>'version'='2' AND a.verification->>'status' IN ('exact','candidate'))""")
+            for row in pending:
+                version = await conn.fetchval(
+                    """UPDATE item_images SET version=version+1
+                    WHERE kind=$1 AND item_id=$2 AND version=$3 AND status='fallback'
+                    AND asset_id IS NULL AND NOT user_selected RETURNING version""",
+                    row["kind"],
+                    row["item_id"],
+                    row["version"],
+                )
+                if version is not None:
+                    await self._finish(conn, row["kind"], row["item_id"], version, row["candidates"], None)
             await conn.execute("""INSERT INTO jobs(kind,payload,max_attempts)
                 SELECT 'image.resolve',jsonb_build_object('kind',i.kind,'item_id',i.item_id,'version',i.version),2
                 FROM item_images i WHERE i.status='queued' AND NOT i.user_selected
@@ -254,6 +269,13 @@ class ItemImageService:
                 candidates = await discover(
                     self.provider, context["identity"].query(), context["known_url"], identity=context["identity"]
                 )
+                # Keep distinct product choices ahead of repeat angles when applying the download cap.
+                unique, repeated, titles = [], [], set()
+                for candidate in sorted(candidates, key=image_rank):
+                    title = candidate.get("title", "").casefold()
+                    (repeated if title in titles else unique).append(candidate)
+                    titles.add(title)
+                candidates = unique + repeated
                 downloads = 0
                 # Failed downloads consume the same three-download budget as valid images.
                 for candidate in candidates:
@@ -301,26 +323,28 @@ class ItemImageService:
 
     async def finish(self, kind, item_id, version, ids, error):
         async with self.db.system() as conn:
-            selected = await conn.fetchval(
-                """SELECT id FROM item_image_assets
-                WHERE id=ANY($1::uuid[]) AND verification->>'version'='2' AND verification->>'status'='exact'
-                ORDER BY array_position($1::uuid[],id) LIMIT 1""",
-                ids,
-            )
-            household = await conn.fetchval(
-                """UPDATE item_images SET status=$4,asset_id=$5,candidates=$6,
-                last_error=$7,updated_at=now() WHERE kind=$1 AND item_id=$2 AND version=$3 AND NOT user_selected
-                RETURNING household_id""",
-                kind,
-                item_id,
-                version,
-                "ready" if selected else "fallback",
-                selected,
-                ids,
-                error,
-            )
-            if household:
-                await notify(conn, household, "image.updated", item_id)
+            await self._finish(conn, kind, item_id, version, ids, error)
+
+    async def _finish(self, conn, kind, item_id, version, ids, error):
+        assets = await conn.fetch(
+            "SELECT * FROM item_image_assets WHERE id=ANY($1::uuid[]) ORDER BY array_position($1::uuid[],id)", ids
+        )
+        eligible = sorted((a for a in assets if candidate_asset(a)), key=image_rank)
+        selected = eligible[0]["id"] if eligible else None
+        household = await conn.fetchval(
+            """UPDATE item_images SET status=$4,asset_id=$5,candidates=$6,
+            last_error=$7,updated_at=now() WHERE kind=$1 AND item_id=$2 AND version=$3 AND NOT user_selected
+            RETURNING household_id""",
+            kind,
+            item_id,
+            version,
+            "ready" if selected else "fallback",
+            selected,
+            ids,
+            error,
+        )
+        if household:
+            await notify(conn, household, "image.updated", item_id)
 
 
 async def seed_demo_images(db, user_id):
