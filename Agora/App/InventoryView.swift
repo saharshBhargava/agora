@@ -6,72 +6,192 @@ struct ListsView: View {
     @ObservedObject var shopping: ShoppingStore
     @ObservedObject var settings: SettingsStore
     @ObservedObject var trips: TripStore
+    @State private var creatingList = false
+    @State private var createdListID: UUID?
 
     var body: some View {
         NavigationStack {
-            List {
-                if inventory.households.count > 1 {
-                    Picker("Household", selection: Binding(get: { inventory.householdID }, set: { id in
-                        if let id { Task { await inventory.selectHousehold(id) } }
-                    })) {
-                        ForEach(inventory.households) { Text($0.name).tag(Optional($0.id)) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 32) {
+                    if inventory.households.count > 1 {
+                        Picker("Household", selection: Binding(get: { inventory.householdID }, set: { id in
+                            if let id { Task { await inventory.selectHousehold(id) } }
+                        })) {
+                            ForEach(inventory.households) { Text($0.name).tag(Optional($0.id)) }
+                        }
+                        .padding(.horizontal, 20)
                     }
+                    inventorySection
+                    shoppingSection
+                    wishlistSection(suggestions: false)
+                    wishlistSection(suggestions: true)
                 }
-                Section {
-                    NavigationLink {
-                        InventoryListView(store: inventory)
-                    } label: {
-                        listRow("Inventory list", subtitle: "What you have at home", symbol: "shippingbox", tint: .teal)
-                    }
-                    .accessibilityIdentifier("lists.inventory")
-                    NavigationLink {
-                        TripsView(store: trips)
-                    } label: {
-                        listRow("Shopping lists", subtitle: "What to pick up on your next trip", symbol: "checklist", tint: .blue)
-                    }
-                    .accessibilityIdentifier("lists.shopping")
-                    NavigationLink {
-                        WatchListView(store: shopping.watches)
-                            .toolbar {
-                                ToolbarItem(placement: .primaryAction) {
-                                    Menu {
-                                        NavigationLink("Wishlist") { ShoppingView(store: shopping, settings: settings) }
-                                        NavigationLink("Offer inbox") { WatchInboxView(store: shopping.watches) }
-                                    } label: { Label("Watch options", systemImage: "ellipsis.circle") }
-                                }
-                            }
-                    } label: {
-                        listRow("Watch list", subtitle: "Products and prices you’re keeping an eye on", symbol: "binoculars", tint: .purple)
-                    }
-                    .accessibilityIdentifier("lists.watches")
-                    NavigationLink {
-                        ShoppingView(store: shopping, settings: settings, selection: "suggestions")
-                    } label: {
-                        listRow("Suggested for you", subtitle: "Ideas and essentials to replenish", symbol: "sparkles", tint: .orange)
-                    }
-                    .accessibilityIdentifier("lists.suggestions")
+                .padding(.vertical, 20)
+                .frame(maxWidth: 900, alignment: .leading)
+                .frame(maxWidth: .infinity)
+            }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Lists")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("New list", systemImage: "plus") { creatingList = true }
+                        .disabled(!trips.canUse || trips.busy || trips.loading)
+                        .accessibilityIdentifier("lists.create")
                 }
             }
-            .navigationTitle("Lists")
+            .sheet(isPresented: $creatingList) {
+                TripCreateListSheet(store: trips) { id in
+                    creatingList = false
+                    createdListID = id
+                }
+            }
+            .navigationDestination(item: $createdListID) { id in
+                TripListView(store: trips, listID: id)
+            }
             .refreshable { await inventory.refresh(); await shopping.refresh(); await trips.refresh() }
         }
         .id(inventory.context)
+        .onChange(of: inventory.context) { _, _ in creatingList = false; createdListID = nil }
     }
 
-    private func listRow(_ title: String, subtitle: String, symbol: String, tint: Color) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: symbol)
-                .font(.title3)
-                .foregroundStyle(tint)
-                .frame(width: 44, height: 44)
-                .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title).font(.headline)
-                Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+    private var inventorySection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader("Inventory", linkLabel: "View inventory", identifier: "lists.inventory") {
+                InventoryListView(store: inventory)
             }
+            message("Out of stock and running low first")
+            if inventory.loading && inventory.activeItems.isEmpty {
+                ProgressView("Loading inventory…").padding(.horizontal, 20)
+            } else if inventory.activeItems.isEmpty && inventory.error == nil {
+                message("Add your essentials to see what you have and what needs restocking.")
+            } else {
+                ItemCarousel {
+                    ForEach(inventory.activeItems.sorted(by: InventoryItem.restockOrder)) { item in
+                        NavigationLink {
+                            InventoryDetailView(store: inventory, itemID: item.id)
+                        } label: {
+                            ItemCarouselItem(title: item.displayName, detail: item.stockSummary,
+                                             detailColor: item.quantity == 0 ? .red : item.isRunningLow ? .orange : .secondary) { size in
+                                ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName,
+                                              category: item.category, size: size)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("lists.inventory.\(item.id)")
+                    }
+                }
+            }
+            if let error = inventory.error { message(error) }
         }
-        .padding(.vertical, 10)
+    }
+
+    private var shoppingSection: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            sectionHeader("Shopping lists", linkLabel: "Shopping lists & trips", identifier: "lists.shopping") {
+                TripsView(store: trips)
+            }
+            if trips.loading && trips.lists.isEmpty {
+                ProgressView("Loading shopping lists…").padding(.horizontal, 20)
+            } else if trips.lists.isEmpty && trips.error == nil {
+                message("Create a list for your next shop. Lists are grouped by store.")
+            }
+            ForEach(TripListStoreGroup.group(trips.lists)) { group in
+                VStack(alignment: .leading, spacing: 16) {
+                    Label(group.name, systemImage: "storefront")
+                        .font(.headline).foregroundStyle(.secondary)
+                        .padding(.horizontal, 20)
+                        .accessibilityAddTraits(.isHeader)
+                    ForEach(group.lists) { list in
+                        VStack(alignment: .leading, spacing: 12) {
+                            NavigationLink {
+                                TripListView(store: trips, listID: list.id)
+                            } label: {
+                                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(list.name).font(.headline)
+                                        Text(list.items.isEmpty ? "No items yet" : list.openCount == 1 ? "1 item left" : "\(list.openCount) items left")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "chevron.right").font(.subheadline.weight(.semibold))
+                                }
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 20)
+                            .accessibilityIdentifier("lists.shopping.\(list.id)")
+                            if !list.openItems.isEmpty {
+                                ItemCarousel {
+                                    ForEach(list.openItems) { item in
+                                        NavigationLink {
+                                            TripListView(store: trips, listID: list.id)
+                                        } label: {
+                                            ItemCarouselItem(title: item.title,
+                                                             detail: "\(item.quantity.formatted())\(item.unit.map { " " + $0 } ?? "")") { size in
+                                                ItemThumbnail(kind: "list", id: item.id, name: item.title,
+                                                              size: size)
+                                                    .allowsHitTesting(false)
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            } else {
+                                message(list.items.isEmpty ? "Open this list to add items." : "Everything is checked off.")
+                            }
+                        }
+                    }
+                }
+            }
+            if let error = trips.error { message(error) }
+        }
+    }
+
+    private func wishlistSection(suggestions: Bool) -> some View {
+        let items = suggestions ? shopping.suggestions : shopping.active
+        return VStack(alignment: .leading, spacing: 16) {
+            sectionHeader(suggestions ? "Suggested for you" : "Watch list",
+                          linkLabel: suggestions ? "View suggestions" : "View watch list",
+                          identifier: suggestions ? "lists.suggestions" : "lists.watches") {
+                ShoppingView(store: shopping, settings: settings, selection: suggestions ? "suggestions" : "wishlist")
+            }
+            if shopping.loading && items.isEmpty {
+                ProgressView("Loading items…").padding(.horizontal, 20)
+            } else if items.isEmpty && shopping.error == nil {
+                message(suggestions ? "Ideas and essentials to replenish will appear here." : "Save products you want to keep an eye on their prices.")
+            } else {
+                ItemCarousel {
+                    ForEach(items) { item in
+                        ItemCarouselItem(title: item.title, detail: suggestions ? item.rationale : item.targetLabel.map { "Target \($0)" }) { size in
+                            ItemThumbnail(kind: "wishlist", id: item.id, name: item.title, category: item.category, size: size)
+                        }
+                    }
+                }
+            }
+            if let error = shopping.error { message(error) }
+        }
+    }
+
+    private func sectionHeader<Destination: View>(_ title: String, linkLabel: String, identifier: String,
+                                                  @ViewBuilder destination: () -> Destination) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(title).font(.title3.weight(.bold))
+                .accessibilityAddTraits(.isHeader)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            NavigationLink(destination: destination) {
+                Image(systemName: "chevron.right").font(.subheadline.weight(.semibold))
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .accessibilityLabel(linkLabel)
+            .accessibilityIdentifier(identifier)
+        }
+        .padding(.leading, 20).padding(.trailing, 8)
+    }
+
+    private func message(_ text: String) -> some View {
+        Text(text).font(.subheadline).foregroundStyle(.secondary).padding(.horizontal, 20)
     }
 }
 
@@ -95,7 +215,7 @@ struct InventoryListView: View {
             $0.status == (showArchived ? "archived" : "active") &&
             (locationID == nil || $0.locationId == locationID) &&
             (search.isEmpty || $0.displayName.localizedStandardContains(search) || ($0.category?.localizedStandardContains(search) ?? false))
-        }.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+        }.sorted(by: InventoryItem.restockOrder)
     }
 
     var body: some View {
@@ -167,7 +287,8 @@ private struct InventoryRowView: View {
     let item: InventoryItem
     let location: String?
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
+        HStack(alignment: .center, spacing: 12) {
+            ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName, category: item.category)
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.displayName).font(.headline)
                 if let location { Text(location).font(.caption).foregroundStyle(.secondary) }

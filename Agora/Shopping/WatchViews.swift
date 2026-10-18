@@ -11,14 +11,14 @@ struct WatchListView: View {
                     Text(store.discoveryExplanation).font(.caption).foregroundStyle(.secondary) }
             }
             if store.watches.isEmpty && !store.loading && store.hasLoadedCapabilities {
-                ContentUnavailableView("Watch for the right offer", systemImage: "binoculars", description: Text("Open an active wishlist item and choose Set up price watch. Review the exact product, price and location before confirming."))
+                ContentUnavailableView("Watch for the right offer", systemImage: "binoculars", description: Text("Add an item to your wishlist to start searching for current prices automatically."))
             }
             ForEach(store.watches) { watch in
                 NavigationLink { WatchDetailView(store: store, watchID: watch.id) } label: {
                     VStack(alignment: .leading, spacing: 5) {
-                        HStack { Text(watch.title).font(.headline); Spacer(); Text(watch.status.capitalized).font(.caption) }
-                        Text("Target \(WishlistItem.money(watch.criteria.targetPriceCents)) each · \(watch.criteria.quantity) item(s)").font(.subheadline)
-                        Text(watch.resultLabel).font(.caption).foregroundStyle(.secondary)
+                        HStack { ItemThumbnail(kind: "wishlist", id: watch.wishlistItemId, name: watch.title); Text(watch.title).font(.headline); Spacer(); Text(watch.status.capitalized).font(.caption) }
+                        Text("\(watch.criteria.targetPriceCents.map { "Target \(WishlistItem.money($0)) each" } ?? "No target price") · \(watch.criteria.quantity) item(s)").font(.subheadline)
+                        Text(store.browserFallbackStatus[watch.id] ?? watch.resultLabel).font(.caption).foregroundStyle(.secondary)
                     }.padding(.vertical, 4)
                 }
             }
@@ -50,7 +50,8 @@ struct WatchDetailView: View {
                         }
                     }
                     Section {
-                        Text(watch.resultLabel).foregroundStyle(watch.lastResult == "failed" ? .orange : .secondary)
+                        if let disclosure = watch.simulationDisclosure { Text(disclosure).font(.caption).foregroundStyle(.secondary) }
+                        Text(store.browserFallbackStatus[watch.id] ?? watch.resultLabel).foregroundStyle(watch.lastResult == "failed" ? .orange : .secondary)
                         if !watch.rejectionLabels.isEmpty {
                             DisclosureGroup("Why offers were excluded") {
                                 ForEach(Array(watch.rejectionLabels.enumerated()), id: \.offset) { _, reason in Text(reason).font(.caption).foregroundStyle(.secondary) }
@@ -58,7 +59,9 @@ struct WatchDetailView: View {
                         }
                         LabeledContent("Status", value: watch.status.capitalized)
                         if let last = watch.lastSuccessfulAt { LabeledContent("Last successful check", value: last.formatted(date: .abbreviated, time: .shortened)) }
-                        else { Text("No successful check yet.").font(.caption).foregroundStyle(.secondary) }
+                        else if let price = watch.currentPrices.first {
+                            LabeledContent("Latest price found", value: price.observedAt.formatted(date: .abbreviated, time: .shortened))
+                        } else { Text("No successful check yet.").font(.caption).foregroundStyle(.secondary) }
                         if let last = watch.lastCheckedAt { LabeledContent("Last attempt", value: last.formatted(date: .abbreviated, time: .shortened)) }
                         if let next = watch.nextCheckAt, watch.status == "active" { LabeledContent("Next check", value: next.formatted(date: .abbreviated, time: .shortened)) }
                         if let error = store.error { Text(error).foregroundStyle(.red) }
@@ -72,13 +75,33 @@ struct WatchDetailView: View {
                         }
                         Button("Edit criteria and alerts") { editing = true }.disabled(store.busy)
                     }
-                    Section("Best verified offers · \(watch.currentOffers.count)") {
-                        if watch.currentOffers.isEmpty { Text(watch.lastResult == "failed" ? "Offers could not be checked. Try again later." : "No verified offer is available for these criteria yet.").foregroundStyle(.secondary) }
-                        ForEach(watch.currentOffers) { offer in WatchOfferRow(offer: offer) }
+                    if !watch.currentPrices.isEmpty {
+                        Section("Current retailer prices") {
+                            ForEach(watch.currentPrices) { price in
+                                VStack(alignment: .leading, spacing: 5) {
+                                    HStack {
+                                        ItemThumbnail(kind: "wishlist", id: watch.wishlistItemId, name: watch.title)
+                                        Text(price.title).font(.headline)
+                                    }
+                                    Text("\(WishlistItem.money(price.unitPriceCents)) at \(price.merchant)")
+                                    Text(price.comparison(target: watch.criteria.targetPriceCents)).font(.subheadline)
+                                    if let note = price.verificationNote { Text(note).font(.caption).foregroundStyle(.orange) }
+                                    else if !["confirmed_criteria_met", "above_target", "target_not_set"].contains(price.reason) {
+                                        Text("Price found; availability, delivery or other requirements still need verification.").font(.caption).foregroundStyle(.orange)
+                                    }
+                                    Text("Before tax and shipping · \(price.observedAt.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(.secondary)
+                                    if let url = price.safeURL { Link("View retailer", destination: url) }
+                                }
+                            }
+                        }
+                    }
+                    Section("Offers meeting all requirements · \(watch.currentOffers.count)") {
+                        if watch.currentOffers.isEmpty { Text(watch.lastResult == "failed" && watch.currentPrices.isEmpty ? "Offers could not be checked. Try again later." : "No verified offer meets all your requirements yet.").foregroundStyle(.secondary) }
+                        ForEach(watch.currentOffers) { offer in WatchOfferRow(offer: offer, wishlistItemID: watch.wishlistItemId) }
                     }
                     if !watch.historicalOffers.isEmpty {
                         Section("Previous offers · no longer current") {
-                            ForEach(watch.historicalOffers) { offer in WatchOfferRow(offer: offer, historical: true) }
+                            ForEach(watch.historicalOffers) { offer in WatchOfferRow(offer: offer, wishlistItemID: watch.wishlistItemId, historical: true) }
                         }
                     }
                     Section("Confirmed criteria") { WatchCriteriaSummary(criteria: watch.criteria) }
@@ -121,12 +144,16 @@ struct WatchDetailView: View {
 
 private struct WatchOfferRow: View {
     let offer: WatchOffer
+    let wishlistItemID: UUID
     var historical = false
     private var isCurrent: Bool { offer.isCurrent && !historical }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if !isCurrent { Label("Historical offer · verify again at the retailer", systemImage: "clock").font(.caption).foregroundStyle(.orange) }
-            Text(offer.title).font(.headline)
+            HStack {
+                ItemThumbnail(kind: "wishlist", id: wishlistItemID, name: offer.title)
+                Text(offer.title).font(.headline)
+            }
             Text("\(offer.merchant) · \(WishlistItem.money(offer.unitPriceCents)) each")
             if let total = offer.totalPriceCents { Text("Total \(WishlistItem.money(total)) for \(offer.quantity)") }
             else { Text("Total unavailable · tax, shipping or fees may be additional").font(.caption).foregroundStyle(.orange) }
@@ -150,7 +177,7 @@ private struct WatchCriteriaSummary: View {
         LabeledContent("Product", value: criteria.query)
         if let url = criteria.productUrl { Text(url).font(.caption).textSelection(.enabled) }
         LabeledContent("Quantity", value: "\(criteria.quantity)")
-        LabeledContent("Target per item", value: WishlistItem.money(criteria.targetPriceCents))
+        LabeledContent("Target per item", value: criteria.targetPriceCents.map { WishlistItem.money($0) } ?? "Not set")
         Text("Before tax and shipping · USD").font(.caption).foregroundStyle(.secondary)
         if let total = criteria.maxTotalCents { LabeledContent("Maximum total", value: WishlistItem.money(total)) }
         LabeledContent("Must include", value: criteria.requiredTerms.isEmpty ? "No additional terms" : criteria.requiredTerms.joined(separator: ", "))
@@ -181,7 +208,7 @@ struct WatchEditor: View {
             Form {
                 if review { reviewSections } else { editSections }
                 if let error { Section { Text(error).foregroundStyle(.red) } }
-            }.navigationTitle(review ? "Review price watch" : "Set up price watch")
+            }.navigationTitle(review ? "Review watch settings" : "Watch settings")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button(review ? "Back" : "Cancel") { if review { review = false; requestKey = UUID().uuidString } else { dismiss() } }.disabled(saving) }
                     ToolbarItem(placement: .confirmationAction) {
@@ -215,7 +242,7 @@ struct WatchEditor: View {
         }
         Section("Price and availability") {
             VStack(alignment: .leading) {
-                Text("Target per item · USD").font(.caption).foregroundStyle(.secondary)
+                Text("Target per item · USD (optional)").font(.caption).foregroundStyle(.secondary)
                 TextField("0.00", text: $draft.targetPrice).keyboardType(.decimalPad)
             }
             Text("Target applies to each item before tax and shipping.").font(.caption).foregroundStyle(.secondary)
@@ -245,7 +272,7 @@ struct WatchEditor: View {
             }
             TextField("Time zone", text: $draft.timezone).textInputAutocapitalization(.never).autocorrectionDisabled()
         }
-        Section { Text("Saving a wishlist item does not start a watch. Confirm your criteria on the next screen. A watch only finds offers; it does not buy anything.").font(.caption).foregroundStyle(.secondary) }
+        Section { Text("Wishlist items are watched automatically. These settings refine your search and alerts. A watch finds prices; it does not buy anything.").font(.caption).foregroundStyle(.secondary) }
     }
     @ViewBuilder private var reviewSections: some View {
         Section("Check the product and limits") {

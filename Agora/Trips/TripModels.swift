@@ -45,6 +45,26 @@ struct TripList: Decodable, Identifiable {
     var openItems: [TripListItem] { items.filter { !$0.checked } }
 }
 
+/// Merchant identity keeps separate store locations distinct; unassigned lists stay visible.
+struct TripListStoreGroup: Identifiable {
+    let id: UUID?
+    let name: String
+    let lists: [TripList]
+
+    static func group(_ lists: [TripList]) -> [Self] {
+        Dictionary(grouping: lists, by: { $0.merchant?.id }).map { id, lists in
+            Self(id: id, name: lists.first?.merchant?.label ?? "Any store", lists: lists.sorted {
+                let comparison = $0.name.localizedStandardCompare($1.name)
+                return comparison == .orderedSame ? $0.id.uuidString < $1.id.uuidString : comparison == .orderedAscending
+            })
+        }.sorted {
+            if ($0.id == nil) != ($1.id == nil) { return $0.id != nil }
+            let comparison = $0.name.localizedStandardCompare($1.name)
+            return comparison == .orderedSame ? ($0.id?.uuidString ?? "") < ($1.id?.uuidString ?? "") : comparison == .orderedAscending
+        }
+    }
+}
+
 struct TripItemDraft {
     var title = ""
     var quantity = "1"

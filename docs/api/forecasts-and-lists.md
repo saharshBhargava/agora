@@ -528,6 +528,11 @@ Captured examples:
   `list.item_updated` (field names), `list.item_removed`, `list.generated` (window and counts).
 - SSE events carry only `{household_id, type, id}`. Clients refetch through the API.
 
+## Item imagery
+
+Shopping-list items expose an `image_path` for the shared [item image API](item-images.md). Linked entries
+inherit their inventory image unless a user selects an override. Image discovery does not block saves.
+
 
 ## Chat additions (MVP)
 

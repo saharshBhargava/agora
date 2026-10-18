@@ -422,6 +422,7 @@ struct TripListView: View {
                             .buttonStyle(.borderless)
                             .disabled(store.busy || list.status != "open")
                             .accessibilityLabel("\(item.checked ? "Uncheck" : "Check") \(item.title)")
+                            ItemThumbnail(kind: "list", id: item.id, name: item.title)
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(item.title).strikethrough(item.checked)
                                 Text("\(item.quantity.formatted()) \(item.unit ?? "")")

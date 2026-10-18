@@ -134,3 +134,28 @@ final class MediaLibrary: ObservableObject {
         return UIImage(cgImage: image)
     }
 }
+
+/// Review supported media in selection order, one confirmation at a time.
+struct ScanReviewQueue {
+    private var pending: [CaptureItem] = []
+    var isEmpty: Bool { pending.isEmpty }
+    mutating func enqueue(_ items: [CaptureItem]) {
+        for item in items where item.kind != .document && !pending.contains(where: { $0.id == item.id }) {
+            pending.append(item)
+        }
+    }
+    mutating func next() -> CaptureItem? { pending.isEmpty ? nil : pending.removeFirst() }
+    mutating func clear() { pending.removeAll() }
+}
+
+extension CaptureItem {
+    func scanStatus(accountID: String?, householdID: UUID?) -> String {
+        guard kind != .document else { return "View document" }
+        guard let recognition else { return "Needs review" }
+        guard recognition.accountID == accountID, recognition.householdID == householdID else {
+            return "Saved review in another household or account"
+        }
+        if recognition.recognitionID != nil { return "Added to inventory" }
+        return recognition.rejected ? "Needs review" : "Check save status"
+    }
+}

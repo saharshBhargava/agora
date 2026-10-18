@@ -85,6 +85,7 @@ final class ShoppingStore: ObservableObject {
         let row = try await api.fetch(original.map { "v1/wishlist/\($0.id)" } ?? "v1/wishlist", as: WishlistItem.self,
             method: original == nil ? "POST" : "PATCH", body: try draft.body(householdID: householdID, editing: original != nil))
         try check(version); update(row)
+        await watches.refresh()
     }
     func act(_ item: WishlistItem, action: String, body: [String: Any]? = nil) async {
         guard !busy, item.householdId == householdID else { return }
@@ -95,6 +96,7 @@ final class ShoppingStore: ObservableObject {
             let row = try await api.fetch(path, as: WishlistItem.self,
                                           method: action == "remove" ? "DELETE" : "POST", body: body)
             try check(version); update(row)
+            await watches.refresh()
         } catch { if context == version, !Task.isCancelled { self.error = InventoryStore.message(error) } }
     }
     func feedback(_ item: WishlistItem, rating: String) async {

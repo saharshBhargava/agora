@@ -6,8 +6,9 @@ the matched or user-selected image of the watched item, not evidence of current 
 
 Items without a relevant downloaded image show a neutral “No matching image found” placeholder.
 Demo artwork is labeled as sample imagery and never counts as an exact match. Product discovery is asynchronous and
-never blocks creating/saving an item. Native recognition still saves metadata only; retaining a photo is a
-separate, explicit action in **Change image**. Tap or long-press an item's thumbnail for the same image editor.
+never blocks creating/saving an item. Native recognition still saves metadata only. The native app selects
+images automatically and exposes no image chooser, photo upload, removal, alternative-selection or search-detail controls.
+The selection API remains compatible with older clients and preserves previously saved overrides.
 
 ## Routes
 
@@ -52,7 +53,7 @@ establishes an automatic source-backed product match. `identity`, `missing_ident
 explain what is known. Unresolved reasons include `search_pending` and `no_verified_match`.
 `best_match` means the server automatically selected its best relevant image without claiming an exact SKU
 verification. It returns `status: ready`, `asset` and `display_path`, with `user_selected: false`.
-Each alternative in `choices` includes a readable `title`; these are optional overrides under **Change image**.
+Each alternative in `choices` includes a readable `title`; these remain available to older clients through the selection API.
 No confirmation or product-version selection is required to display an image.
 An uploaded photo or explicit choice is user-confirmed, not automatically verified.
 `asset` is nullable. `match_kind` distinguishes `product`, `representative`, and `photo`. Each automatic asset
@@ -72,7 +73,7 @@ Selection bodies are strict and mode-specific:
 
 Photos must decode to at most 5 MB, are resized to a maximum 512-pixel side and re-encoded without EXIF.
 Images must have an 80-pixel minimum side after resizing, an aspect ratio at most 4:1, and at most 500 KB
-stored size. Native Photos selection prepares a resized JPEG first. Unknown or another item's candidate
+stored size. These upload rules apply to clients using the selection API. Unknown or another item's candidate
 IDs are rejected. User choices are preserved across item edits and background work. Returning to automatic
 mode restores inheritance for linked list/wishlist items; repeat searches are subject to a one-minute
 cooldown when repeating automatic discovery without changing identity. Successful retries with the same key return the original result without another asset or job.
@@ -123,7 +124,8 @@ of SKU/barcode verification. Extra/unspecified variants remain `candidate` evide
 selection never upgrades the underlying verification evidence. Specified attributes must agree, including
 quantities and equivalent units. Ranking prefers exact identity, known official sources, structured metadata,
 and standard versions over unspecified special editions, bundles or refurbished variants. Distinct products
-are downloaded before repeat angles. Users can optionally choose another image, refine the text, or upload a photo.
+are downloaded before repeat angles. The native app displays the selected result automatically; older API
+clients can still submit image overrides or refined identity details.
 
 Discovery returns evidence already collected after 60 seconds, reserving the remainder of the 90-second
 job deadline for image downloads. Each search has a 15-second limit. Known pages are read first so a slow
@@ -147,16 +149,16 @@ UUID-based Agora asset paths, so credentials cannot be sent to an image's extern
 
 Every selection writes an audit event without personal content and emits `image.updated`. Job completion
 also emits `image.updated`; version checks prevent stale work replacing a renamed item or user override.
-Native visible thumbnails poll pending work for up to 90 seconds and retain a neutral unavailable placeholder on errors.
-The local native recovery change continues checking while visible and active; it requires a rebuilt app.
+Native visible thumbnails poll pending work in 90-second batches, then continue checking while visible
+and the app is active. Successful descriptor reads share a 60-second cache; transient failures retry
+automatically. Account/household changes stop the old observer and clear private images.
 
 The designated demo account receives deterministic Agora illustrations and never makes external image
-searches. Seed/backfill is idempotent and preserves user overrides. The image editor labels sample and
-representative imagery truthfully.
+searches. Seed/backfill is idempotent and preserves user overrides. The native thumbnail accessibility label identifies sample/representative imagery truthfully.
 
 ## Supplying exact product details
 
-The native image editor supports the following request. Identity fields are stored separately from the item
+Older clients and API integrations can supply the following request. Identity fields are stored separately from the item
 name and remain household-scoped; renaming the item invalidates their use so old details cannot identify a
 new item. Empty optional fields should be omitted. Pack count must be an integer from 1 to 1000; barcode
 check digits are validated. Product identity is accepted only in automatic mode. Existing idempotency,
@@ -178,7 +180,7 @@ authorization and version checks apply to identity changes and all resulting job
 Optional `model`, `color`, and `gtin` fields support appliances/electronics and barcode identification.
 A GTIN identifies the product even when other details are unknown, but cannot override contradictory
 provided attributes. Stored quantity (how many the household owns) is never treated as package size/count.
-The legacy `representative` selection mode now clears the image; the app labels that action “Remove image”.
+The legacy `representative` selection mode clears the image; the native app no longer exposes that action.
 The public category illustration endpoints remain available for compatibility, but unresolved descriptors
 have no display image and ordinary app thumbnails do not use that artwork as product imagery.
 
@@ -188,7 +190,7 @@ At worker startup, existing unresolved bindings with usable saved candidates rec
 new web searches. This is idempotent, emits `image.updated`, and increments the binding version so an old
 worker cannot undo the selection. Explicit choices, removals and photos are preserved. New searches and
 shared-cache results use the same ranking. No additional schema migration is needed. Clients must render
-a version-2 candidate asset when the descriptor says `best_match`, and retain **Change image** as an override.
+a version-2 candidate asset when the descriptor says `best_match`. The native app settles on this automatic image.
 
 Active inventory also repairs missing image bindings at worker startup and when `GET /v1/inventory` loads
 the household. Empty automatic results older than seven days are queued again during those checks.
@@ -197,3 +199,12 @@ The same bounded online discovery, cache, automatic selection and authenticated 
 suggestions and watches handle these jobs; users need not edit or recreate an existing inventory item.
 Recovery is idempotent and preserves ready images, photos, explicit removals and saved alternatives.
 Demo seed/backfill repairs missing inventory bindings with labeled sample illustrations, without web searches.
+
+## Native startup loading
+
+As soon as the signed-in household inventory arrives, the app preloads descriptors and image bytes for
+the entire returned inventory, including offscreen and archived items. Four concurrent one-read tasks
+keep pending searches from blocking later items. While active, the app revisits the inventory every
+15 seconds, sharing a 60-second ready-result cache and a three-second pending-result cache with visible
+thumbnails. Newly added/renamed items join automatically. Account/household changes clear the cache and
+stop the old batch; inactive scenes stop scheduling passes. No screen visit or image choice is required.
