@@ -6,16 +6,29 @@ import {
 import type { Chip as ChipT, Person } from '@/lib/types';
 import { Chip } from './Chip';
 import { Grid } from './Grid';
+import { RemoveZone } from './RemoveZone';
 import { Tray, TrayChipView, type TrayApi, type TrayProps } from './Tray';
 
 const HOLD = { delay: 200, tolerance: 5 };
 
 /** Grid plus tray sharing one drag context: press-and-hold 200 ms lifts a chip, drop in the tray to claim. */
+export type BoardExtras = {
+  /** Shopper only: while a chip is lifted, a "Remove from cart" zone shows over the top of the screen. */
+  removeZone?: boolean;
+  /** Called when a chip is dropped on the remove zone. */
+  onRemove?: (chipId: string) => void;
+  /** A plain tap on a grid chip. */
+  onTap?: (chipId: string) => void;
+};
+
 export function Board({
   chips,
   people,
+  removeZone,
+  onRemove,
+  onTap,
   ...tray
-}: { chips: ChipT[]; people: Person[] } & Omit<TrayProps, 'chips' | 'people'> & { trayChips?: ChipT[] }) {
+}: { chips: ChipT[]; people: Person[] } & Omit<TrayProps, 'chips' | 'people'> & { trayChips?: ChipT[] } & BoardExtras) {
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: HOLD }),
     useSensor(TouchSensor, { activationConstraint: HOLD }),
@@ -31,10 +44,16 @@ export function Board({
       sensors={sensors}
       measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       onDragStart={(e) => setActive((e.active.data.current as { chip: ChipT; from: 'grid' | 'tray' }) ?? null)}
-      onDragEnd={() => setActive(null)}
+      onDragEnd={(e) => {
+        const a = e.active.data.current as { chip?: ChipT } | undefined;
+        if (removeZone && e.over?.id === 'remove' && a?.chip) onRemove?.(a.chip.id);
+        setActive(null);
+      }}
       onDragCancel={() => setActive(null)}
     >
+      {removeZone && active && <RemoveZone />}
       <Grid
+        onTap={onTap}
         chips={chips}
         me={tray.me}
         people={people}

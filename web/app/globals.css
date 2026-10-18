@@ -328,3 +328,47 @@ p { margin: 0; }
 
 .chip-source { opacity: 0.35; transform: none; box-shadow: none; }
 .chip-overlay { touch-action: none; }
+
+/* ---- shopper ---- */
+.live { position: relative; height: 32dvh; min-height: 200px; border-radius: var(--radius); overflow: hidden; background: var(--surface-2); border: 1px solid var(--border); flex: 0 0 auto; display: flex; }
+.camera { position: relative; flex: 1; cursor: crosshair; }
+.camera-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.camera-outline { position: absolute; border: 3px solid var(--accent); border-radius: var(--radius-sm); pointer-events: none; animation: outline-pulse 900ms ease-in-out infinite; }
+@keyframes outline-pulse { 50% { opacity: 0.45; } }
+.watching, .liveview-tag { position: absolute; left: var(--space-1); top: var(--space-1); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: rgba(23, 20, 15, 0.65); color: #fbf8f3; font-size: var(--fs-sm); }
+.watching-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: watch-pulse 1.4s ease-out infinite; }
+@keyframes watch-pulse { 0% { box-shadow: 0 0 0 0 var(--accent); } 100% { box-shadow: 0 0 0 8px transparent; } }
+.camera-denied, .mock-props { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-2); text-align: center; }
+.mock-props-row { display: flex; gap: var(--space-1); flex-wrap: wrap; justify-content: center; }
+.live-notice { position: absolute; left: var(--space-1); right: var(--space-1); bottom: var(--space-1); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--toast-bg); color: var(--toast-ink); font-size: var(--fs-sm); }
+.liveview { position: relative; border-radius: var(--radius); overflow: hidden; background: var(--surface-2); aspect-ratio: 4 / 3; display: grid; place-items: center; }
+.liveview img { width: 100%; height: 100%; object-fit: cover; }
+.liveview-small { aspect-ratio: 16 / 9; max-height: 120px; }
+.liveview-wait { padding: var(--space-2); }
+
+.remove-zone { position: fixed; top: 0; left: 0; right: 0; max-width: 480px; margin: 0 auto; height: 32dvh; min-height: 200px; display: grid; place-items: center; z-index: 15; background: rgba(200, 50, 27, 0.82); color: #fff; font-size: var(--fs-lg); font-weight: 700; border-radius: 0 0 var(--radius) var(--radius); }
+.remove-zone-over { background: rgba(200, 50, 27, 0.96); outline: 4px solid #fff; outline-offset: -8px; }
+
+.banner { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.dupe { display: flex; flex-direction: column; gap: var(--space-1); }
+.dupe-actions { display: flex; gap: var(--space-1); }
+.checkout-btn { flex: 0 0 auto; }
+.screen:has(.tray) { padding-bottom: calc(172px + env(safe-area-inset-bottom)); }
+.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; font: inherit; font-weight: 650; cursor: pointer; }
+
+.sheet-backdrop { position: fixed; inset: 0; z-index: 30; background: rgba(23, 20, 15, 0.5); display: flex; align-items: flex-end; justify-content: center; }
+.sheet { width: 100%; max-width: 480px; background: var(--surface); border-radius: var(--radius) var(--radius) 0 0; padding: var(--space-3) var(--space-2) max(var(--space-3), env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: var(--space-2); }
+.sheet-row { display: flex; gap: var(--space-1); }
+.sheet-row .btn { flex: 1; }
+
+.unclaimed { display: flex; flex-direction: column; gap: var(--space-2); }
+.unclaimed-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.unclaimed-row { display: flex; flex-direction: column; gap: var(--space-1); }
+.unclaimed-info { display: flex; justify-content: space-between; font-weight: 650; }
+.unclaimed-actions, .unclaimed-footer { display: flex; gap: var(--space-1); }
+.unclaimed-actions .btn, .unclaimed-footer .btn { flex: 1; }
+.mock-props-row .btn, .dupe-actions .btn, .banner .btn { width: auto; flex: 1; padding: 0 var(--space-2); }
+.mock-props-row { width: 100%; }
+.banner .btn { flex: 0 0 auto; }
+.btn-secondary { border: 1px solid var(--border); }
+.live { background: var(--surface); }

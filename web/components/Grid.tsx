@@ -12,9 +12,11 @@ export type GridProps = {
   onLift?: (chipId: string) => void;
   /** Non-drag fallback: Enter on a focused chip claims it. */
   onClaim?: (chipId: string) => void;
+  /** A plain tap on a chip (not a lift). */
+  onTap?: (chipId: string) => void;
 };
 
-function GridChip({ chip, me, people, fresh, onClaim }: { chip: ChipT; me: string; people: Person[]; fresh: boolean; onClaim?: (id: string) => void }) {
+function GridChip({ chip, me, people, fresh, onClaim, onTap }: { chip: ChipT; me: string; people: Person[]; fresh: boolean; onClaim?: (id: string) => void; onTap?: (id: string) => void }) {
   const liftable = isLiftable(chip);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: chip.id,
@@ -38,11 +40,12 @@ function GridChip({ chip, me, people, fresh, onClaim }: { chip: ChipT; me: strin
       {...(liftable ? listeners : {})}
       {...(liftable ? attributes : {})}
       onKeyDown={onKeyDown}
+      onClick={onTap ? () => onTap(chip.id) : undefined}
     />
   );
 }
 
-export function Grid({ chips, me, people, onLift, onClaim }: GridProps) {
+export function Grid({ chips, me, people, onLift, onClaim, onTap }: GridProps) {
   const ordered = useMemo(() => [...chips].sort((a, b) => b.addedAt - a.addedAt), [chips]);
   const seen = useRef<Set<string> | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
@@ -84,7 +87,7 @@ export function Grid({ chips, me, people, onLift, onClaim }: GridProps) {
       <div className="grid" role="list">
         {ordered.map((chip) => (
           <div role="listitem" key={chip.id} className="grid-cell">
-            <GridChip chip={chip} me={me} people={people} fresh={fresh.has(chip.id)} onClaim={onClaim} />
+            <GridChip chip={chip} me={me} people={people} fresh={fresh.has(chip.id)} onClaim={onClaim} onTap={onTap} />
           </div>
         ))}
       </div>

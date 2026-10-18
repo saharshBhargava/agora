@@ -1,4 +1,4 @@
-import type { Run } from './types';
+import type { Chip, Run } from './types';
 
 export const TEST_CARD = { number: '4111111111111111', expMonth: 12, expYear: 2031 };
 const DECLINED_CARD = { ...TEST_CARD, expYear: 1998 };
@@ -18,6 +18,8 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+const run = (runId: string) => `/api/runs/${encodeURIComponent(runId)}`;
+
 export const api = {
   createRun: () => call<{ runId: string; shopperId: string }>('/api/runs', { method: 'POST' }),
   getRun: (runId: string) => call<Run>(`/api/runs/${encodeURIComponent(runId)}`),
@@ -26,4 +28,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name, card: opts.decline ? DECLINED_CARD : TEST_CARD, capCents }),
     }),
+  addChip: (runId: string, body: { imageBase64: string; hint?: string }) =>
+    call<Chip>(`${run(runId)}/chips`, { method: 'POST', body: JSON.stringify(body) }),
+  fixChip: (runId: string, chipId: string, personId: string, fix: { name?: string; priceCents?: number }) =>
+    call<Run>(`${run(runId)}/chips/${encodeURIComponent(chipId)}/fix`, {
+      method: 'POST',
+      body: JSON.stringify({ personId, ...fix }),
+    }),
+  putBack: (runId: string, chipId: string, personId: string) =>
+    call<Run>(`${run(runId)}/chips/${encodeURIComponent(chipId)}/putback`, {
+      method: 'POST',
+      body: JSON.stringify({ personId }),
+    }),
+  checkout: (runId: string, personId: string) =>
+    call<Run>(`${run(runId)}/checkout`, { method: 'POST', body: JSON.stringify({ personId }) }),
+  back: (runId: string, personId: string) =>
+    call<Run>(`${run(runId)}/back`, { method: 'POST', body: JSON.stringify({ personId }) }),
 };

@@ -127,7 +127,7 @@ export function Tray({ chips, me, people: _people, authorizedCents, taxRate, exp
       if (!l) return;
       const inside = e.over?.id === 'tray';
       if (l.from === 'grid' && inside) claim(l.chip);
-      else if (l.from === 'tray' && !inside) leave(l.chip);
+      else if (l.from === 'tray' && !inside && e.over?.id !== 'remove') leave(l.chip);
     },
   });
 
