@@ -29,6 +29,8 @@ scripts/demo-server.sh https://<tunnel>   # or PUBLIC_URL=https://<tunnel> scrip
 
 It rebuilds web and server when they are stale, reads `GEMINI_API_KEY` from `server/.env` (never printed), refuses to start if port 3000 is taken, and prints the URL. Add `SIM_FAIL_CAPTURE=Marcus` in front to show a partly settled run.
 
+The "+ Wish" page (`GET /api/runs/:id/wish-picks`) suggests items from this server's past runs at the same store. To also show the household's shopping list, wishlist suggestions and run-out forecasts from the team API (`backend/` on main), put `TEAM_API_BASE_URL` and `AGORA_DEMO_PASSWORD` in `server/.env` (see Env flags). The server signs in as the API's demo account, caches answers for 60 s, and falls back to run history when the API is slow (4 s) or down.
+
 ### Camera demo: drop order matters
 
 With `VISION=stub`, the camera path uses a deterministic stub. When a dropped item does not clearly match a prop photo, the stub names the next prop in drop order for that run: eggs, then towels, then milk, then eggs again. Drop the eggs, the towels and the milk in that order. A whole-frame lighting or exposure change re-baselines the detector and adds no chip. If the camera misbehaves, switch the shopper to `?mock=1` (the "Use sample items" link) and tap the items instead.
@@ -52,6 +54,8 @@ The prop images are generated placeholders. To use real photos: put `eggs.jpg`, 
 | `RAISE_CAP` | on | Set `off` to disable raising a cap. |
 | `MERGE_DUPLICATES` | `1` (demo script) | `1`: when the camera identifies a product already in the cart, that chip's quantity goes up by one (×2, ×3, up to 20) instead of adding a second chip; no "Added twice?" card. A wish waiting for the product takes the new item instead. Unset: a same-name item within `DUPLICATE_MS` (default 5000) becomes its own chip with the "Added twice? Keep both / Remove one" card. |
 | `MERGE_WINDOW_MS` | `3000` | With `MERGE_DUPLICATES=1`: a detection that starts within this long of the chip's last count is the same item seen twice (a merged box, a double tap) and does not count again. |
+| `TEAM_API_BASE_URL` | none | Origin of the team household API, e.g. the Render `agora-api` service (`https://…onrender.com`; a trailing `/v1` is fine). HTTPS only, except `http://localhost`. Unset: the wish page uses run history only. |
+| `AGORA_DEMO_PASSWORD` | none | With `TEAM_API_BASE_URL`: the password for `POST /v1/dev/login` as `demo`. It is the same value as the API service's own `AGORA_DEMO_PASSWORD` (Render → agora-api → Environment, or ask whoever deployed it). Never logged or returned. |
 | `SIM_FAIL_CAPTURE` | none | With `PAYMENTS=sim`, a comma list of claimer names (case-insensitive, e.g. `Marcus,Priya`) whose capture and incremental fail at settle, so the run ends partly settled with "Retry Marcus". Checked on each Confirm, so clear it and restart to let Retry succeed. |
 
 ## Deploy to Railway

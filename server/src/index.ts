@@ -31,6 +31,8 @@ import type { Run } from './types.js';
 import { getDetector, type Detector } from './vision/detect.js';
 import { getVision, type VisionProvider } from './vision/provider.js';
 import { matchProduct, parseQfcPage } from './price/qfc-page.js';
+import { teamBackendFromEnv } from './team/backend.js';
+import { composePicks, historyPicks, householdPicks, type HouseholdSource } from './wish-picks.js';
 
 export type Deps = {
   payments: PaymentsProvider;
@@ -44,6 +46,8 @@ export type Deps = {
   lastCallMs?: number;
   dataDir?: string;
   detector?: () => Detector;
+  /** The household's lists and suggestions for the wish page (the team backend); null uses run history only. */
+  team?: HouseholdSource | null;
 };
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -366,6 +370,20 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
     },
   );
 
+  // The "+ Wish" page: the household list and suggestions, minus what is already in the cart.
+  app.get<{ Params: { id: string }; Querystring: { personId?: string } }>(
+    '/api/runs/:id/wish-picks',
+    async (req, reply) => {
+      const run = guard(reply, req.params.id);
+      if (!run) return;
+      const personId = typeof req.query.personId === 'string' ? req.query.personId : '';
+      if (!run.people.some((p) => p.id === personId)) return fail(reply, 'unknown person');
+      const household = await householdPicks(deps.team ?? null);
+      const current = store.get(run.id) ?? run;
+      return composePicks(current, household, historyPicks(store.all(), current));
+    },
+  );
+
   app.post<{ Params: { id: string; chipId: string }; Body: { personId: string; name?: string; priceCents?: number } }>(
     '/api/runs/:id/chips/:chipId/fix',
     async (req, reply) => {
@@ -653,6 +671,7 @@ async function main(): Promise<void> {
     price,
     agent,
     lastCallMs: Number(process.env.LAST_CALL_MS ?? 10000),
+    team: teamBackendFromEnv(process.env),
   });
   await app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });
 }
