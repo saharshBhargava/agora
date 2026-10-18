@@ -49,6 +49,11 @@ final class AgoraClient {
         return try decoder.decode(type, from: data)
     }
 
+    /// Requests whose successful response has no JSON body (for example, DELETE feedback).
+    func send(_ path: String, method: String) async throws {
+        _ = try await perform(path, method: method, body: nil, key: nil, query: [])
+    }
+
     /// JSON object responses (`{...}`).
     func request(
         _ path: String,

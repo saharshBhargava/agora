@@ -390,6 +390,13 @@ final class DemoAccessTests: XCTestCase {
         settings.demoCalendar = connection
         let client = try settings.client(for: .inventory)
         XCTAssertEqual(client.identity.provider, .builtin)
+        let suggestionClient = try settings.client(for: .suggestions)
+        let itemID = UUID()
+        let context = "{\"inventory\":[{\"id\":\"\(itemID.uuidString)\"}],\"feedback\":{}}"
+        let ideas = try await suggestionClient.generate(ModelRequest(instructions: "", messages: [
+            .init(role: .user, content: [.text(context)])]), onEvent: { _ in })
+        XCTAssertEqual(try SuggestionService.decode(ideas.text, inventoryIDs: [itemID]).count, 1)
+
         let request = ModelRequest(instructions: "", messages: [.init(role: .user, content: [.media(URL(fileURLWithPath: "/nonexistent-private-photo"), kind: .image)])])
         let response = try await client.generate(request) { _ in }
         XCTAssertEqual(try InventoryRecognitionContract.decode(response.text).count, 3)

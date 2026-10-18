@@ -162,6 +162,25 @@ final class DemoModelClient: ModelClient {
             return response("Fresh groceries for the week: milk, eggs and ripe avocados, ready for easy breakfasts and quick meals.")
         case .inventory:
             return response(#"{"items":[{"name":"2% milk","category":"dairy","unit":"unit","quantity":2,"confidence":0.96},{"name":"Large eggs","category":"dairy","unit":"unit","quantity":12,"confidence":0.94},{"name":"Avocados","category":"produce","unit":"unit","quantity":3,"confidence":0.91}]}"#)
+        case .suggestions:
+            let text = request.messages.last?.content.compactMap {
+                if case .text(let text) = $0 { return text }; return nil
+            }.joined() ?? ""
+            guard let data = text.data(using: .utf8),
+                  let context = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let inventory = context["inventory"] as? [[String: Any]],
+                  let itemID = inventory.first?["id"] as? String, UUID(uuidString: itemID) != nil else {
+                return response(#"{"suggestions":[]}"#)
+            }
+            let feedback = context["feedback"] as? [String: Any] ?? [:]
+            let excluded = (feedback["do_not_suggest"] as? [[String: Any]] ?? [])
+                .compactMap { ($0["title"] as? String)?.lowercased() }
+            let title = "Reusable grocery tote"
+            guard !excluded.contains(title.lowercased()) else { return response(#"{"suggestions":[]}"#) }
+            let result: [String: Any] = ["suggestions": [["title": title, "category": "household", "quantity": 1,
+                "rationale": "Keep a reusable tote ready for your next household restocking trip.", "confidence": 0.75,
+                "evidenceItemIds": [itemID]]]]
+            return response(String(decoding: try JSONSerialization.data(withJSONObject: result), as: UTF8.self))
         case .chat:
             if let result = request.messages.last?.toolResults.last {
                 let value = result.value.object ?? [:]

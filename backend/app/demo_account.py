@@ -53,6 +53,7 @@ async def ensure_demo_account(db: Database, settings: Settings) -> UUID:
         await _forecasts_and_lists(db, existing)
         await _commerce(db, existing)
         await _calendar(db, existing)
+        await _shopping_refresh(db, existing)
         return existing
     user_id = await ensure_user(db, DEMO_SUBJECT, VISIBLE_HANDLE, settings.demo_display_name)
     async with db.system() as conn:
@@ -127,6 +128,7 @@ async def _seed(db: Database, user_id: UUID) -> None:
     await _forecasts_and_lists(db, user_id)
     await _commerce(db, user_id)
     await _calendar(db, user_id)
+    await _shopping_refresh(db, user_id)
 
 
 async def _commerce(db: Database, user_id: UUID) -> None:
@@ -282,3 +284,21 @@ async def _calendar(db: Database, user_id: UUID) -> None:
                 """INSERT INTO calendar_events (user_id, household_id, title, starts_at, ends_at, timezone)
                    VALUES ($1,$2,$3,$4,$5,'Etc/UTC')""", user_id, household_id, title,
                 start, start + timedelta(hours=duration))
+
+
+async def _shopping_refresh(db: Database, user_id: UUID) -> None:
+    from app.shopping import next_refresh
+
+    now = datetime.now(UTC)
+    async with db.scoped(user_id) as conn:
+        household_id = await conn.fetchval("SELECT household_id FROM household_members WHERE user_id = $1", user_id)
+        await conn.execute(
+            """INSERT INTO wishlist_refresh_state (household_id, last_refreshed_at, next_refresh_at, generated_count)
+               VALUES ($1, $2, $3, 1) ON CONFLICT (household_id) DO NOTHING""",
+            household_id, now - timedelta(hours=1), next_refresh(now))
+        # Bring earlier demo evidence into the same readable shape as new suggestions.
+        await conn.execute(
+            """UPDATE wishlist_items SET rationale = 'Try an alternative to the milk already in your inventory.',
+                      evidence = '[{"kind":"other","detail":"You keep milk in the fridge."}]'::jsonb
+               WHERE household_id = $1 AND title = 'Oat milk' AND evidence @> '[{"type":"consumption"}]'::jsonb""",
+            household_id)

@@ -382,3 +382,23 @@ A real Google sign-in and event creation still need the Google Cloud setup above
 References: [Google iOS setup](https://developers.google.com/identity/sign-in/ios/start-integrating),
 [Google APIs from iOS](https://developers.google.com/identity/sign-in/ios/api-access),
 [Backend identity verification](https://developers.google.com/identity/sign-in/ios/backend-auth).
+
+
+## Wishlist and shopping suggestions
+
+Home now opens the iOS Wishlist and Suggested for you views. Users can add/edit items, keep USD target
+prices, set priorities and pins, accept/reject/snooze suggestions, leave feedback and mark purchases.
+`ShoppingStore` uses the shared authenticated API client and refreshes saved state every 30 seconds while
+active. Settings → Models includes **Shopping suggestions** for on-demand **Find ideas**. That action sends
+bounded inventory and feedback context to the selected model and validates its inventory references.
+Chat also exposes `shopping_context` and `shopping_suggest`.
+
+Migration `0014_wishlist_refresh.sql` adds household refresh state and job deduplication. Both the API's
+in-process worker and `python -m app.worker` register the six-hour replenishment schedule. Jobs run at
+00:00, 06:00, 12:00 and 18:00 UTC and recover missed intervals without replaying them all. They use observed
+stock and forecasts, not a model API, and require no additional credentials. Sleeping hosting can delay
+execution; keep the worker available for timely checks. Last-success/next-check/failure status is available
+at `GET /v1/wishlist/refresh-status`; `POST /v1/wishlist/refresh` runs a check on demand with idempotency.
+
+Live retailer-price monitoring remains deferred. Target prices are user preferences, not observed deals.
+The designated demo account is backfilled with refresh status without resetting existing history.
