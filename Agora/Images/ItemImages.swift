@@ -1,5 +1,4 @@
 import SwiftUI
-import PhotosUI
 import Combine
 import CryptoKit
 
@@ -123,14 +122,46 @@ final class ItemImageStore: ObservableObject {
         }
     }
 
-    func load(_ ref: ItemImageReference, force: Bool = false) async {
-        if let task = tasks[ref] { await task.value; return }
-        if !force, let date = loadedAt[ref], Date().timeIntervalSince(date) < 60 { return }
+    func prefetch(_ references: [ItemImageReference]) async {
+        let epoch = context
+        var seen = Set<ItemImageReference>()
+        var remaining = references.filter { seen.insert($0).inserted }.makeIterator()
+        // One read per item per pass: a slow search must not hold up the rest of the inventory.
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<4 {
+                if let ref = remaining.next() { group.addTask { @MainActor in
+                    guard self.context == epoch else { return }
+                    await self.load(ref, poll: false)
+                } }
+            }
+            while await group.next() != nil {
+                guard !Task.isCancelled, context == epoch else { group.cancelAll(); return }
+                if let ref = remaining.next() { group.addTask { @MainActor in
+                    guard self.context == epoch else { return }
+                    await self.load(ref, poll: false)
+                } }
+            }
+        }
+    }
+
+    func load(_ ref: ItemImageReference, force: Bool = false, poll: Bool = true) async {
+        guard !Task.isCancelled else { return }
+        if let task = tasks[ref] {
+            if poll { await task.value }
+            return
+        }
+        let cacheAge: TimeInterval = descriptors[ref]?.status == "queued" ? 3 : 60
+        if !force, let date = loadedAt[ref], Date().timeIntervalSince(date) < cacheAge {
+            if poll, let asset = descriptors[ref]?.displayAsset, pictures[asset.id] == nil {
+                try? await loadAsset(asset)
+            }
+            return
+        }
         let epoch = context, taskID = UUID()
         taskIDs[ref] = taskID
         let task = Task { [weak self] in
             guard let self else { return }
-            for _ in 0..<30 {
+            for _ in 0..<(poll ? 30 : 1) {
                 do {
                     let descriptor = try await api.fetch(ref.path, as: ItemImageDescriptor.self)
                     guard !Task.isCancelled, context == epoch else { return }
@@ -138,7 +169,7 @@ final class ItemImageStore: ObservableObject {
                     if let asset = descriptor.displayAsset { try await loadAsset(asset, epoch: epoch) }
                     loadMessages[ref] = nil
                     loadedAt[ref] = Date()
-                    if descriptor.status != "queued" { return }
+                    if descriptor.status != "queued" || !poll { return }
                     try await Task.sleep(for: .seconds(3))
                 } catch {
                     guard !Task.isCancelled, context == epoch else { return }
@@ -206,12 +237,11 @@ struct ItemThumbnail: View {
     let name: String
     var category: String? = nil
     var size: CGFloat = 52
-    var editable = true
     @Environment(\.itemImages) private var store
     var body: some View {
         let ref = ItemImageReference(kind: kind, id: id, name: name, category: category)
         if let store {
-            StoredItemThumbnail(store: store, ref: ref, size: size, editable: editable)
+            StoredItemThumbnail(store: store, ref: ref, size: size)
         } else {
             Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary)
                 .frame(width: size, height: size).accessibilityLabel("Exact image unavailable for \(name)")
@@ -223,8 +253,6 @@ private struct StoredItemThumbnail: View {
     @ObservedObject var store: ItemImageStore
     let ref: ItemImageReference
     let size: CGFloat
-    let editable: Bool
-    @State private var editing = false
     @Environment(\.scenePhase) private var phase
     var body: some View {
         Group {
@@ -242,25 +270,8 @@ private struct StoredItemThumbnail: View {
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityLabel("\(ref.name): \(store.loadMessages[ref] ?? store.descriptors[ref]?.imageLabel ?? "Exact image unavailable")")
-        .onTapGesture { if editable { editing = true } }
-        .contextMenu {
-            if editable { Button("Change image", systemImage: "photo") { editing = true } }
-        }
         .task(id: "\(ref)-\(store.context)-\(store.revision)-\(phase == .active)") {
             if phase == .active { await store.observe(ref) }
-        }
-        .sheet(isPresented: $editing) { ItemImageEditor(store: store, ref: ref) }
-    }
-}
-
-struct ChangeItemImageButton: View {
-    let ref: ItemImageReference
-    @Environment(\.itemImages) private var store
-    @State private var editing = false
-    var body: some View {
-        if let store {
-            Button("Change image", systemImage: "photo") { editing = true }
-                .sheet(isPresented: $editing) { ItemImageEditor(store: store, ref: ref) }
         }
     }
 }
@@ -291,152 +302,5 @@ struct RepresentativeImage: View {
             }) { return group.0 }
         }
         return "item"
-    }
-}
-
-private struct ItemImageEditor: View {
-    @ObservedObject var store: ItemImageStore
-    let ref: ItemImageReference
-    @Environment(\.dismiss) private var dismiss
-    @State private var photo: PhotosPickerItem?
-    @State private var busy = false
-    @State private var error: String?
-    @State private var identity: ItemProductIdentity?
-    @State private var productName = ""
-    @State private var brand = ""
-    @State private var model = ""
-    @State private var variant = ""
-    @State private var packageSize = ""
-    @State private var color = ""
-    @State private var packCount = ""
-    @State private var barcode = ""
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    HStack {
-                        Spacer()
-                        ItemThumbnail(kind: ref.kind, id: ref.id, name: ref.name, category: ref.category, size: 180, editable: false)
-                        Spacer()
-                    }
-                    if let asset = store.descriptors[ref]?.displayAsset {
-                        Text(store.descriptors[ref]?.imageLabel ?? asset.label).font(.caption).foregroundStyle(.secondary)
-                        if let attribution = asset.attribution { Text(attribution).font(.caption) }
-                        if let source = asset.safeSource { Link("Image source", destination: source) }
-                    } else if let message = store.loadMessages[ref] {
-                        Text(message).font(.caption).foregroundStyle(.secondary)
-                        Button("Retry loading images") { Task { await store.load(ref, force: true) } }
-                    } else {
-                        Text("No matching image found yet. Try another search description or choose your own photo.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                Section {
-                    PhotosPicker(selection: $photo, matching: .images, photoLibrary: .shared()) {
-                        Label("Choose a photo", systemImage: "photo.on.rectangle")
-                    }
-                    Text("Only the selected photo is uploaded to your household. Location and camera metadata are removed.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button("Remove image") { save(mode: "representative") }
-                }.disabled(busy)
-                Section {
-                    TextField("Product name", text: $productName)
-                    TextField("Brand", text: $brand)
-                    TextField("Model number", text: $model)
-                    TextField("Flavor or variant", text: $variant)
-                    TextField("Package size (e.g. 52 fl oz)", text: $packageSize)
-                    TextField("Color", text: $color)
-                    TextField("Pack count (1 for a single item)", text: $packCount).keyboardType(.numberPad)
-                    TextField("UPC / EAN barcode", text: $barcode).keyboardType(.numberPad)
-                    Button("Search for product images") {
-                        guard packCount.isEmpty || (Int(packCount).map { (1...1000).contains($0) } ?? false) else {
-                            error = "Enter a pack count from 1 to 1,000."; return
-                        }
-                        identity = ItemProductIdentity(name: productName, brand: brand, model: model, variant: variant,
-                                                       size: packageSize, color: color, packCount: Int(packCount), gtin: barcode)
-                        save(mode: "automatic")
-                    }.disabled(productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                } header: { Text("Search details") } footer: {
-                    Text("Any name or description can be searched. Brand, model, size and barcode are optional and help narrow the results.")
-                }.disabled(busy)
-                if let choices = store.descriptors[ref]?.choices, !choices.isEmpty {
-                    Section("Other images") {
-                        ForEach(choices) { asset in
-                            Button { save(mode: "candidate", asset: asset.id) } label: {
-                                HStack {
-                                    if let image = store.pictures[asset.id] {
-                                        Image(uiImage: image).resizable().scaledToFit().frame(width: 70, height: 70)
-                                    } else { ProgressView().frame(width: 70, height: 70) }
-                                    VStack(alignment: .leading) {
-                                        Text(asset.title ?? ref.name)
-                                        Text("Use this image")
-                                            .font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
-                            }.disabled(busy)
-                            .task { try? await store.loadAsset(asset) }
-                        }
-                    }
-                }
-                if busy { ProgressView("Saving image…") }
-                if let error { Text(error).foregroundStyle(.red) }
-            }
-            .navigationTitle("Image for \(ref.name)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { Button("Done") { dismiss() }.disabled(busy) }
-            .task {
-                populateIdentity(store.descriptors[ref]?.identity)
-                let original = [productName, brand, model, variant, packageSize, color, packCount, barcode]
-                await store.load(ref, force: true)
-                // Research may take time; never overwrite details the user has started editing.
-                if original == [productName, brand, model, variant, packageSize, color, packCount, barcode] {
-                    populateIdentity(store.descriptors[ref]?.identity)
-                }
-            }
-            .onChange(of: store.context) { _, _ in dismiss() }
-            .onChange(of: photo) { _, item in
-                guard let item else { return }
-                busy = true; error = nil
-                let epoch = store.context
-                Task {
-                    defer { busy = false }
-                    do {
-                        guard let data = try await item.loadTransferable(type: Data.self),
-                              data.count <= 20_000_000, let original = UIImage(data: data) else {
-                            throw BrowserError("invalid_image", "Choose a readable photo under 20 MB.")
-                        }
-                        let scale = min(1, 1024 / max(original.size.width, original.size.height))
-                        let size = CGSize(width: original.size.width * scale, height: original.size.height * scale)
-                        let format = UIGraphicsImageRendererFormat(); format.scale = 1
-                        let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in
-                            original.draw(in: CGRect(origin: .zero, size: size))
-                        }
-                        guard let jpeg = resized.jpegData(compressionQuality: 0.85) else { throw BrowserError("invalid_image") }
-                        guard store.context == epoch, !Task.isCancelled else { return }
-                        try await store.select(ref, mode: "photo", photo: jpeg)
-                    } catch { self.error = InventoryStore.message(error) }
-                }
-            }
-        }
-        .interactiveDismissDisabled(busy)
-    }
-    private func populateIdentity(_ saved: ItemProductIdentity?) {
-        productName = saved?.name ?? ref.name; brand = saved?.brand ?? ""; model = saved?.model ?? ""
-        variant = saved?.variant ?? ""; packageSize = saved?.size ?? ""; color = saved?.color ?? ""
-        packCount = saved?.packCount.map(String.init) ?? ""; barcode = saved?.gtin ?? ""
-    }
-    private func save(mode: String, asset: UUID? = nil) {
-        busy = true; error = nil
-        let epoch = store.context
-        Task {
-            defer { busy = false }
-            do {
-                guard store.context == epoch, !Task.isCancelled else { return }
-                try await store.select(ref, mode: mode, asset: asset, identity: mode == "automatic" ? identity : nil)
-                guard store.context == epoch else { return }
-                await store.load(ref, force: true)
-            }
-            catch { self.error = InventoryStore.message(error) }
-        }
     }
 }

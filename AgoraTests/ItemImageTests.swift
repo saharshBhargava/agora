@@ -94,6 +94,89 @@ final class ItemImageTests: XCTestCase {
         XCTAssertEqual(reads, 2, "An old observer must stop when the household changes")
     }
 
+    func testPrefetchVisitsEntireInventoryWhileFirstSearchesArePending() async throws {
+        let references = (0..<12).map { ItemImageReference(kind: "inventory", id: UUID(), name: "Item \($0)") }
+        let pending = Set(references.prefix(4).map { $0.id.uuidString.lowercased() })
+        let ready = descriptor(), queued = descriptor(asset: false, status: "queued"), image = data
+        var paths = Set<String>()
+        ImageHTTP.handler = { request in
+            XCTAssertEqual(request.httpMethod, "GET", "Startup must never ask for a manual selection")
+            let path = request.url!.path
+            paths.insert(path)
+            if path.contains("/assets/") { return (200, image) }
+            return (200, pending.contains(request.url!.lastPathComponent.lowercased()) ? queued : ready)
+        }
+        await store.prefetch(references + references)
+        XCTAssertEqual(store.descriptors.count, references.count)
+        XCTAssertTrue(references.allSatisfy { paths.contains("/" + $0.path) })
+        XCTAssertEqual(store.descriptors[references[0]]?.status, "queued")
+        XCTAssertNotNil(store.pictures[assetID], "Later inventory images load before early searches finish")
+        let count = paths.count
+        await store.prefetch(references)
+        XCTAssertEqual(paths.count, count)
+    }
+
+    func testAppStartupPreloadsEveryInventoryImageWithoutRenderingThumbnails() async throws {
+        let inventory = InventoryStore(api: api, calendar: calendar)
+        let household = UUID()
+        let ids = (0..<12).map { _ in UUID() }
+        let profile = try JSONSerialization.data(withJSONObject: ["households": [
+            ["id": household.uuidString, "name": "Home", "locations": []] as [String: Any]
+        ]])
+        var rows = try JSONSerialization.data(withJSONObject: ids.enumerated().map { index, id in
+            ["id": id.uuidString, "household_id": household.uuidString, "display_name": "Item \(index)",
+             "unit": "unit", "status": index == 11 ? "archived" : "active"]
+        })
+        let template = try JSONSerialization.jsonObject(with: descriptor()) as! [String: Any], image = data
+        let queued = descriptor(asset: false, status: "queued")
+        var firstPending = true
+        var requestedImages = Set<String>()
+        ImageHTTP.handler = { request in
+            let path = request.url!.path
+            if path == "/v1/me" { return (200, profile) }
+            if path == "/v1/inventory" { return (200, rows) }
+            if path.contains("/assets/") {
+                requestedImages.insert(request.url!.lastPathComponent.lowercased())
+                return (200, image)
+            }
+            if request.url!.lastPathComponent.lowercased() == ids[0].uuidString.lowercased(), firstPending {
+                firstPending = false
+                return (200, queued)
+            }
+            var result = template
+            var asset = result["asset"] as! [String: Any]
+            let id = request.url!.lastPathComponent
+            asset["id"] = id; asset["path"] = "v1/item-images/assets/\(id)"
+            result["asset"] = asset
+            return (200, try! JSONSerialization.data(withJSONObject: result))
+        }
+        let host = UIHostingController(rootView: ItemImageSessionSync(store: store, inventory: inventory)
+            .environment(\.scenePhase, .active))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        window.rootViewController = host; window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        await inventory.refresh()
+        for _ in 0..<2000 where store.pictures.count < ids.count {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(requestedImages, Set(ids.map { $0.uuidString.lowercased() }))
+        XCTAssertEqual(store.pictures.count, ids.count)
+        XCTAssertEqual(store.descriptors.count, ids.count)
+        let added = UUID()
+        var updated = try JSONSerialization.jsonObject(with: rows) as! [[String: Any]]
+        updated.append(["id": added.uuidString, "household_id": household.uuidString,
+                        "display_name": "New inventory item", "unit": "unit", "status": "active"])
+        rows = try JSONSerialization.data(withJSONObject: updated)
+        await inventory.refresh()
+        for _ in 0..<200 where store.pictures[added] == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertNotNil(store.pictures[added], "New inventory joins automatic loading without a screen visit")
+        await calendar.signOut()
+        XCTAssertTrue(store.pictures.isEmpty)
+        XCTAssertTrue(store.descriptors.isEmpty)
+    }
+
     func testNeverSendsCredentialsToExternalImagePath() async throws {
         ImageHTTP.handler = { _ in XCTFail("No network request is allowed"); return (500, Data()) }
         for path in ["https://attacker.example/a.jpg", "v1/item-images/assets/../../me", "v1/item-images/assets/not-a-uuid"] {

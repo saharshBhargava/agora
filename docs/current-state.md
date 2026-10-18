@@ -589,3 +589,26 @@ Missing-image repair, automatic retries for old inventory search misses, and dem
 No production reset or test writes were performed. The native continued-polling improvement remains local
 and needs an app rebuild; this release does not distribute an iOS build. Earlier local-only backend notes
 for this feature are superseded by this deployment verification.
+
+
+## Automatic inventory images at app startup — local, October 18, 2026
+
+The native app now preloads image descriptors and bytes for the full returned household inventory as
+soon as inventory loads, including offscreen and archived items. Four concurrent one-read tasks prevent
+pending searches from holding up other items. Foreground passes revisit pending work every 15 seconds;
+ready results share the existing cache with visible thumbnails. New and renamed items join automatically.
+Account/household changes invalidate old work and clear private images. The deployed backend continues
+to own online discovery and automatic selection; no additional backend release or migration is needed.
+
+Image editor sheets, thumbnail tap/long-press editing, Change image buttons, alternative selection,
+photo upload, removal and manual search controls have been removed from the native app. It settles on
+the automatic result. Existing stored overrides and the older-client selection API remain compatible.
+
+Validation on a checkout reconciled with main through PR #40: 42 inventory/shopping/image simulator
+tests passed, followed by all 11 image tests after extending startup coverage. The startup test mounted
+only the session synchronizer (no thumbnails), fetched all 12 images including an archived item, picked
+up an initially pending offscreen image automatically after 15 seconds, loaded a newly added item, and
+cleared images on sign-out. Pending-first batch and authenticated transport regressions also passed.
+Logs: `/tmp/agora-startup-images-tests.log`, `/tmp/agora-startup-images-final.log`; results:
+`/tmp/agora-startup-images-final.xcresult`. The tested source was applied back to the shared checkout
+and compared byte-for-byte. A rebuilt iOS app is required; no app distribution is claimed.

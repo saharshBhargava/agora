@@ -73,7 +73,7 @@ struct ListsView: View {
                             ItemCarouselItem(title: item.displayName, detail: item.stockSummary,
                                              detailColor: item.quantity == 0 ? .red : item.isRunningLow ? .orange : .secondary) { size in
                                 ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName,
-                                              category: item.category, size: size, editable: false)
+                                              category: item.category, size: size)
                                     .allowsHitTesting(false)
                             }
                         }
@@ -131,7 +131,7 @@ struct ListsView: View {
                                             ItemCarouselItem(title: item.title,
                                                              detail: "\(item.quantity.formatted())\(item.unit.map { " " + $0 } ?? "")") { size in
                                                 ItemThumbnail(kind: "list", id: item.id, name: item.title,
-                                                              size: size, editable: false)
+                                                              size: size)
                                                     .allowsHitTesting(false)
                                             }
                                         }
@@ -323,7 +323,6 @@ struct InventoryDetailView: View {
             if let item {
                 Section {
                     InventoryRowView(item: item, location: store.locations.first { $0.id == item.locationId }?.name)
-                    ChangeItemImageButton(ref: .init(kind: "inventory", id: item.id, name: item.displayName, category: item.category))
                     if let category = item.category { LabeledContent("Category", value: category) }
                     if let level = item.parLevel { LabeledContent("Restock below", value: "\(level.formatted()) \(item.unit)") }
                     if let date = item.observedAt {
