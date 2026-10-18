@@ -39,3 +39,11 @@ jobs:
       - run: uv run pytest -q
         env:
           AGORA_TEST_DATABASE_URL: postgresql://agora:agora-ci@localhost:5432/agora
+
+  image:
+    # The deploy artifact: make sure it builds and the app imports inside it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t agora-api backend
+      - run: docker run --rm agora-api python -c "import app.main, app.worker, app.seed; print('ok')"

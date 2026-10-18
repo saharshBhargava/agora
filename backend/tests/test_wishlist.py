@@ -4,7 +4,7 @@ so tests don't depend on each other or on the rest of the suite."""
 import asyncio
 import json
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import asyncpg
 
@@ -39,7 +39,7 @@ async def test_manual_add_and_priority_order(client):
     assert plain["household_id"] == household and "Added by you" in plain["priority_reasons"]
 
     soon = (await client.post("/v1/wishlist", headers=h, json={
-        "title": "Birthday candles", "needed_by": (date.today() + timedelta(days=1)).isoformat(),
+        "title": "Birthday candles", "needed_by": (datetime.now(UTC).date() + timedelta(days=1)).isoformat(),
         "target_price_cents": 499, "notes": "Blue ones", "category": "Party"})).json()
     high = (await client.post("/v1/wishlist", headers=h, json={"title": "Coffee beans", "priority": 5})).json()
     low = (await client.post("/v1/wishlist", headers=h, json={"title": "Fancy napkins", "priority": 1})).json()
