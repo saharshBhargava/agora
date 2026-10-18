@@ -14,6 +14,8 @@ struct SettleView: View {
     @State private var busy = false
     @State private var error: String?
     @State private var paid = false
+    /// The shopper tapped Retake on the check: the camera is back until the new photo is read.
+    @State private var retaking = false
 
     private var run: Run? {
         if let previewRun { return previewRun }
@@ -33,20 +35,29 @@ struct SettleView: View {
     @ViewBuilder
     private var content: some View {
         if let run {
-            switch run.state {
-            case .locked where isShopper:
+            switch SettleLogic.screen(run: run, isShopper: isShopper, retaking: retaking) {
+            case .camera:
                 ReceiptView(busy: busy, error: error,
-                            onSubmit: { b64 in act { _ = try await model.api.receipt(runId: ref.runId, imageBase64: b64); await model.store.refresh() } },
-                            onError: { error = $0 })
-            case .receipt where run.receipt != nil:
+                            onSubmit: { b64 in
+                                act {
+                                    // A second photo replaces the receipt state on the server.
+                                    _ = try await model.api.receipt(runId: ref.runId, imageBase64: b64)
+                                    await model.store.refresh()
+                                    retaking = false
+                                }
+                            },
+                            onError: { error = $0 },
+                            onCancel: run.state == .receipt ? { retaking = false; error = nil } : nil)
+            case .check:
                 ReceiptCheckView(run: run, canFix: isShopper, busy: busy, error: error,
                                  onFix: { i, target in act { _ = try await model.api.fixReceiptLine(runId: ref.runId, lineIndex: i, target: target); await model.store.refresh() } },
-                                 onConfirm: confirm)
+                                 onConfirm: confirm,
+                                 onRetake: { error = nil; retaking = true })
                     .safeAreaInset(edge: .top) { reconnecting }
                     .dibsScreen()
-            case .settled, .partlySettled:
+            case .settle:
                 settled(run)
-            default:
+            case .waiting:
                 waiting(run)
             }
         } else {

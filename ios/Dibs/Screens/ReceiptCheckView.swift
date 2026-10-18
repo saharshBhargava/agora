@@ -11,6 +11,8 @@ struct ReceiptCheckView: View {
     var error: String?
     var onFix: (Int, ReceiptTarget) -> Void = { _, _ in }
     var onConfirm: () -> Void = {}
+    /// Back to the camera for a new photo of the receipt (shopper only).
+    var onRetake: () -> Void = {}
 
     @State private var pairing: SettleLogic.CheckRow?
 
@@ -157,6 +159,9 @@ struct ReceiptCheckView: View {
             if canFix {
                 Button(busy ? "Charging…" : "Confirm & charge", action: onConfirm)
                     .buttonStyle(.dibs(.ink, fontSize: 16))
+                    .disabled(busy)
+                Button("Retake", action: onRetake)
+                    .buttonStyle(.dibs(.secondary, fontSize: 16))
                     .disabled(busy)
             } else {
                 Text("Waiting for the shopper to confirm.")

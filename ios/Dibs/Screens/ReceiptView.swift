@@ -9,6 +9,8 @@ struct ReceiptView: View {
     var error: String?
     var onSubmit: (String) -> Void
     var onError: (String) -> Void
+    /// Shown as "Cancel" when retaking from the receipt check: back to the check without a new photo.
+    var onCancel: (() -> Void)?
 
     /// Created once in `.task`, so redraws never build another capture session.
     @State private var camera: ReceiptCamera?
@@ -99,7 +101,9 @@ struct ReceiptView: View {
             VStack {
                 HStack(spacing: 6) {
                     if busy { ProgressView().controlSize(.small).tint(Color.ink) }
-                    Text(busy ? "Reading the receipt…" : "Hold steady")
+                    Text(busy ? SettleLogic.readingMessage : "Hold steady")
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(Color.ink)
@@ -107,6 +111,7 @@ struct ReceiptView: View {
                 .padding(.vertical, 6)
                 .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .padding(.top, 26)
+                .padding(.horizontal, 40)
                 .accessibilityAddTraits(.updatesFrequently)
                 Spacer()
             }
@@ -156,7 +161,18 @@ struct ReceiptView: View {
             .opacity(busy || capturing ? 0.5 : 1)
             .accessibilityLabel("Take the receipt photo")
             Spacer()
-            Color.clear.frame(width: 120, height: 1)
+            Group {
+                if let onCancel {
+                    Button("Cancel", action: onCancel)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(minHeight: 44)
+                        .disabled(busy)
+                } else {
+                    Color.clear.frame(height: 1)
+                }
+            }
+            .frame(width: 120, alignment: .trailing)
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)

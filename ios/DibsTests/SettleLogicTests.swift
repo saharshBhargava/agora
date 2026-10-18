@@ -277,4 +277,22 @@ final class SettleLogicTests: XCTestCase {
         XCTAssertLessThanOrEqual(small.utf8.count, 1_500_000)
         XCTAssertNotNil(UIImage(data: try XCTUnwrap(Data(base64Encoded: small))))
     }
+
+    func testWhichScreenTheSettleRouteShows() throws {
+        let receipt = try load("run-receipt")
+        var locked = receipt
+        locked.state = .locked
+        locked.receipt = nil
+        XCTAssertEqual(SettleLogic.screen(run: locked, isShopper: true, retaking: false), .camera)
+        XCTAssertEqual(SettleLogic.screen(run: locked, isShopper: false, retaking: false), .waiting)
+        XCTAssertEqual(SettleLogic.screen(run: receipt, isShopper: true, retaking: false), .check)
+        // Retake: the shopper's camera comes back during the check; claimers keep the check.
+        XCTAssertEqual(SettleLogic.screen(run: receipt, isShopper: true, retaking: true), .camera)
+        XCTAssertEqual(SettleLogic.screen(run: receipt, isShopper: false, retaking: true), .check)
+        XCTAssertEqual(SettleLogic.screen(run: try load("run-partly"), isShopper: true, retaking: true), .settle)
+        var open = receipt
+        open.state = .open
+        XCTAssertEqual(SettleLogic.screen(run: open, isShopper: true, retaking: false), .waiting)
+        XCTAssertEqual(SettleLogic.readingMessage, "Reading the receipt… this takes about 20 seconds")
+    }
 }

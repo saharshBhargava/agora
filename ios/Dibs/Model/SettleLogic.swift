@@ -280,6 +280,26 @@ enum SettleLogic {
 
     static func isFinished(_ run: Run) -> Bool { run.state == .settled || run.state == .partlySettled }
 
+    // MARK: which screen
+
+    /// The pill on the receipt camera while the server reads the photo (Gemini, about 20 s).
+    static let readingMessage = "Reading the receipt… this takes about 20 seconds"
+
+    enum Screen: Equatable { case camera, check, settle, waiting }
+
+    /// What `Route.settle` shows: the shopper's camera while locked (or when retaking during the check),
+    /// the receipt check, Settle once finished, otherwise a waiting panel.
+    static func screen(run: Run, isShopper: Bool, retaking: Bool) -> Screen {
+        switch run.state {
+        case .locked: return isShopper ? .camera : .waiting
+        case .receipt:
+            guard run.receipt != nil else { return isShopper ? .camera : .waiting }
+            return isShopper && retaking ? .camera : .check
+        case .settled, .partlySettled: return .settle
+        default: return .waiting
+        }
+    }
+
     // MARK: I've paid
 
     /// Where a claimer's "I've paid" is remembered on this phone (nothing is sent to the server).
