@@ -14,6 +14,7 @@ import { AvatarStack } from '@/components/Avatar';
 import { LiveView } from '@/components/LiveView';
 import { WishSheet } from '@/components/WishSheet';
 import type { Chip } from '@/lib/types';
+import { visibleChip } from '@/lib/visible';
 
 const NOTICE_MS = 4000;
 const RAISE_STEP_CENTS = 2000;
@@ -58,7 +59,7 @@ export default function ClaimScreen() {
     return () => window.removeEventListener('keydown', on);
   }, [overCap]);
 
-  const chips = useMemo(() => (run?.chips ?? []).filter((c) => c.state !== 'removed' && !c.dropped), [run]);
+  const chips = useMemo(() => (run?.chips ?? []).filter((c) => visibleChip(c)), [run]);
   const highlight = useHighlight(chips, identifyingRegion ?? null);
 
   if (!runId) return <p className="error" role="alert">This link is missing its run.</p>;

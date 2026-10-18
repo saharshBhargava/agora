@@ -14,6 +14,7 @@ import { FixChipSheet } from '@/components/FixChipSheet';
 import { UnclaimedList } from '@/components/UnclaimedList';
 import { UndoToast } from '@/components/UndoToast';
 import type { Chip } from '@/lib/types';
+import { visibleChip } from '@/lib/visible';
 
 const UNDO_MS = 5000;
 const NOTICE_MS = 4000;
@@ -60,7 +61,7 @@ export default function ShopperScreen() {
     return () => clearTimeout(t);
   }, [tip]);
 
-  const chips = useMemo(() => (run?.chips ?? []).filter((c) => c.state !== 'removed' && !c.dropped), [run]);
+  const chips = useMemo(() => (run?.chips ?? []).filter((c) => visibleChip(c, { shopper: true })), [run]);
   const highlight = useHighlight(chips, identifyingRegion ?? null);
 
   if (!runId || !personId) return <p className="error" role="alert">This link is missing its run.</p>;
