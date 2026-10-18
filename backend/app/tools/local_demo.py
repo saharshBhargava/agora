@@ -63,12 +63,12 @@ def embedded_database() -> str:
     return uri
 
 
-def dev_secret() -> str:
-    """Stable across restarts so demo tokens keep working; never committed (.data is gitignored)."""
-    path = DATA / "dev_jwt_secret"
+def local_secret(name: str, size: int) -> str:
+    """Stable across restarts so tokens and passwords keep working; never committed (.data is gitignored)."""
+    path = DATA / name
     if not path.is_file():
         DATA.mkdir(parents=True, exist_ok=True)
-        path.write_text(secrets.token_urlsafe(48), encoding="utf-8")
+        path.write_text(secrets.token_urlsafe(size), encoding="utf-8")
     return path.read_text(encoding="utf-8").strip()
 
 
@@ -124,10 +124,10 @@ def main() -> None:
         **os.environ,
         "AGORA_DATABASE_URL": url,
         "AGORA_ENV": "demo",
-        "AGORA_DEV_JWT_SECRET": dev_secret(),
+        "AGORA_DEV_JWT_SECRET": local_secret("dev_jwt_secret", 48),
+        "AGORA_DEMO_PASSWORD": os.environ.get("AGORA_DEMO_PASSWORD") or local_secret("demo_password", 12),
         "AGORA_STORAGE_BACKEND": os.environ.get("AGORA_STORAGE_BACKEND", "db"),
         "AGORA_RUN_WORKER_IN_PROCESS": "true",
-        "AGORA_SEED_NEW_USERS": "true",
     }
     client_id = ios_client_id()
     if client_id:
@@ -156,7 +156,11 @@ def main() -> None:
     say(f"API:  http://localhost:{args.port}   docs: http://localhost:{args.port}/docs")
     if public:
         say(f"HTTPS: {public}   (share this with phones/teammates; it changes every run)")
-    say("demo logins: POST /v1/dev/login {\"handle\": \"kedar\"} or \"saharsh\"; the iOS app uses Google sign-in.")
+    say(f"demo account: POST /v1/dev/login {{\"handle\": \"demo\", \"password\": \"{env['AGORA_DEMO_PASSWORD']}\"}}")
+    if env.get("AGORA_DEMO_GOOGLE_EMAILS"):
+        say(f"  ...or sign in on iOS with Google as {env['AGORA_DEMO_GOOGLE_EMAILS']}")
+    else:
+        say("  (set AGORA_DEMO_GOOGLE_EMAILS=<demo gmail> to also reach it from the iOS app's Google sign-in)")
     try:
         subprocess.run([*python, "uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0",  # noqa: S104, S603
                         "--port", str(args.port)], cwd=BACKEND, env=env, check=False)

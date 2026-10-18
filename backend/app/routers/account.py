@@ -1,3 +1,4 @@
+import hmac
 from uuid import UUID
 
 import asyncpg
@@ -5,6 +6,7 @@ from fastapi import APIRouter, Request
 
 from app.auth import CurrentUser, Principal, ensure_user, mint_dev_token
 from app.db import audit
+from app.demo_account import DEMO_HANDLE, DEMO_SUBJECT, ensure_demo_account
 from app.errors import Problem, not_found
 from app.schemas import DevLoginIn, Household, Location, LocationIn, Me, Settings, SettingsPatch, TokenOut
 
@@ -41,10 +43,17 @@ async def dev_login(body: DevLoginIn, request: Request) -> TokenOut:
     settings = request.app.state.settings
     if not settings.dev_login_enabled:
         raise not_found()
-    if settings.env == "demo" and body.handle not in settings.demo_handles:
-        raise Problem(403, "demo_user_only", "This demo only allows the seeded accounts.")
-    subject = f"dev:{body.handle}"
-    await ensure_user(request.app.state.db, subject, body.handle, body.display_name or body.handle.title())
+    if settings.env == "demo":
+        if body.handle not in settings.demo_handles:
+            raise Problem(403, "demo_user_only", "This demo only allows the seeded accounts.")
+        if not hmac.compare_digest((body.password or "").encode(), settings.demo_password.get_secret_value().encode()):
+            raise Problem(401, "invalid_credentials", "Wrong handle or password.")
+    if body.handle == DEMO_HANDLE:
+        await ensure_demo_account(request.app.state.db, settings)
+        subject = DEMO_SUBJECT
+    else:
+        subject = f"dev:{body.handle}"
+        await ensure_user(request.app.state.db, subject, body.handle, body.display_name or body.handle.title())
     token, exp = mint_dev_token(settings, subject)
     return TokenOut(access_token=token, expires_at=exp)
 
