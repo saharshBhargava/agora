@@ -5,7 +5,14 @@ struct BrowserCall {
     let arguments: [String: Any]
     let id: String?
     init(_ raw: [String: Any]) throws {
-        guard let name = raw["name"] as? String, let arguments = raw["args"] as? [String: Any] else { throw BrowserError("invalid_arguments") }
+        guard let name = raw["name"] as? String, var arguments = raw["args"] as? [String: Any] else { throw BrowserError("invalid_arguments") }
+        // Models sometimes send reference ids as whole numbers ("elementId": 12); they mean the same id text.
+        for key in ["documentId", "observationId", "elementId"] {
+            if let number = arguments[key] as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
+               number.doubleValue.isFinite, number.doubleValue == number.doubleValue.rounded(), abs(number.doubleValue) < 1e15 {
+                arguments[key] = String(number.int64Value)
+            }
+        }
         self.name = name; self.arguments = arguments; id = raw["id"] as? String
         try Self.validate(name: name, arguments: arguments)
     }

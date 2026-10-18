@@ -321,3 +321,18 @@ final class BrowserPresentationTests: XCTestCase {
         XCTAssertFalse(viewport.touchObserver.delaysTouchesBegan)
     }
 }
+
+/// Gemini sometimes sends reference ids as numbers ("elementId": 12); they are accepted as the same id text.
+final class BrowserCallNumericIDTests: XCTestCase {
+    func testNumericReferenceIdsBecomeText() throws {
+        let call = try BrowserCall(["name": "browser_act", "args": ["action": "click", "documentId": 3, "observationId": 7, "elementId": 12] as [String: Any]])
+        XCTAssertEqual(call.arguments["elementId"] as? String, "12")
+        XCTAssertEqual(call.arguments["documentId"] as? String, "3")
+        XCTAssertEqual(call.arguments["observationId"] as? String, "7")
+    }
+
+    func testBooleansAndFractionsAreStillRejectedForIds() {
+        XCTAssertThrowsError(try BrowserCall(["name": "browser_act", "args": ["action": "click", "documentId": "d", "observationId": "o", "elementId": true] as [String: Any]]))
+        XCTAssertThrowsError(try BrowserCall(["name": "browser_act", "args": ["action": "click", "documentId": "d", "observationId": "o", "elementId": 1.5] as [String: Any]]))
+    }
+}
