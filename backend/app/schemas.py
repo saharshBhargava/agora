@@ -27,6 +27,7 @@ PurchaseDate = Annotated[date, AfterValidator(plausible_purchase_date)]
 class DevLoginIn(Strict):
     handle: str = Field(pattern=r"^[a-z0-9_]{3,32}$")
     display_name: str | None = Field(default=None, min_length=1, max_length=80)
+    password: str | None = Field(default=None, max_length=200, description="Required on hosted demo deploys")
 
 
 class TokenOut(BaseModel):

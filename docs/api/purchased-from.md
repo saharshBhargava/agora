@@ -22,15 +22,15 @@ To run the backend locally, see `backend/README.md` → "Run locally". If you'd 
 Sign-In as `Authorization: Bearer <id token>`. The deployed backend (`AGORA_AUTH_MODE=google`) verifies it against
 the iOS client ID and maps it to the user's Agora account. On `401`, refresh the ID token and retry once.
 
-**Sign-in for curl, the API docs page, or a client without Google sign-in (e.g. desktop).** On demo and local
-deploys, exchange a seeded handle (`kedar` or `saharsh`) for a token. On a demo deploy only those work; locally
-any `[a-z0-9_]{3,32}` handle creates an account.
+**Sign-in for curl, the API docs page, or a client without Google sign-in (e.g. desktop).** Sign in to the
+pre-filled demo account with `handle` `demo` and the deploy's `AGORA_DEMO_PASSWORD` (see SETUP.md, step 3b).
+Local `env=dev` servers don't need a password, and any `[a-z0-9_]{3,32}` handle creates an account there.
 
 ```http
 POST /v1/dev/login
 Content-Type: application/json
 
-{"handle": "kedar"}
+{"handle": "demo", "password": "<AGORA_DEMO_PASSWORD>"}
 ```
 ```json
 200

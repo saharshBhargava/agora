@@ -10,6 +10,7 @@ steps in order: step 6 needs the URL from step 2.
 | 3 | The team's existing Google Cloud project (Saharsh's) | Google sign-in + Calendar on the phone | Already set up; just add test users |
 | 4 | [Google AI Studio](https://aistudio.google.com/apikey) | Gemini key for real fridge/pantry recognition | Recommended |
 | 5 | Perceptron (ask at their sponsor table) | Perceptron vision instead of Gemini | Optional |
+| 6 | A new Gmail account for the demo (step 3b) | Signing in to the pre-filled demo account from the iOS app | Yes, for demos |
 
 **What to send back to Kedar's coding session when you're done:** just the Render URL (it's public, not a secret).
 With it, the deploy can be smoke-tested end to end and the keep-warm job pointed at it. Never send the Tiger
@@ -45,7 +46,8 @@ Everything else is preset in `render.yaml`:
 - demo mode, with a generated dev-token secret
 - Google sign-in, using the iOS client ID from `Config/Agora.xcconfig`
 - database-backed photo storage
-- the demo accounts seeded on boot, and sample history for every newly created account
+- the demo account created and filled on boot (step 3b)
+- a generated `AGORA_DEMO_PASSWORD` (find it under the service's **Environment** tab)
 
 ## 3. Google sign-in + Calendar (about 2 min)
 
@@ -61,6 +63,39 @@ That's all. There's no web client, client secret or redirect URL to configure. I
 Google Cloud project, follow "One-time Google Cloud setup" in `backend/README.md`, then set
 `AGORA_GOOGLE_IOS_CLIENT_ID` in Render to the new client ID, since it must match the app's. In Testing mode,
 Google expires Calendar consent after 7 days, so you may need to sign in again during a long weekend.
+
+## 3b. The demo account (about 5 min)
+
+The backend has one designated **demo account**, pre-filled with about a month of realistic history:
+- fridge/pantry scans with detections, plus consumption history
+- stores and purchase dates
+- preferred stores
+- wishlist items and agent suggestions (pending, accepted, snoozed, rejected), with thumbs feedback
+
+From the UI it looks exactly like a real, well-used account; nothing in the app says it's a demo. Anything
+simulated (payments, once they exist) is switched on only for this account, and real accounts never get fake
+data or fake behaviour. One account, two ways in:
+
+1. **From the iOS app (for demos):**
+   - Create a fresh Gmail account that looks like a real person's, e.g. `alex.rivera.agora@gmail.com`. You need
+     to make it yourself.
+   - Ask Saharsh to add it under **Test users** (step 3).
+   - In Render, set `AGORA_DEMO_GOOGLE_EMAILS` to that address and save. Render redeploys.
+
+   Signing in with that Google account on the phone now opens the demo account. Its credentials are that
+   Gmail address and the password you chose for it.
+2. **From curl, the API docs page or a desktop build:** `POST /v1/dev/login` with
+   `{"handle": "demo", "password": "<AGORA_DEMO_PASSWORD>"}`. The password is in Render, under the service's
+   **Environment** tab, generated for you. Treat it like any password.
+
+Inside the app, the account is "Alex Rivera" (handle `alexrivera`). To start fresh after rehearsals (this wipes
+only the demo account and recreates it), run from `backend/`:
+
+```bash
+uv run python -m app.tools.demo reset --database-url "<tiger url>"
+```
+
+Teammates' own Google accounts stay ordinary, empty accounts: use them to show "a new user" if you want.
 
 ## 4. Gemini key (about 2 min)
 
@@ -96,13 +131,12 @@ curl -s https://<your-service>.onrender.com/readyz
 ```
 
 ```bash
-curl -s -X POST https://<your-service>.onrender.com/v1/dev/login -H "content-type: application/json" -d "{\"handle\":\"kedar\"}"
+curl -s -X POST https://<your-service>.onrender.com/v1/dev/login -H "content-type: application/json" -d "{\"handle\":\"demo\",\"password\":\"<AGORA_DEMO_PASSWORD>\"}"
 ```
 
-The second call returns an `access_token` for the seeded demo account `kedar` (or `saharsh`), with three weeks
-of fridge/pantry history. Use it for curl, the interactive docs at `https://<your-service>.onrender.com/docs`,
-or a desktop client without Google sign-in. Then, on the phone: sign in with Google and approve Calendar. Your
-Google account becomes its own Agora account, with sample history so Home isn't empty.
+The second call returns an `access_token` for the demo account. Use it with curl, the interactive docs at
+`https://<your-service>.onrender.com/docs`, or a desktop build. Then, on the phone: sign in with Google as the
+demo Gmail (step 3b) and approve Calendar. Home shows the demo account's inventory.
 
 ## 8. Keep it alive until the demo
 
@@ -155,7 +189,7 @@ Google account becomes its own Agora account, with sample history so Home isn't 
 
 ## 9. Plan B: run everything on a laptop
 
-If hosting fails, a laptop runs the identical backend: same code, migrations, demo accounts, Google sign-in
+If hosting fails, a laptop runs the identical backend: same code, migrations, demo account, Google sign-in
 and features. The iOS app talks to it as if it were the hosted server. Prepare one laptop (ideally the Mac you
 demo from) **today**, so Plan B is a single command later.
 
@@ -177,7 +211,9 @@ TimescaleDB, and the app switches to its plain-SQL path automatically. Then clon
 uv run python -m app.tools.local_demo --tunnel
 ```
 
-It starts the database, runs migrations, seeds the demo accounts and starts the API on `http://localhost:8000`.
+It starts the database, runs migrations, creates the demo account and starts the API on `http://localhost:8000`.
+It prints the local demo password, which is kept in `backend/.data/` so it doesn't change between runs. To reach
+the demo account from the iOS app locally, first run `export AGORA_DEMO_GOOGLE_EMAILS=<demo gmail>`.
 `--tunnel` adds a public `https://….trycloudflare.com` URL (free, no account) and writes it into
 `Config/Local.xcconfig`. Rebuild the iOS app in Xcode and it uses the laptop. A `backend/.env` with
 `AGORA_GEMINI_API_KEY=...` enables real scans; without it, only replay fixtures work.
