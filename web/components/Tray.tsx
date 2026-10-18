@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useState } from 'react';
+import { forwardRef, useCallback, useImperativeHandle, useState, type KeyboardEvent, type Ref } from 'react';
 import { useDndMonitor, useDraggable, useDroppable, type Active } from '@dnd-kit/core';
 import type { Chip as ChipT, Person } from '@/lib/types';
 import { formatCents } from '@/lib/money';
@@ -20,7 +20,11 @@ export type TrayProps = {
   onLeave: (chipId: string) => void;
   /** A claim that would exceed room springs back and calls this ("Over your cap. Raise it?"). */
   onOverCap?: (chip: ChipT) => void;
+  /** Imperative claim/leave through the same path as a drop (room check, undo toast). */
+  apiRef?: Ref<TrayApi>;
 };
+
+export type TrayApi = { claim: (chip: ChipT) => void; leave: (chip: ChipT) => void };
 
 type Toast = { key: number; label: string; undo: () => void };
 type Lifted = { chip: ChipT; from: 'grid' | 'tray' };
@@ -30,30 +34,49 @@ function liftedOf(active: Active): Lifted | null {
   return d?.chip && d.from ? { chip: d.chip, from: d.from } : null;
 }
 
-function TrayChip({ chip, me }: { chip: ChipT; me: string }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `tray:${chip.id}`,
-    data: { chip, from: 'tray' },
-  });
+export const TrayChipView = forwardRef<HTMLButtonElement, { chip: ChipT; me: string } & React.ButtonHTMLAttributes<HTMLButtonElement>>(function TrayChipView({ chip, me, className, ...rest }, ref) {
   const n = chip.claimers.length;
   const share = chip.priceCents === null ? null : myShare(chip.priceCents, chip.claimers, me);
   return (
     <button
-      ref={setNodeRef}
+      ref={ref}
       type="button"
-      className={`tray-chip${isDragging ? ' chip-lifted' : ''}`}
+      className={`tray-chip${className ? ` ${className}` : ''}`}
       aria-label={`${chip.name}, your share ${share === null ? 'not known yet' : formatCents(share)}${n > 1 ? `, split ${n} ways` : ''}`}
-      {...listeners}
-      {...attributes}
+      {...rest}
     >
       <span className="tray-chip-share">{share === null ? '~$?' : formatCents(share)}</span>
       {n > 1 && <span className="chip-badge tray-split">÷{n}</span>}
       <span className="tray-chip-name">{chip.name}</span>
     </button>
   );
+});
+
+function TrayChip({ chip, me, onLeave }: { chip: ChipT; me: string; onLeave: (chip: ChipT) => void }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `tray:${chip.id}`,
+    data: { chip, from: 'tray' },
+  });
+  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === 'Enter' || e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      onLeave(chip);
+    }
+  };
+  return (
+    <TrayChipView
+      ref={setNodeRef}
+      chip={chip}
+      me={me}
+      className={isDragging ? 'chip-source' : undefined}
+      {...listeners}
+      {...attributes}
+      onKeyDown={onKeyDown}
+    />
+  );
 }
 
-export function Tray({ chips, me, people: _people, authorizedCents, taxRate, expanded, onClaim, onLeave, onOverCap }: TrayProps) {
+export function Tray({ chips, me, people: _people, authorizedCents, taxRate, expanded, onClaim, onLeave, onOverCap, apiRef }: TrayProps) {
   const [lifted, setLifted] = useState<Lifted | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const { setNodeRef, isOver } = useDroppable({ id: 'tray' });
@@ -73,6 +96,24 @@ export function Tray({ chips, me, people: _people, authorizedCents, taxRate, exp
 
   const show = (label: string, undo: () => void) => setToast({ key: Date.now(), label, undo });
 
+  const claim = (chip: ChipT) => {
+    if (inTray(chip.id)) return;
+    if (authorizedCents !== null) {
+      const after = roomFor([...chips, chip].map((c) => c.priceCents ?? 0), authorizedCents, taxRate);
+      if (after < 0) {
+        onOverCap?.(chip);
+        return;
+      }
+    }
+    onClaim(chip.id);
+    show(`Claimed ${chip.name}`, () => { onLeave(chip.id); setToast(null); });
+  };
+  const leave = (chip: ChipT) => {
+    onLeave(chip.id);
+    show(`Left ${chip.name}`, () => { onClaim(chip.id); setToast(null); });
+  };
+  useImperativeHandle(apiRef, () => ({ claim, leave }));
+
   useDndMonitor({
     onDragStart(e) {
       setLifted(liftedOf(e.active));
@@ -85,25 +126,12 @@ export function Tray({ chips, me, people: _people, authorizedCents, taxRate, exp
       const l = liftedOf(e.active);
       if (!l) return;
       const inside = e.over?.id === 'tray';
-      const id = l.chip.id;
-      if (l.from === 'grid' && inside && !inTray(id)) {
-        if (authorizedCents !== null) {
-          const after = roomFor([...chips, l.chip].map((c) => c.priceCents ?? 0), authorizedCents, taxRate);
-          if (after < 0) {
-            onOverCap?.(l.chip);
-            return;
-          }
-        }
-        onClaim(id);
-        show(`Claimed ${l.chip.name}`, () => { onLeave(id); setToast(null); });
-      } else if (l.from === 'tray' && !inside) {
-        onLeave(id);
-        show(`Left ${l.chip.name}`, () => { onClaim(id); setToast(null); });
-      }
+      if (l.from === 'grid' && inside) claim(l.chip);
+      else if (l.from === 'tray' && !inside) leave(l.chip);
     },
   });
 
-  const summary = `${chips.length} items · ${formatCents(totalShare)}`;
+  const summary = `${chips.length} ${chips.length === 1 ? 'item' : 'items'} · ${formatCents(totalShare)}`;
 
   return (
     <>
@@ -123,7 +151,7 @@ export function Tray({ chips, me, people: _people, authorizedCents, taxRate, exp
         <p className="tray-summary">{summary}</p>
         {overCapPreview && <p className="tray-warn">Over your cap. Raise it?</p>}
         <div className="tray-chips">
-          {chips.map((c) => <TrayChip key={c.id} chip={c} me={me} />)}
+          {chips.map((c) => <TrayChip key={c.id} chip={c} me={me} onLeave={leave} />)}
           {chips.length === 0 && <p className="muted tray-empty">Lift a chip and drop it here to claim it.</p>}
         </div>
       </section>

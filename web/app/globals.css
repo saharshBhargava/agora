@@ -325,3 +325,6 @@ p { margin: 0; }
   .chip, .tray, .tray-chip { transition: none; }
   .chip-new, .toast { animation: none; }
 }
+
+.chip-source { opacity: 0.35; transform: none; box-shadow: none; }
+.chip-overlay { touch-action: none; }

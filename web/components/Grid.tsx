@@ -34,7 +34,7 @@ function GridChip({ chip, me, people, fresh, onClaim }: { chip: ChipT; me: strin
       me={me}
       people={people}
       fresh={fresh}
-      lifted={isDragging}
+      className={isDragging ? 'chip-source' : undefined}
       {...(liftable ? listeners : {})}
       {...(liftable ? attributes : {})}
       onKeyDown={onKeyDown}
@@ -46,6 +46,7 @@ export function Grid({ chips, me, people, onLift, onClaim }: GridProps) {
   const ordered = useMemo(() => [...chips].sort((a, b) => b.addedAt - a.addedAt), [chips]);
   const seen = useRef<Set<string> | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
+  const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   useEffect(() => {
     const ids = chips.map((c) => c.id);
@@ -57,9 +58,17 @@ export function Grid({ chips, me, people, onLift, onClaim }: GridProps) {
     ids.forEach((id) => seen.current!.add(id));
     if (added.length === 0) return;
     setFresh((f) => new Set([...f, ...added]));
-    const t = setTimeout(() => setFresh((f) => new Set([...f].filter((id) => !added.includes(id)))), 600);
-    return () => clearTimeout(t);
+    const t = setTimeout(() => {
+      timers.current.delete(t);
+      setFresh((f) => new Set([...f].filter((id) => !added.includes(id))));
+    }, 600);
+    timers.current.add(t);
   }, [chips]);
+
+  useEffect(() => {
+    const all = timers.current;
+    return () => all.forEach(clearTimeout);
+  }, []);
 
   useDndMonitor({
     onDragStart(e) {

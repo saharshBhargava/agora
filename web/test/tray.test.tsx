@@ -34,7 +34,7 @@ afterEach(() => vi.useRealTimers());
 test('header shows held, share and room for eggs shared by two', () => {
   render(<Tray chips={[eggs]} me="a" people={people} authorizedCents={4000} taxRate={0} onClaim={vi.fn()} onLeave={vi.fn()} />);
   expect(screen.getByText('$40.00 held · $4.36 your share · $31.28 room')).toBeTruthy();
-  expect(screen.getByText('1 items · $4.36')).toBeTruthy();
+  expect(screen.getByText('1 item · $4.36')).toBeTruthy();
 });
 
 test('a ~$? chip counts $0', () => {
@@ -44,7 +44,7 @@ test('a ~$? chip counts $0', () => {
 
 test('shopper mode shows only items and total', () => {
   render(<Tray chips={[eggs]} me="a" people={people} authorizedCents={null} taxRate={0} onClaim={vi.fn()} onLeave={vi.fn()} />);
-  expect(screen.getByText('1 items · $4.36')).toBeTruthy();
+  expect(screen.getByText('1 item · $4.36')).toBeTruthy();
   expect(screen.queryByText(/held/)).toBeNull();
 });
 

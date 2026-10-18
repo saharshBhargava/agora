@@ -1,12 +1,12 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
-  DndContext, DragOverlay, MeasuringStrategy, PointerSensor, TouchSensor, useSensor, useSensors,
+  DndContext, DragOverlay, MeasuringStrategy, MouseSensor, TouchSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
 import type { Chip as ChipT, Person } from '@/lib/types';
 import { Chip } from './Chip';
 import { Grid } from './Grid';
-import { Tray, type TrayProps } from './Tray';
+import { Tray, TrayChipView, type TrayApi, type TrayProps } from './Tray';
 
 const HOLD = { delay: 200, tolerance: 5 };
 
@@ -17,10 +17,11 @@ export function Board({
   ...tray
 }: { chips: ChipT[]; people: Person[] } & Omit<TrayProps, 'chips' | 'people'> & { trayChips?: ChipT[] }) {
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: HOLD }),
+    useSensor(MouseSensor, { activationConstraint: HOLD }),
     useSensor(TouchSensor, { activationConstraint: HOLD }),
   );
-  const [active, setActive] = useState<ChipT | null>(null);
+  const [active, setActive] = useState<{ chip: ChipT; from: 'grid' | 'tray' } | null>(null);
+  const trayApi = useRef<TrayApi>(null);
   const mine = tray.trayChips ?? chips.filter((c) => c.claimers.includes(tray.me) && c.state !== 'removed');
   const { trayChips: _t, ...trayProps } = tray;
 
@@ -29,7 +30,7 @@ export function Board({
       id="dibs-board"
       sensors={sensors}
       measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
-      onDragStart={(e) => setActive((e.active.data.current?.chip as ChipT) ?? null)}
+      onDragStart={(e) => setActive((e.active.data.current as { chip: ChipT; from: 'grid' | 'tray' }) ?? null)}
       onDragEnd={() => setActive(null)}
       onDragCancel={() => setActive(null)}
     >
@@ -39,12 +40,18 @@ export function Board({
         people={people}
         onClaim={(id) => {
           const c = chips.find((x) => x.id === id);
-          if (c && !c.claimers.includes(tray.me)) tray.onClaim(id);
+          if (c && !c.claimers.includes(tray.me)) trayApi.current?.claim(c);
         }}
       />
-      <Tray {...trayProps} chips={mine} people={people} />
+      <Tray {...trayProps} chips={mine} people={people} apiRef={trayApi} />
       <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }}>
-        {active ? <Chip chip={active} me={tray.me} people={people} lifted tabIndex={-1} /> : null}
+        {active ? (
+          active.from === 'tray' ? (
+            <TrayChipView chip={active.chip} me={tray.me} className="chip-lifted chip-overlay" tabIndex={-1} />
+          ) : (
+            <Chip chip={active.chip} me={tray.me} people={people} lifted className="chip-overlay" tabIndex={-1} />
+          )
+        ) : null}
       </DragOverlay>
     </DndContext>
   );
