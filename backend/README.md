@@ -232,16 +232,19 @@ server scheduling are not implemented. Settings provides reconnect, local sign-o
 ### Optional inventory backend
 
 The Home and Inventory screens use shared `AgoraClient` (Google ID token auth), separate from
-Calendar's Google access-token calls. Leaving the backend unconfigured displays an availability message
-and does not block Calendar.
-To enable inventory, deploy the existing FastAPI/Postgres service and configure:
+Calendar's Google access-token calls. The team API is live at `https://agora-api-yq3m.onrender.com`, and
+`Config/Agora.xcconfig` provides that URL by default. Pull main and rebuild; remove any stale local URL
+override. Public readiness, demo sign-in and authenticated data reads were verified; see the
+[frontend handoff](../docs/frontend-handoff.md) for access and remaining native sign-in checks.
+
+For a separate deployment, configure the FastAPI/Postgres service with:
 
 ```dotenv
 AGORA_AUTH_MODE=google
 AGORA_GOOGLE_IOS_CLIENT_ID=YOUR_CLIENT_ID.apps.googleusercontent.com
 ```
 
-In `Config/Local.xcconfig`, add:
+To override the shared server in `Config/Local.xcconfig`, add:
 
 ```xcconfig
 AGORA_API_BASE_URL = https:/$()/YOUR_API_HOST
