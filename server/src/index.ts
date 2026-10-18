@@ -29,6 +29,7 @@ import type { ServerMsg } from './protocol.js';
 import type { Run } from './types.js';
 import { getDetector, type Detector } from './vision/detect.js';
 import { getVision, type VisionProvider } from './vision/provider.js';
+import { matchProduct, parseQfcPage } from './price/qfc-page.js';
 
 export type Deps = {
   payments: PaymentsProvider;
@@ -241,6 +242,12 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         const text = req.body?.pageText;
         if (typeof text !== 'string') return reply.code(400).send({ error: 'pageText required' });
         const url = searchUrl(pr.name, pr.store);
+        // Fast path: QFC's results page has a regular layout, so read it directly (no model call, ~1 ms).
+        const local = matchProduct(pr.name, parseQfcPage(text));
+        if (local) {
+          agent.resolve(pr.id, { cents: local.priceCents, url });
+          return { found: true, priceCents: local.priceCents, productName: local.name, unit: local.eachCents !== null ? 'each' : 'item' };
+        }
         let out: Record<string, unknown>;
         try {
           const r: GeminiResponse = await generate(

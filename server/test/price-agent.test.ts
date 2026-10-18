@@ -157,6 +157,19 @@ describe('AgentPrice', () => {
     expect((await p)?.cents).toBe(110);
   });
 
+  it('extract reads a QFC results page directly without calling Gemini', async () => {
+    const agent = new AgentPrice();
+    const reqs: unknown[] = [];
+    const a = await start({ agent, fetchImpl: fakeFetch(geminiReply({ found: false }), 200, reqs) });
+    const p = agent.lookup('Cosmic Crisp Apple', 'QFC');
+    const id = agent.open()[0].id;
+    const pageText = '3 results\n$6.99\n$6.99\nKroger® Cosmic Crisp® Apples - 3 Pound Bag\n3 lb\nabout\n$1.10\neach\nabout $1.10 each\n$2.19/lb\nLarge Cosmic Crisp® Apple – Each\nSNAP EBT';
+    const r = await a.inject({ method: 'POST', url: `/api/price-requests/${id}/extract`, payload: { pageText } });
+    expect(r.json()).toMatchObject({ found: true, priceCents: 110, unit: 'each' });
+    expect((await p)?.cents).toBe(110);
+    expect(reqs).toHaveLength(0);
+  });
+
   it('extract found:false leaves the request open', async () => {
     const agent = new AgentPrice();
     const a = await start({ agent, fetchImpl: fakeFetch(geminiReply({ found: false, productName: '', priceCents: 0, unit: '' })) });
