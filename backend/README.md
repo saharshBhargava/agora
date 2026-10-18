@@ -65,6 +65,8 @@ All routes are under `/v1` and need `Authorization: Bearer <token>`. Mutating sc
 | `PATCH /inventory/{id}`, `POST /inventory/{id}/observations` | Edit item; record a manual count |
 | `GET /events` | Server-Sent Events: `scan.updated`, `inventory.updated` (IDs only; refetch) |
 | `GET /audit`, `GET /audit/verify` | Your audit trail; hash-chain integrity check |
+| `GET /merchants?q=`, `POST /merchants`, `GET /merchants/{id}` | Store search and find-or-create (see [docs/api/purchased-from.md](../docs/api/purchased-from.md)) |
+| `PATCH /scans/{id}`, `PATCH /scans/{id}/detections/{id}` | Change or clear an upload's or one product's store |
 
 ## Where things live
 
@@ -94,12 +96,42 @@ migrations/           numbered SQL; *.timescale.sql only runs where TimescaleDB 
 - `AGORA_ENV=prod` refuses dev auth. `AGORA_ENV=demo` requires a non-default token secret and only signs in seeded
   accounts.
 
-## Deploy (Fly.io + Tiger Cloud + R2)
+## Deploy
 
-1. Create a Tiger Cloud service and copy its connection string.
-2. Create a private R2 bucket and an access key scoped to it.
-3. Run `fly launch --no-deploy --copy-config`, set the secrets listed at the top of `fly.toml`, then `fly deploy`.
-4. Seed once with `fly ssh console -C "python -m app.seed"`.
+Everything is configured by environment variables and runs from one Docker image, so any host that can run a
+container and any Postgres 14+ will work. Moving hosts means moving env vars; nothing in the code changes.
+
+### Default setup: no credit card anywhere
+
+| Piece | Service | Card? | Notes |
+|---|---|---|---|
+| Database | Tiger Cloud **Free** plan | No | 2 free services, 750 MiB each, TimescaleDB included. (A separate 30-day trial also needs no card.) |
+| API + worker | Render **free** web service via `render.yaml` | No | Sleeps after ~15 idle min, ~1 min to wake. 750 free hours/month covers one service 24/7 |
+| Media | Postgres itself (`AGORA_STORAGE_BACKEND=db`) | n/a | Frames are small and deleted after review, so there's no bucket to set up |
+| Vision | Gemini API key from AI Studio | No | Free tier. Perceptron is used instead if the sponsor gives us a key |
+| Auth | Built-in dev tokens (`AGORA_ENV=demo`) | n/a | No identity-provider account needed for the demo |
+
+Steps:
+
+1. Tiger Cloud: create a **Free** service and copy the connection string (`postgres://tsdbadmin:...?sslmode=require`).
+2. Render: **New > Blueprint**, pick this repo. Render reads `render.yaml`. Paste the Tiger URL into
+   `AGORA_DATABASE_URL` and, optionally, a Gemini key into `AGORA_GEMINI_API_KEY`.
+3. Deploy. On boot the container runs migrations, seeds the demo accounts (`AGORA_SEED_ON_BOOT=true`), and starts.
+   Check `https://<service>.onrender.com/readyz`: it reports `"timescale": true` on Tiger.
+4. Before judging, open `/healthz` once to wake the service. Optionally point a free uptime pinger at it every
+   5 minutes to keep it warm.
+
+### Switching when something runs out
+
+| If this runs out | Switch to | What changes |
+|---|---|---|
+| Tiger free storage / trial | Neon or Supabase free Postgres, or local Docker | `AGORA_DATABASE_URL` only. Timescale migrations are skipped and plain-SQL queries take over automatically. Use the **direct** (non-pooled) URL; if you must use a pooler, also set `AGORA_DB_PGBOUNCER=true` (live sync then falls back to polling) |
+| Render hours | Railway, Koyeb, Fly.io (`fly.toml`), Cloud Run, a laptop | Same image; it listens on `$PORT` when the host sets one, otherwise 8080 |
+| Gemini / Perceptron quota | The other provider, or `replay` | `AGORA_VISION_PROVIDER` / `AGORA_VISION_FALLBACK`. A provider with no key degrades to replay with a warning, so a missing key can't crash a deploy |
+| Need a bucket after all | Any S3-compatible store (R2, B2, Supabase Storage, MinIO) | `AGORA_STORAGE_BACKEND=s3` + `AGORA_S3_*` |
+| No host at all | Laptop + `cloudflared tunnel --url http://localhost:8000` | Free, no account. Gives an HTTPS URL a physical iPhone can reach |
+
+The database URL is read from `AGORA_DATABASE_URL`, or from `DATABASE_URL` when a host injects that name.
 
 ## Google Calendar onboarding and Gemini tools
 

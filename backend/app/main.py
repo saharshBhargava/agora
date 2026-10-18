@@ -16,7 +16,7 @@ from app.errors import Problem, handle_problem, handle_validation, problem_respo
 from app.google_calendar import GoogleCalendar
 from app.jobs import Worker
 from app.pipeline import Pipeline
-from app.routers import account, audit, calendar, events, inventory, scans
+from app.routers import account, audit, calendar, events, inventory, merchants, scans
 from app.routers.events import Broadcaster
 from app.storage import make_storage
 from app.vision.providers import make_provider
@@ -25,11 +25,20 @@ from app.vision.service import VisionService
 log = logging.getLogger("agora.http")
 
 
+def _provider(kind: str, settings: Settings, client: httpx.AsyncClient):
+    """A provider whose API key is missing degrades to offline replay instead of crashing the deploy."""
+    try:
+        return make_provider(kind, settings, client)
+    except ValueError as error:
+        log.warning("vision provider %s unavailable (%s); using replay fixtures", kind, error)
+        return make_provider("replay", settings, client)
+
+
 def build_pipeline(settings: Settings, db: Database, client: httpx.AsyncClient) -> Pipeline:
-    primary = make_provider(settings.vision_provider, settings, client)
-    fallback = make_provider(settings.vision_fallback, settings, client)
+    primary = _provider(settings.vision_provider, settings, client)
+    fallback = _provider(settings.vision_fallback, settings, client)
     vision = VisionService(primary, fallback if fallback and fallback.name != primary.name else None)
-    return Pipeline(settings, db, make_storage(settings), vision)
+    return Pipeline(settings, db, make_storage(settings, db), vision)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -37,7 +46,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        db = Database(settings.database_url.get_secret_value(), settings.db_pool_min, settings.db_pool_max)
+        db = Database(settings.database_url.get_secret_value(), settings.db_pool_min, settings.db_pool_max,
+                      pgbouncer=settings.db_pgbouncer)
         await db.connect()
         client = httpx.AsyncClient(follow_redirects=False)
         pipeline = build_pipeline(settings, db, client)
@@ -107,7 +117,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await conn.fetchval("SELECT 1")
         return {"ok": True, "timescale": request.app.state.db.timescale, "version": app.version}
 
-    for router in (account.router, inventory.router, scans.router, events.router, audit.router, calendar.router):
+    for router in (account.router, inventory.router, merchants.router, scans.router, events.router,
+                   audit.router, calendar.router):
         app.include_router(router)
     return app
 

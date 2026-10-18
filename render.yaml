@@ -1,0 +1,35 @@
+# Render Blueprint (free plan, no credit card). New → Blueprint → pick this repo, then paste the database URL.
+# Free web services sleep after ~15 idle minutes and take about a minute to wake; see backend/README.md.
+services:
+  - type: web
+    name: agora-api
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./backend/Dockerfile   # Render resolves these from the repo root
+    dockerContext: ./backend
+    healthCheckPath: /readyz
+    autoDeploy: true
+    envVars:
+      - key: AGORA_DATABASE_URL        # Tiger Cloud (or any Postgres) connection string
+        sync: false
+      - key: AGORA_ENV
+        value: demo
+      - key: AGORA_AUTH_MODE
+        value: dev
+      - key: AGORA_DEV_JWT_SECRET
+        generateValue: true
+      - key: AGORA_STORAGE_BACKEND
+        value: db
+      - key: AGORA_VISION_PROVIDER     # falls back to replay automatically if the key below is missing
+        value: gemini
+      - key: AGORA_VISION_FALLBACK
+        value: replay
+      - key: AGORA_GEMINI_API_KEY
+        sync: false
+      - key: AGORA_PERCEPTRON_API_KEY
+        sync: false
+      - key: AGORA_RUN_WORKER_IN_PROCESS
+        value: "true"
+      - key: AGORA_SEED_ON_BOOT          # idempotent: creates demo accounts once, never overwrites
+        value: "true"

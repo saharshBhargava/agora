@@ -4,20 +4,24 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_DEV_SECRET = "dev-only-secret-change-me-0123456789abcdef"  # noqa: S105 - local-only default, refused in demo
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="AGORA_", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="AGORA_", extra="ignore", populate_by_name=True)
 
     # dev/test: local. demo: hosted hackathon deploy with dev auth limited to seeded users. prod: real IdP only.
     env: Literal["dev", "test", "demo", "prod"] = "dev"
-    database_url: SecretStr = SecretStr("postgresql://agora:agora-dev-only@127.0.0.1:5433/agora")
+    # AGORA_DATABASE_URL, or the plain DATABASE_URL that Render/Railway/Heroku-style hosts inject.
+    database_url: SecretStr = Field(default=SecretStr("postgresql://agora:agora-dev-only@127.0.0.1:5433/agora"),
+                                    validation_alias=AliasChoices("AGORA_DATABASE_URL", "DATABASE_URL"))
     db_pool_min: int = 1
     db_pool_max: int = 10
+    # Set when DATABASE_URL points at a transaction-mode pooler. Prefer the direct URL: live sync (LISTEN) needs it.
+    db_pgbouncer: bool = False
 
     # Auth: "dev" mints short-lived HMAC tokens for seeded demo users; "oidc" verifies an IdP's JWTs via JWKS.
     auth_mode: Literal["dev", "oidc", "google"] = "dev"
@@ -35,8 +39,9 @@ class Settings(BaseSettings):
     google_redirect_uri: str | None = None
     google_token_key: SecretStr | None = None  # base64-encoded 32-byte AES-GCM key
 
-    # Media storage: "local" writes under storage_dir; "s3" targets any S3-compatible bucket (Cloudflare R2).
-    storage_backend: Literal["local", "s3"] = "local"
+    # Media storage: "db" keeps frames in Postgres (no extra account), "local" writes under storage_dir (needs a
+    # persistent disk), "s3" targets any S3-compatible bucket (R2, B2, Supabase Storage, MinIO...).
+    storage_backend: Literal["db", "local", "s3"] = "db"
     storage_dir: Path = Path(".data/media")
     s3_bucket: str | None = None
     s3_endpoint_url: str | None = None

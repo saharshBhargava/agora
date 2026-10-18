@@ -17,4 +17,5 @@ ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8080
 
 # Migrations run on boot under an advisory lock, so multiple machines can start at once safely.
-CMD ["sh", "-c", "python -m app.migrate && exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips='*'"]
+# Hosts that assign a port (Render, Railway, Koyeb, Cloud Run...) set $PORT; 8080 otherwise.
+CMD ["sh", "-c", "python -m app.migrate && if [ \"$AGORA_SEED_ON_BOOT\" = true ]; then python -m app.seed; fi && exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips='*'"]
