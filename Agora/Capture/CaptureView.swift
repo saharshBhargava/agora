@@ -4,54 +4,74 @@ import PhotosUI
 import PDFKit
 import UniformTypeIdentifiers
 
+/// Scan: add items to the pantry from a photo, a shelf video, the photo library or Files. Every new scan joins a
+/// review queue and opens in `RecognitionView` one at a time; nothing is saved until the review is confirmed.
+/// Pushed from the Dibs home and the pantry, in the Dibs look (hero, cards, one pinned ink action).
 struct CaptureView: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var inventory: InventoryStore
-    @StateObject private var library = MediaLibrary()
+    @StateObject private var library: MediaLibrary
     @State private var camera: CameraMode?
-    @State private var pickingLibrary = false
+    @State private var sheet: CaptureSheet?
     @State private var pickingFiles = false
-    @State private var preview: CaptureItem?
     @State private var deleting: CaptureItem?
     @State private var requestingPermission = false
     @State private var needsSettings = false
     @State private var cameraDismissed = true
-    @State private var pendingReview: CaptureReview?
-    @State private var captureReview: CaptureReview?
-    private struct CaptureReview: Identifiable {
-        let item: CaptureItem
-        let controller: RecognitionController
-        var id: UUID { item.id }
+    @State private var sheetDismissed = true
+    @State private var reviewQueue = ScanReviewQueue()
+    @State private var scanAfterDismiss = false
+    @State private var showingAll = false
+    @State private var inputContext: UUID?
+
+    init(settings: SettingsStore, inventory: InventoryStore, library: MediaLibrary? = nil) {
+        self.settings = settings; self.inventory = inventory
+        _library = StateObject(wrappedValue: library ?? MediaLibrary())
     }
+
     enum CameraMode: String, Identifiable { case photo, video; var id: String { rawValue } }
+    private enum CaptureSheet: Identifiable {
+        case library, review(CaptureItem), preview(CaptureItem)
+        var id: String {
+            switch self {
+            case .library: return "library"
+            case .review(let item): return "review-\(item.id)"
+            case .preview(let item): return "preview-\(item.id)"
+            }
+        }
+    }
+    private var disabled: Bool { library.busy || requestingPermission }
+
     var body: some View {
         ShelfPage {
-            ShelfHero(title: "Scan what you have",
-                      subtitle: "Take a photo or record a video of your shelves, and Dibs finds the items for your pantry.")
+            ShelfHero(title: "Add items to your pantry",
+                      subtitle: "Scan, review, and save. You choose what gets added.")
+            Label("Keep labels visible and include the whole item.", systemImage: "viewfinder")
+                .font(.system(size: 13)).foregroundStyle(Color.muted)
             sources
-            Text("New camera captures go to your selected inventory model to identify items. Enter the purchase store while recognition runs.")
+            Text("Photos and videos are identified automatically. Review the results before saving. PDFs are kept for viewing only.")
                 .shelfNote()
                 .fixedSize(horizontal: false, vertical: true)
             if library.busy {
                 HStack(spacing: 10) {
                     ProgressView()
-                    Text("Saving media…").font(.system(size: 14)).foregroundStyle(Color.muted)
+                    Text("Preparing your scans…").font(.system(size: 14)).foregroundStyle(Color.muted)
                 }
                 .accessibilityElement(children: .combine)
             }
-            media
+            recentScans
         } bottom: {
-            HStack(spacing: 10) {
-                captureButton("Video", icon: "video", mode: .video, kind: .secondary)
-                captureButton("Photo", icon: "camera", mode: .photo, kind: .ink)
-            }
-            .disabled(library.busy || requestingPermission)
+            Button { Task { await openCamera(.photo) } } label: { Label("Scan items", systemImage: "camera.viewfinder") }
+                .buttonStyle(.dibs)
+                .accessibilityIdentifier("capture.photo")
+                .disabled(disabled)
         }
         .task { await library.load() }
         .fullScreenCover(item: $camera, onDismiss: {
             cameraDismissed = true
-            presentCaptureReview()
+            presentNextReview()
         }) { mode in
+            // The native camera provides Use Photo / Retake before handing us the capture.
             CameraPicker(video: mode == .video) { result in
                 camera = nil
                 switch result {
@@ -60,47 +80,42 @@ struct CaptureView: View {
                 }
             }.ignoresSafeArea()
         }
-
-        .sheet(isPresented: $pickingLibrary) {
-            LibraryPicker { results in
-                pickingLibrary = false
-                guard !results.isEmpty else { return }
-                library.busy = true
-                Task {
-                    defer { library.busy = false }
-                    for result in results {
-                        do {
-                            let (url, kind) = try await LibraryPicker.copyFile(from: result)
-                            await library.add(file: url, kind: kind)
-                            try? FileManager.default.removeItem(at: url)
-                        } catch { library.error = "Could not import a selected item: \(error.localizedDescription)" }
-                    }
+        .sheet(item: $sheet, onDismiss: {
+            sheetDismissed = true
+            if scanAfterDismiss {
+                scanAfterDismiss = false
+                Task { await openCamera(.photo) }
+            } else { presentNextReview() }
+        }) { destination in
+            switch destination {
+            case .library:
+                LibraryPicker { results in
+                    sheet = nil
+                    guard !results.isEmpty else { return }
+                    importPhotos(results)
                 }
+            case .review(let item):
+                RecognitionView(item: item, url: library.url(for: item), settings: settings,
+                                store: inventory, library: library,
+                                onClose: { reviewQueue.clear() },
+                                onScanMore: {
+                                    reviewQueue.clear(); scanAfterDismiss = true; sheet = nil
+                                },
+                                onNextScan: reviewQueue.isEmpty ? nil : { sheet = nil })
+            case .preview(let item):
+                MediaPreview(item: item, url: library.url(for: item), settings: settings, inventory: inventory, library: library)
             }
         }
         .fileImporter(isPresented: $pickingFiles, allowedContentTypes: [.image, .movie, .pdf], allowsMultipleSelection: true) { result in
             switch result {
-            case .success(let urls):
-                library.busy = true
-                Task {
-                    defer { library.busy = false }
-                    for url in urls {
-                        let access = url.startAccessingSecurityScopedResource()
-                        defer { if access { url.stopAccessingSecurityScopedResource() } }
-                        let type = UTType(filenameExtension: url.pathExtension)
-                        let kind: CaptureItem.Kind = type?.conforms(to: .movie) == true ? .video : type?.conforms(to: .pdf) == true ? .document : .image
-                        await library.add(file: url, kind: kind)
-                    }
-                }
+            case .success(let urls): importFiles(urls)
             case .failure(let error): library.error = error.localizedDescription
             }
         }
-        .sheet(item: $captureReview) { review in
-            RecognitionView(item: review.item, url: library.url(for: review.item), settings: settings,
-                            store: inventory, library: library, controller: review.controller)
-        }
-        .sheet(item: $preview) { item in
-            MediaPreview(item: item, url: library.url(for: item), settings: settings, inventory: inventory, library: library)
+        .onChange(of: pickingFiles) { _, presented in if !presented { presentNextReview() } }
+        .onChange(of: inventory.context) { _, _ in
+            inputContext = nil
+            reviewQueue.clear(); scanAfterDismiss = false; sheet = nil; camera = nil
         }
         .alert("Capture", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
             if needsSettings {
@@ -115,127 +130,199 @@ struct CaptureView: View {
             }
         }
     }
-    private func captureButton(_ title: String, icon: String, mode: CameraMode, kind: DibsButtonStyle.Kind) -> some View {
-        Button { Task { await openCamera(mode) } } label: { Label(title, systemImage: icon) }
-            .buttonStyle(.dibs(kind))
-            .accessibilityIdentifier("capture.\(mode.rawValue)")
-    }
 
-    /// Photo Library and Files: bring in what is already on the phone.
+    /// A shelf video, the photo library and Files: other ways in besides the pinned "Scan items".
     private var sources: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ShelfSectionTitle("Import from your phone")
+            ShelfSectionTitle("More ways to add")
             VStack(spacing: 0) {
-                Button { pickingLibrary = true } label: {
-                    DibsLinkRow(title: "Photo Library", detail: "Pick photos or videos you already have", symbol: "photo.on.rectangle", tint: 0xD8E2FA)
+                Button { Task { await openCamera(.video) } } label: {
+                    DibsLinkRow(title: "Scan a shelf", detail: "Record a short video. Pan slowly so labels stay clear.", symbol: "video", tint: 0xDCEFD9)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("capture.video")
                 Hairline()
-                Button { pickingFiles = true } label: {
-                    DibsLinkRow(title: "Files", detail: "Import images, videos or PDFs", symbol: "folder", tint: 0xF2E3B5)
+                Button { present(.library) } label: {
+                    DibsLinkRow(title: "Choose photos", detail: "Pick photos or videos you already have", symbol: "photo.on.rectangle", tint: 0xD8E2FA)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("capture.library")
+                Hairline()
+                Button { inputContext = inventory.context; pickingFiles = true } label: {
+                    DibsLinkRow(title: "Import", detail: "Photos, videos, or PDFs from Files", symbol: "square.and.arrow.down", tint: 0xF2E3B5)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("capture.files")
             }
             .dibsCard()
-            .disabled(library.busy || requestingPermission)
+            .disabled(disabled)
         }
     }
 
-    private var media: some View {
+    private var recentScans: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                ShelfSectionTitle("Your media")
-                Text("\(library.items.count)").font(.display(17)).foregroundStyle(Color.ink).monospacedDigit()
+                ShelfSectionTitle("Recent scans")
+                if library.items.count > 3 {
+                    Button(showingAll ? "Show less" : "See all") { showingAll.toggle() }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.ink)
+                        .frame(minHeight: Metrics.tap)
+                }
             }
             if library.items.isEmpty {
-                ShelfEmpty(symbol: "photo.stack", title: "No captures yet",
-                           message: "Use the camera or import existing photos and videos to get started.")
+                ShelfEmpty(symbol: "clock", title: "No scans yet",
+                           message: "Your scans will appear here. You can return to review them anytime.")
             } else {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible())], spacing: 12) {
-                    ForEach(library.items) { item in
-                        Button { preview = item } label: { MediaTile(item: item, url: library.url(for: item)) }
+                VStack(spacing: 0) {
+                    let shown = showingAll ? library.items : Array(library.items.prefix(3))
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, item in
+                        if index > 0 { Hairline() }
+                        HStack(spacing: 4) {
+                            Button { present(item.kind == .document ? .preview(item) : .review(item)) } label: {
+                                RecentScanRow(item: item, url: library.url(for: item),
+                                              status: item.scanStatus(accountID: inventory.accountID, householdID: inventory.householdID))
+                            }
                             .buttonStyle(.plain)
-                            .contextMenu {
+                            Menu {
+                                Button("View media & captions", systemImage: "photo") { present(.preview(item)) }
                                 ShareLink(item: library.url(for: item)) { Label("Share", systemImage: "square.and.arrow.up") }
                                 Button("Delete", systemImage: "trash", role: .destructive) { deleting = item }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundStyle(Color.ink)
+                                    .frame(width: Metrics.tap, height: Metrics.tap)
+                                    .contentShape(Rectangle())
                             }
+                            .accessibilityLabel("Options for \(item.title)")
+                        }
                     }
                 }
+                .dibsCard()
             }
         }
     }
+
+    private func present(_ destination: CaptureSheet) {
+        if case .library = destination { inputContext = inventory.context }
+        sheetDismissed = false; sheet = destination
+    }
+
     private func openCamera(_ mode: CameraMode) async {
         requestingPermission = true; needsSettings = false
+        let context = inventory.context
         defer { requestingPermission = false }
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-            library.error = "This device does not support camera capture. Use Photo Library or Files, or try on a physical iPhone."
+            library.error = "This device does not support camera capture. Choose photos or import a file instead."
             return
         }
         guard await AVCaptureDevice.requestAccess(for: .video) else {
-            needsSettings = true; library.error = "Allow camera access in Settings to take photos or record videos."; return
+            needsSettings = true; library.error = "Allow camera access in Settings to scan items."; return
         }
         if mode == .video, !(await AVCaptureDevice.requestAccess(for: .audio)) {
             needsSettings = true; library.error = "Allow microphone access in Settings to record videos with sound."; return
         }
-        cameraDismissed = false
-        camera = mode
+        guard inventory.context == context else { return }
+        inputContext = context; cameraDismissed = false; camera = mode
     }
+
     private func saveTemporary(_ url: URL, kind: CaptureItem.Kind) {
+        guard let context = inputContext, context == inventory.context else {
+            try? FileManager.default.removeItem(at: url); return
+        }
         library.busy = true
         Task {
-            defer { library.busy = false; try? FileManager.default.removeItem(at: url) }
-            guard let item = await library.add(file: url, kind: kind) else { return }
-            let controller = RecognitionController()
-            controller.generateIfNeeded(item: item, file: library.url(for: item), settings: settings, store: inventory)
-            pendingReview = CaptureReview(item: item, controller: controller)
-            presentCaptureReview()
+            defer { library.busy = false; presentNextReview(); try? FileManager.default.removeItem(at: url) }
+            if let item = await library.add(file: url, kind: kind), inventory.context == context {
+                reviewQueue.enqueue([item])
+            }
         }
     }
-    private func presentCaptureReview() {
-        // The file copy and camera dismissal can finish in either order.
-        guard cameraDismissed, let pendingReview else { return }
-        captureReview = pendingReview
-        self.pendingReview = nil
+
+    private func importPhotos(_ results: [PHPickerResult]) {
+        guard let context = inputContext, context == inventory.context else { return }
+        library.busy = true
+        Task {
+            defer { library.busy = false; presentNextReview() }
+            for result in results {
+                guard inventory.context == context else { return }
+                do {
+                    let (url, kind) = try await LibraryPicker.copyFile(from: result)
+                    defer { try? FileManager.default.removeItem(at: url) }
+                    if let item = await library.add(file: url, kind: kind), inventory.context == context {
+                        reviewQueue.enqueue([item])
+                    }
+                } catch { library.error = "Could not import a selected item: \(error.localizedDescription)" }
+            }
+        }
+    }
+
+    private func importFiles(_ urls: [URL]) {
+        guard let context = inputContext, context == inventory.context else { return }
+        library.busy = true
+        Task {
+            defer { library.busy = false; presentNextReview() }
+            for url in urls {
+                guard inventory.context == context else { return }
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                let type = UTType(filenameExtension: url.pathExtension)
+                let kind: CaptureItem.Kind = type?.conforms(to: .movie) == true ? .video : type?.conforms(to: .pdf) == true ? .document : .image
+                if let item = await library.add(file: url, kind: kind), inventory.context == context {
+                    reviewQueue.enqueue([item])
+                }
+            }
+        }
+    }
+
+    private func presentNextReview() {
+        guard cameraDismissed, sheetDismissed, !pickingFiles, !library.busy, sheet == nil,
+              let next = reviewQueue.next() else { return }
+        present(.review(next))
     }
 }
 
-private struct MediaTile: View {
+/// One recent scan: its thumbnail as a tile, the title, where its review stands, and when it was taken.
+private struct RecentScanRow: View {
     let item: CaptureItem
     let url: URL
+    let status: String
     @State private var thumbnail: UIImage?
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // The photo goes in an overlay so a wide image can't stretch the cell past its column.
+        HStack(spacing: 12) {
             Color(hex: Palette.tileHex[2])
-                .frame(height: 120)
-                .frame(maxWidth: .infinity)
+                .frame(width: 56, height: 56)
                 .overlay {
                     if let thumbnail { Image(uiImage: thumbnail).resizable().scaledToFill() }
-                    else { Image(systemName: item.symbol).font(.system(size: 30)).foregroundStyle(Color.muted) }
+                    else { Image(systemName: item.symbol).font(.system(size: 20)).foregroundStyle(Color.muted) }
                 }
                 .overlay {
                     if item.kind == .video {
                         Image(systemName: "play.fill")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(Color.white)
-                            .frame(width: 40, height: 40)
+                            .frame(width: 24, height: 24)
                             .background(Circle().fill(Color.ink.opacity(0.85)))
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: Metrics.radiusSmall, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title).font(.system(size: 14, weight: .bold)).foregroundStyle(Color.ink).lineLimit(1)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink).lineLimit(1)
+                ShelfPill(text: status, style: status == "Added to inventory" ? .line : status == "Needs review" ? .ink : .muted)
                 Text(item.createdAt, format: .dateTime.month().day().hour().minute()).shelfNote()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 4)
-            .padding(.bottom, 2)
         }
-        .dibsCard(radius: 16, padding: 8)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
         .task(id: item.id) {
             if item.kind == .image { thumbnail = await Task.detached { MediaLibrary.thumbnail(url) }.value }
             else if item.kind == .video {
-                let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url)); generator.appliesPreferredTrackTransform = true; generator.maximumSize = CGSize(width: 600, height: 600)
+                let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+                generator.appliesPreferredTrackTransform = true; generator.maximumSize = CGSize(width: 160, height: 160)
                 if let image = try? await generator.image(at: .zero) { thumbnail = UIImage(cgImage: image.image) }
             }
         }

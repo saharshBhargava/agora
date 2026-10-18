@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 import asyncpg
+from pydantic import ValidationError
 
 from app.db import Database, audit, notify
 from app.demo_account import is_demo_user
@@ -23,10 +24,13 @@ from app.wishlist_ops import lock_household
 FRESHNESS = timedelta(minutes=30)
 CHECK_TIMEOUT = 180
 MANUAL_COOLDOWN = timedelta(minutes=5)
+PRICE_REASONS = {'confirmed_criteria_met', 'above_target', 'target_not_set', 'fulfillment_unverified',
+                 'arrival_unverified', 'quantity_unverified', 'total_unknown', 'above_total_cap'}
 
 
 def _words(text: str) -> str:
-    return ' '.join(re.findall(r'\w+', text.casefold()))
+    text = re.sub(r'\bps\s*5\b|\bplaystation[\s®™]*5\b', 'playstation5', text.casefold())
+    return ' '.join(re.findall(r'\w+', text))
 
 
 def evaluate(criteria: dict, offer: Offer, now: datetime | None = None) -> dict:
@@ -39,7 +43,7 @@ def evaluate(criteria: dict, offer: Offer, now: datetime | None = None) -> dict:
     def contains(term: str) -> bool:
         return ' '+_words(term)+' ' in ' '+text+' '
 
-    if any(not contains(t) for t in required):
+    if not _words(c.query) or any(not contains(t) for t in required):
         reason = 'required_terms_missing'
     elif any(contains(t) for t in c.excluded_terms):
         reason = 'excluded_term'
@@ -83,7 +87,9 @@ def evaluate(criteria: dict, offer: Offer, now: datetime | None = None) -> dict:
     total = None
     if all(cost is not None for cost in (offer.shipping_cents, offer.tax_cents, offer.fees_cents)):
         total = offer.price_cents * packs + offer.shipping_cents + offer.tax_cents + offer.fees_cents
-    if unit > c.target_price_cents:
+    if c.target_price_cents is None:
+        reason = reason or 'target_not_set'
+    elif unit > c.target_price_cents:
         reason = reason or 'above_target'
     if c.max_total_cents is not None and (total is None or total > c.max_total_cents):
         reason = reason or ('total_unknown' if total is None else 'above_total_cap')
@@ -99,6 +105,9 @@ async def load_watch(conn: asyncpg.Connection, watch_id: UUID, user_id: UUID, *,
     if row is None:
         raise not_found('watch')
     result = dict(row)
+    result['simulation_disclosure'] = (
+        'Demo prices are simulated; no live retailer search is performed.'
+        if await is_demo_user(conn, user_id) else None)
     result['subscription'] = await conn.fetchrow(
         'SELECT * FROM watch_subscriptions WHERE watch_id=$1 AND user_id=$2', watch_id, user_id)
     result['subscription'] = (
@@ -127,6 +136,30 @@ async def load_watch(conn: asyncpg.Connection, watch_id: UUID, user_id: UUID, *,
            WHERE watch_id=$1 ORDER BY created_at DESC LIMIT 5''',
         watch_id)
     result['matches'], result['runs'] = [dict(r) for r in matches], [dict(r) for r in runs]
+    observations = await conn.fetch(
+        '''SELECT DISTINCT ON (listing_id) id,offer,observed_at,reason FROM watch_observations
+           WHERE watch_id=$1 AND criteria_version=$2
+             AND run_id=(SELECT id FROM watch_runs WHERE watch_id=$1 AND criteria_version=$2
+                         AND status='succeeded' ORDER BY created_at DESC LIMIT 1)
+           ORDER BY listing_id,observed_at DESC,id DESC''', watch_id, row['criteria_version'])
+    result['prices'] = []
+    for observation in observations:
+        try:
+            offer = Offer.model_validate(observation['offer'])
+        except ValidationError:
+            continue  # A legacy/malformed observation must not break the entire watch response.
+        # Compare source prices even above the target, without claiming unverified fulfillment.
+        evaluation = evaluate(row['criteria'], offer)
+        if evaluation['reason'] not in PRICE_REASONS:
+            continue
+        result['prices'].append({
+            'id': observation['id'], 'title': offer.title, 'url': offer.url, 'merchant': offer.merchant,
+            'unit_price_cents': evaluation['unit_price_cents'], 'currency': offer.currency,
+            'observed_at': offer.observed_at, 'reason': evaluation['reason'],
+            'is_current': row['status'] == 'active' and datetime.now(UTC)-offer.observed_at <= FRESHNESS})
+    result['prices'].sort(key=lambda price: price['unit_price_cents'])
+    from app.watch_browser import browser_status
+    await browser_status(conn, result, user_id)
     rejected = await conn.fetch(
         '''SELECT DISTINCT reason FROM watch_observations WHERE watch_id=$1 AND criteria_version=$2
            AND NOT eligible AND run_id=(SELECT id FROM watch_runs WHERE watch_id=$1 AND criteria_version=$2
@@ -163,6 +196,89 @@ async def queue_check(conn: asyncpg.Connection, watch: asyncpg.Record, user_id: 
     return {'watch_id': watch['id'], 'run_id': run['id'], 'status': run['status']}
 
 
+async def sync_wishlist_watch(conn, item_id: UUID, user_id: UUID, *, daily_cap: int = 600,
+                              changed_fields: set[str] | None = None, previous_status: str | None = None):
+    """Saving/accepting an active wishlist item authorizes research, never a purchase or push permission."""
+    household_id = await conn.fetchval('SELECT household_id FROM wishlist_items WHERE id=$1', item_id)
+    if household_id is None:
+        return
+    await lock_household(conn, household_id)
+    item = await conn.fetchrow('SELECT * FROM wishlist_items WHERE id=$1', item_id)
+    if not item or item['status'] != 'active':
+        return
+    watch = await conn.fetchrow('SELECT * FROM price_watches WHERE wishlist_item_id=$1 FOR UPDATE', item_id)
+    if watch and changed_fields is None:
+        return  # Backfill never replaces preferences, pauses or existing history.
+    fields = changed_fields or set()
+    criteria = dict(watch['criteria']) if watch else {
+        'query': item['title'], 'quantity': item['quantity'], 'target_price_cents': item['target_price_cents'],
+        'needed_by': item['needed_by'], 'fulfillment': 'delivery', 'location': 'US'}
+    if watch:
+        for parent, child in [('title', 'query'), ('quantity', 'quantity'),
+                              ('target_price_cents', 'target_price_cents'), ('needed_by', 'needed_by')]:
+            if parent in fields:
+                criteria[child] = item[parent]
+        if 'title' in fields:
+            # A link and exact terms for the old product must not pin research to it after a rename.
+            criteria.update(product_url=None, required_terms=[], excluded_terms=[])
+    criteria = WatchCriteria.model_validate(criteria).model_dump(mode='json')
+    paused = previous_status == 'paused'
+    expired = item['needed_by'] and item['needed_by'] < datetime.now(UTC).date()
+    status = 'paused' if paused else 'expired' if expired else 'active'
+    if watch:
+        if watch['criteria'] == criteria and watch['confirmed_at'] is not None:
+            return
+        await conn.execute(
+            "UPDATE watch_runs SET status='skipped',finished_at=now(),error_code='criteria_changed' "
+            "WHERE watch_id=$1 AND status IN ('queued','running')", watch['id'])
+        watch = await conn.fetchrow(
+            '''UPDATE price_watches SET criteria=$2,criteria_version=criteria_version+1,confirmed_at=now(),
+               status=$3,created_by=$4,last_result='pending',last_error=NULL,next_check_at=now(),updated_at=now()
+               WHERE id=$1 RETURNING *''', watch['id'], criteria, status, user_id)
+    else:
+        watch = await conn.fetchrow(
+            '''INSERT INTO price_watches(household_id,wishlist_item_id,created_by,criteria,confirmed_at,status)
+               VALUES($1,$2,$3,$4,now(),$5) RETURNING *''',
+            item['household_id'], item_id, user_id, criteria, status)
+    await conn.execute(
+        '''INSERT INTO watch_subscriptions(watch_id,household_id,user_id) VALUES($1,$2,$3)
+           ON CONFLICT DO NOTHING''', watch['id'], item['household_id'], user_id)
+    agent_paused = await conn.fetchval(
+        'SELECT agent_paused_at IS NOT NULL FROM user_settings WHERE user_id=$1', user_id)
+    if status == 'active' and not agent_paused:
+        try:
+            recent = await conn.fetchval(
+                "SELECT count(*) FROM watch_runs WHERE household_id=$1 AND trigger IN ('manual','confirmed') "
+                "AND created_at>now()-interval '1 hour'", item['household_id'])
+            if recent >= 30:
+                raise Problem(429, 'check_budget_exceeded', 'This household has reached its hourly price-check limit.')
+            await queue_check(conn, watch, user_id, 'confirmed', daily_cap=daily_cap)
+        except Problem as error:
+            if error.code not in ('check_budget_exhausted', 'check_budget_exceeded'):
+                raise
+            # Saving the item still succeeds; the next scheduled pass can retry within the budget.
+            await conn.execute(
+                "UPDATE price_watches SET last_result='skipped',last_error=$2,next_check_at=$3 WHERE id=$1",
+                watch['id'], error.code, next_refresh(datetime.now(UTC)))
+    elif agent_paused:
+        await conn.execute("UPDATE price_watches SET last_result='skipped',last_error='agent_paused' WHERE id=$1",
+                           watch['id'])
+    await audit(conn, 'watch.wishlist_synced', actor_id=user_id, household_id=item['household_id'],
+                target_type='watch', target_id=watch['id'])
+    await notify(conn, item['household_id'], 'watch.updated', watch['id'])
+
+
+async def backfill_wishlist_watches(conn, *, daily_cap: int = 600):
+    rows = await conn.fetch(
+        '''SELECT w.id,m.user_id FROM wishlist_items w
+           JOIN LATERAL (SELECT user_id FROM household_members WHERE household_id=w.household_id
+                         ORDER BY (user_id=w.created_by) DESC,user_id LIMIT 1) m ON true
+           WHERE w.status='active' AND NOT EXISTS(SELECT 1 FROM price_watches p WHERE p.wishlist_item_id=w.id)
+           ORDER BY w.household_id,w.id LIMIT 200''')
+    for row in rows:
+        await sync_wishlist_watch(conn, row['id'], row['user_id'], daily_cap=daily_cap)
+
+
 class WatchService:
     def __init__(self, db: Database, settings, provider):
         self.db, self.settings, self.provider = db, settings, provider
@@ -177,6 +293,7 @@ class WatchService:
 
     async def start(self) -> None:
         async with self.db.system() as conn:
+            await backfill_wishlist_watches(conn, daily_cap=self.settings.watch_daily_check_cap)
             await conn.execute(
                 '''INSERT INTO jobs(kind,payload,max_attempts)
                    SELECT 'watch.sweep','{}',100 WHERE NOT EXISTS
@@ -186,6 +303,7 @@ class WatchService:
     async def sweep(self, payload: dict, attempt: int) -> None:
         now = datetime.now(UTC)
         async with self.db.system() as conn:
+            await backfill_wishlist_watches(conn, daily_cap=self.settings.watch_daily_check_cap)
             expired = await conn.fetch(
                 '''UPDATE price_watches SET status='expired',updated_at=now()
                    WHERE status='active' AND criteria->>'needed_by' IS NOT NULL
@@ -290,7 +408,10 @@ class WatchService:
         except Exception:  # noqa: BLE001 - provider contents never enter logs or persisted error messages
             result, error = SearchResult(), 'search_failed'
         await self._commit(watch, run_id, user_id, result, error, demo=demo)
-        if error and error != 'interaction_required' and attempt < 3:
+        from app.price_search import PriceSearchProvider
+        fallback = (not demo and bool(result.browser_urls)
+                    and not PriceSearchProvider.has_usable_price(watch['criteria'], result))
+        if error and not fallback and error != 'interaction_required' and attempt < 3:
             raise RuntimeError(error)
 
     @staticmethod
@@ -300,11 +421,11 @@ class WatchService:
         c = WatchCriteria.model_validate(criteria)
         return SearchResult(offers=[Offer(
             url=c.product_url or 'https://www.lodgecastiron.com/product/round-cast-iron-classic-skillet',
-            title=c.query, merchant='Lodge Cast Iron', price_cents=max(1, c.target_price_cents-500),
+            title=c.query, merchant='Demo retailer', price_cents=max(1, (c.target_price_cents or 2999)-500),
             available=True, available_quantity=99, condition=c.condition, fulfillment=c.fulfillment,
             location=c.location, observed_at=now, arrives_by=now+timedelta(days=1),
             shipping_cents=0, tax_cents=280, fees_cents=0,
-            evidence='Merchant product page: in stock; current item price.',
+            evidence='Simulated demo price and availability; not a live retailer offer.',
             provider='merchant-jsonld')], checked_count=1)
 
     async def _commit(self, snapshot: dict, run_id: UUID, user_id: UUID, result: SearchResult,
@@ -340,6 +461,12 @@ class WatchService:
                 return
             await conn.execute('UPDATE watch_runs SET interaction_urls=$2 WHERE id=$1',
                                run_id, result.interaction_urls[:5])
+            if not demo and result.browser_urls:
+                from app.price_search import PriceSearchProvider
+                if not PriceSearchProvider.has_usable_price(watch['criteria'], result):
+                    await conn.execute(
+                        "UPDATE watch_runs SET browser_state='pending',browser_urls=$2 WHERE id=$1",
+                        run_id, PriceSearchProvider.retailer_urls(result.browser_urls)[:5])
             if error:
                 await conn.execute(
                     "UPDATE watch_runs SET status='failed',error_code=$2,finished_at=$3 WHERE id=$1",
@@ -488,7 +615,11 @@ class WatchService:
             last_inbox = await conn.fetchval(
                 'SELECT max(created_at) FROM notifications WHERE user_id=$1 AND watch_id=$2',
                 sub['user_id'], watch['id'])
-            if last_inbox and now-last_inbox < timedelta(hours=sub['cooldown_hours']):
+            # Restocks must bypass cooldown: a deferred overnight alert may have been suppressed
+            # after an intermediate out-of-stock observation, and that inbox row would otherwise
+            # mute the later in-stock match the user was waiting for.
+            if (last_inbox and not restocked
+                    and now-last_inbox < timedelta(hours=sub['cooldown_hours'])):
                 continue
             local = now.astimezone(ZoneInfo(sub['timezone']))
             day_start = local.replace(hour=0, minute=0, second=0, microsecond=0)

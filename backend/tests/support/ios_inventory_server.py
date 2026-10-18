@@ -32,8 +32,10 @@ async def main() -> None:
             settings = Settings(
                 _env_file=None, env="test", auth_mode="dev", database_url=url,
                 storage_backend="local", storage_dir=Path(directory), vision_provider="replay",
-                vision_fallback="none", run_worker_in_process=False, seed_new_users=False,
+                vision_fallback="none", run_worker_in_process=True, seed_new_users=False,
+                gemini_api_key=None, watch_search_api_key=None, watch_search_providers=[], apns_enabled=False,
             )
+            print(f"Disposable database: {name}", flush=True)
             server = uvicorn.Server(uvicorn.Config(create_app(settings), host="127.0.0.1", port=18765))
             await server.serve()
     finally:

@@ -11,7 +11,7 @@ import asyncpg
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import JSONResponse
 
-from app import idempotency
+from app import idempotency, replenishment
 from app.auth import CurrentUser, Principal
 from app.db import audit, notify
 from app.errors import Problem, not_found
@@ -89,6 +89,10 @@ async def _one(conn: asyncpg.Connection, list_id: UUID) -> ShoppingList:
 
 
 async def _locked_list(conn: asyncpg.Connection, list_id: UUID, *, must_be_open: bool = True) -> asyncpg.Record:
+    household_id = await conn.fetchval("SELECT household_id FROM shopping_lists WHERE id = $1", list_id)
+    if household_id is None:
+        raise not_found("shopping list")
+    await replenishment.lock(conn, household_id)
     row = await conn.fetchrow("SELECT * FROM shopping_lists WHERE id = $1 FOR UPDATE", list_id)
     if row is None:
         raise not_found("shopping list")
@@ -110,6 +114,7 @@ async def _merchant_row(conn: asyncpg.Connection, merchant_id: UUID | None) -> a
 
 async def _create_list(conn: asyncpg.Connection, household_id: UUID, user_id: UUID, name: str,
                        merchant_id: UUID | None, source: str) -> UUID:
+    await replenishment.lock(conn, household_id)
     if await conn.fetchval("SELECT count(*) FROM shopping_lists WHERE household_id = $1 AND status = 'open'",
                            household_id) >= MAX_OPEN_LISTS:
         raise Problem(409, "too_many_lists", "Too many open lists. Finish or archive some first.")
@@ -167,6 +172,10 @@ async def update_list(list_id: UUID, body: ListPatch, request: Request, user: Pr
             if not changes["name"]:
                 raise Problem(422, "invalid_request", "name can't be blank.")
         if "status" in changes and changes["status"] != row["status"]:
+            if changes['status'] != 'open':
+                ids = await conn.fetch("SELECT inventory_item_id FROM shopping_list_items WHERE list_id = $1 "
+                                       "AND inventory_item_id IS NOT NULL", list_id)
+                await replenishment.dismiss(conn, row['household_id'], [r['inventory_item_id'] for r in ids])
             if changes["status"] == "open" and await conn.fetchval(
                     "SELECT count(*) FROM shopping_lists WHERE household_id = $1 AND status = 'open'",
                     row["household_id"]) >= MAX_OPEN_LISTS:
@@ -174,6 +183,9 @@ async def update_list(list_id: UUID, body: ListPatch, request: Request, user: Pr
             changes["completed_at"] = None if changes["status"] == "open" else (row["completed_at"] or
                                                                                  datetime.now(UTC))
         if changes:
+            if 'merchant_id' in changes:
+                await conn.execute("UPDATE shopping_list_items SET auto_replenished = false WHERE list_id = $1",
+                                   list_id)
             columns = ", ".join(f"{name} = ${i}" for i, name in enumerate(changes, start=2))  # names are fixed
             await conn.execute(f"UPDATE shopping_lists SET {columns}, updated_at = now() WHERE id = $1",
                                list_id, *changes.values())
@@ -193,8 +205,14 @@ async def add_item(list_id: UUID, body: ListItemIn, request: Request, user: Prin
     """Add a line. Link an inventory item or product to fill in the title and unit. Agent lines
     (``added_by: "agent"``) must say why, and are audited as the agent."""
     async with request.app.state.db.scoped(user.user_id) as conn:
-        lst = await _locked_list(conn, list_id)
+        lst = await _locked_list(conn, list_id, must_be_open=False)
         household_id = lst["household_id"]
+        key, digest, previous = await idempotency.begin_optional_add(
+            conn, request, user.user_id, "lists.add", {"list_id": str(list_id), **body.model_dump(mode="json")})
+        if previous is not None:
+            return ShoppingListItem.model_validate(previous)
+        if lst["status"] != "open":
+            raise Problem(409, "list_closed", "Reopen this list to change it.")
         title, unit, product_id = body.title.strip() if body.title else None, body.unit, body.product_id
         if body.inventory_item_id is not None:
             inv = await conn.fetchrow("""SELECT display_name, unit, product_id FROM inventory_items
@@ -209,6 +227,11 @@ async def add_item(list_id: UUID, body: ListItemIn, request: Request, user: Prin
             if name is None:
                 raise not_found("product")
             title = title or name
+        if key is not None:
+            names = await conn.fetch("SELECT title FROM shopping_list_items WHERE list_id = $1", list_id)
+            if any(idempotency.item_name_key(r["title"]) == idempotency.item_name_key(title or "") for r in names):
+                raise Problem(409, "already_on_list",
+                              "This item is already on the shopping list. Its quantity was not changed.")
         if await conn.fetchval("SELECT count(*) FROM shopping_list_items WHERE list_id = $1",
                                list_id) >= MAX_ITEMS_PER_LIST:
             raise Problem(409, "list_full", f"A list can hold {MAX_ITEMS_PER_LIST} lines.")
@@ -229,7 +252,9 @@ async def add_item(list_id: UUID, body: ListItemIn, request: Request, user: Prin
                     meta={"reason": "agent" if agent else "manual", "linked": body.inventory_item_id is not None})
         await _touch(conn, household_id, list_id)
         row = await conn.fetchrow(_ITEM_SELECT + "WHERE li.id = $1", item_id)
-    return ShoppingListItem(**{k: row[k] for k in _ITEM_FIELDS}, merchant=ref(row, "m_"))
+        result = ShoppingListItem(**{k: row[k] for k in _ITEM_FIELDS}, merchant=ref(row, "m_"))
+        await idempotency.finish_optional_add(conn, user.user_id, key, digest, result.model_dump(mode="json"))
+        return result
 
 
 async def _locked_item(conn: asyncpg.Connection, list_id: UUID, item_id: UUID) -> asyncpg.Record:
@@ -255,9 +280,13 @@ async def update_item(list_id: UUID, item_id: UUID, body: ListItemPatch, request
             if not changes["title"]:
                 raise Problem(422, "invalid_request", "title can't be blank.")
         if "checked" in changes and changes["checked"] != item["checked"]:
+            if changes['checked'] and item['inventory_item_id'] is not None:
+                await replenishment.dismiss(conn, lst['household_id'], [item['inventory_item_id']])
             changes["checked_at"] = datetime.now(UTC) if changes["checked"] else None
             changes["checked_by"] = user.user_id if changes["checked"] else None
         if changes:
+            if any(name in changes for name in ('title', 'quantity', 'unit', 'note')):
+                changes['auto_replenished'] = False
             columns = ", ".join(f"{name} = ${i}" for i, name in enumerate(changes, start=2))  # names are fixed
             try:
                 async with conn.transaction():
@@ -278,6 +307,8 @@ async def delete_item(list_id: UUID, item_id: UUID, request: Request, user: Prin
     async with request.app.state.db.scoped(user.user_id) as conn:
         lst = await _locked_list(conn, list_id)
         item = await _locked_item(conn, list_id, item_id)
+        if item['inventory_item_id'] is not None:
+            await replenishment.dismiss(conn, lst['household_id'], [item['inventory_item_id']])
         await conn.execute("DELETE FROM shopping_list_items WHERE id = $1", item_id)
         await audit(conn, "list.item_removed", actor_id=user.user_id, household_id=lst["household_id"],
                     target_type="shopping_list", target_id=list_id, meta={"reason": item["reason"]})

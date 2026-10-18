@@ -6,7 +6,7 @@ import GoogleSignIn
 ///
 /// It owns the Dibs `AppModel` and carries the app-wide wiring: opened links (Dibs links go to the Dibs
 /// model, anything else is Google sign-in's callback), the watch push sheet, push registration and the
-/// household refresh loops, pausing the assistant when the app leaves the foreground, and the account
+/// household refresh loops (inventory with run-out forecasts, lists, trips, price watches, item images), pausing the assistant when the app leaves the foreground, and the account
 /// checks the old sign-in gate made (restore the session at launch, reset conversations when the
 /// account changes or signs out). Nothing is gated on signing in: a typed name is enough for Dibs.
 struct DibsRootView: View {
@@ -70,6 +70,8 @@ struct DibsRootView: View {
         .background { InventoryRefresh(store: workspace.inventory) }
         .background { ShoppingRefresh(store: workspace.shopping) }
         .background { TripRefresh(store: workspace.trips) }
+        .background { WatchRefresh(store: workspace.shopping.watches) }
+        .background { ItemImageSessionSync(store: workspace.images, inventory: workspace.inventory) }
         .background { PushSessionSync(calendar: workspace.calendar, api: workspace.api) }
         .background { WatchBrowserReviewNavigation(store: workspace.shopping.watches) { model.openHousehold(.assistant) } }
         .background { NamePrefill(calendar: workspace.calendar, inventory: workspace.inventory, model: model) }
@@ -97,6 +99,7 @@ struct DibsRootView: View {
             do { try await model.autoShop() } catch { DibsLog.event("autoshop failed: \(error)") }
         }
         .environment(model)
+        .environment(\.itemImages, workspace.images)
         .environment(\.colorScheme, .light)
         .preferredColorScheme(.light)
         .tint(Color.ink)

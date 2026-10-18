@@ -55,6 +55,13 @@ final class OpenAICompatibleClient: ModelClient {
         if isAmbiguousNumericHost(host) {
             throw failure("endpoint", "Enter the address as four numbers, for example 192.168.1.5.")
         }
+        // Noncanonical IPv4 spellings must not fall through to DNS: Darwin's resolver accepts
+        // leading zeros, abbreviated addresses and integer/hex forms that parseIPv4 rejects.
+        var legacyAddress = in_addr()
+        guard !host.utf8.allSatisfy({ (48...57).contains($0) || $0 == 46 }),
+              host.withCString({ inet_aton($0, &legacyAddress) }) == 0 else {
+            throw failure("endpoint", "Enter a standard dotted IPv4 address or a local server hostname.")
+        }
         if host == "localhost" || host.hasSuffix(".localhost") { return }
         let resolve = addressesForHost ?? { try lookupAddresses(host: $0) }
         let addresses: [String]

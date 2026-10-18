@@ -4,6 +4,7 @@ from uuid import UUID
 
 import asyncpg
 
+from app import replenishment
 from app.core.wishlist import title_key
 from app.db import Database, audit, notify
 from app.errors import Problem
@@ -104,10 +105,26 @@ class ShoppingRefresher:
 
     @property
     def handlers(self):
-        return {"wishlist.sweep": self.sweep, "wishlist.refresh": self.refresh_job}
+        return {"wishlist.sweep": self.sweep, "wishlist.refresh": self.refresh_job,
+                "lists.replenish": self.replenish_job}
+
+    async def replenish_job(self, payload: dict, attempt: int) -> None:
+        user_id, household_id = UUID(payload['user_id']), UUID(payload['household_id'])
+        async with self.db.scoped(user_id) as conn:
+            await replenishment.synchronize(conn, household_id, user_id)
+
+    async def queue_lists(self, conn: asyncpg.Connection) -> None:
+        households = await conn.fetch(
+            """SELECT h.id, m.user_id FROM households h CROSS JOIN LATERAL (
+                 SELECT m.user_id FROM household_members m JOIN user_settings s ON s.user_id = m.user_id
+                 WHERE m.household_id = h.id AND s.agent_paused_at IS NULL
+                 ORDER BY m.role = 'owner' DESC, m.joined_at LIMIT 1) m""")
+        for household in households:
+            await replenishment.enqueue(conn, household['id'], household['user_id'])
 
     async def start(self) -> None:
         async with self.db.system() as conn:
+            await self.queue_lists(conn)
             await conn.execute(
                 """INSERT INTO jobs (kind, payload, run_at, max_attempts)
                    SELECT 'wishlist.sweep', '{}', now(), 100
@@ -117,6 +134,7 @@ class ShoppingRefresher:
 
     async def sweep(self, payload: dict, attempt: int) -> None:
         async with self.db.system() as conn:
+            await self.queue_lists(conn)
             # One transaction books the household work and the next sweep. Downtime is coalesced.
             await conn.execute(
                 """INSERT INTO jobs (kind, payload)

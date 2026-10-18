@@ -20,6 +20,26 @@ private func decodeTripList(_ row: [String: Any]) throws -> TripList {
 
 final class TripPlannerTests: XCTestCase {
     private var options: TripPlanningOptions { TripPlanningOptions(days: 2, startHour: 9, endHour: 20, durationMinutes: 60, timezone: "UTC") }
+    func testStoreGroupsPreserveEveryListAndSeparateMerchantLocations() throws {
+        let downtown = UUID(), north = UUID()
+        func list(_ name: String, merchant: UUID?, locality: String = "") throws -> TripList {
+            var row = tripListJSON(id: UUID()); row["name"] = name
+            if let merchant {
+                row["merchant"] = ["id": merchant.uuidString, "name": "Market", "locality": locality]
+            }
+            return try decodeTripList(row)
+        }
+        let lists = try [list("Weekend", merchant: downtown, locality: "Downtown"),
+                         list("Household", merchant: nil),
+                         list("Groceries", merchant: downtown, locality: "Downtown"),
+                         list("Pickup", merchant: north, locality: "North")]
+        let groups = TripListStoreGroup.group(lists)
+        XCTAssertEqual(groups.map(\.name), ["Market · Downtown", "Market · North", "Any store"])
+        XCTAssertEqual(groups[0].lists.map(\.name), ["Groceries", "Weekend"])
+        XCTAssertEqual(Set(groups.flatMap(\.lists).map(\.id)), Set(lists.map(\.id)))
+        XCTAssertTrue(TripListStoreGroup.group([]).isEmpty)
+    }
+
     func testBusyIntervalsEarliestDeadlineAndMultipleStoresNeverOverlap() throws {
         let later = try decodeTripList(tripListJSON())
         let urgent = try decodeTripList(tripListJSON(id: UUID(), deadline: "2026-10-17T12:00:00Z"))
@@ -316,6 +336,36 @@ final class TripStoreTests: XCTestCase {
         XCTAssertNil(server.event)
         await store.plan(options: options)
         XCTAssertEqual(store.proposals.count, 1)
+    }
+    func testAbsentCalendarLookupOffersReleaseWithoutCreating() async throws {
+        await store.plan(options: options); server.unknownCreation = true
+        await store.schedule(try XCTUnwrap(store.proposals.first))
+        XCTAssertEqual(store.trips.first?.status, "outcome_unknown")
+        server.event = nil
+        await store.reconcile(try XCTUnwrap(store.trips.first))
+        XCTAssertEqual(store.trips.first?.status, "outcome_unknown")
+        XCTAssertEqual(server.createCount, 1)
+        XCTAssertTrue(store.notice?.contains("release") == true)
+        await store.release(try XCTUnwrap(store.trips.first))
+        XCTAssertNil(store.error); XCTAssertEqual(store.trips.first?.status, "failed")
+        XCTAssertEqual(server.createCount, 1)
+        await store.plan(options: options)
+        XCTAssertEqual(store.proposals.count, 1)
+    }
+    func testReservedPastSlotCanReleaseWithoutCreating() async throws {
+        await store.plan(options: options)
+        await store.schedule(try XCTUnwrap(store.proposals.first))
+        server.record?["status"] = "reserved"; server.event = nil; server.createCount = 0
+        await store.refresh()
+        let past = tripNow.addingTimeInterval(3600)
+        let pastStore = TripStore(api: api, inventory: inventory, calendar: calendar, now: { past })
+        await pastStore.refresh()
+        await pastStore.resume(try XCTUnwrap(pastStore.trips.first))
+        XCTAssertNotNil(pastStore.error); XCTAssertEqual(pastStore.trips.first?.status, "reserved")
+        XCTAssertEqual(server.createCount, 0)
+        await pastStore.release(try XCTUnwrap(pastStore.trips.first))
+        XCTAssertNil(pastStore.error); XCTAssertEqual(pastStore.trips.first?.status, "failed")
+        XCTAssertEqual(server.createCount, 0)
     }
     func testExistingEventFingerprintMismatchBlocksReservedResume() async throws {
         await store.plan(options: options)

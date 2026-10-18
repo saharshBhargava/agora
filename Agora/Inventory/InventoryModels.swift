@@ -47,6 +47,28 @@ struct InventoryItem: Decodable, Identifiable, Equatable {
         return quantity < parLevel
     }
     var quantityLabel: String { quantity.map { "\($0.formatted()) \(unit)" } ?? "Quantity unknown" }
+
+    var stockSummary: String {
+        if quantity == 0 { return "Out of stock" }
+        return isRunningLow ? "Running low · \(quantityLabel) left" : quantityLabel
+    }
+
+    /// Restock priority, not a consumption forecast. Ratios keep different units comparable.
+    static func restockOrder(_ lhs: Self, _ rhs: Self) -> Bool {
+        func rank(_ item: Self) -> Int {
+            if item.quantity == 0 { return 0 }
+            if item.isRunningLow { return 1 }
+            return item.quantity == nil ? 3 : 2
+        }
+        let leftRank = rank(lhs), rightRank = rank(rhs)
+        if leftRank != rightRank { return leftRank < rightRank }
+        if leftRank == 1, let lq = lhs.quantity, let lp = lhs.parLevel, lp > 0,
+           let rq = rhs.quantity, let rp = rhs.parLevel, rp > 0, lq / lp != rq / rp {
+            return lq / lp < rq / rp
+        }
+        let comparison = lhs.displayName.localizedStandardCompare(rhs.displayName)
+        return comparison == .orderedSame ? lhs.id.uuidString < rhs.id.uuidString : comparison == .orderedAscending
+    }
 }
 
 struct InventoryObservation: Decodable {
@@ -76,14 +98,87 @@ struct InventoryDetail: Decodable {
     let daily: [InventoryDailyPoint]
     let observations: [InventoryObservation]
     let purchaseHistory: [InventoryPurchase]
+    let forecast: InventoryForecast?
 
-    enum CodingKeys: String, CodingKey { case daily, observations, purchaseHistory }
+    enum CodingKeys: String, CodingKey { case daily, observations, purchaseHistory, forecast }
     init(from decoder: Decoder) throws {
         item = try InventoryItem(from: decoder)
         let values = try decoder.container(keyedBy: CodingKeys.self)
         daily = try values.decode([InventoryDailyPoint].self, forKey: .daily)
         observations = try values.decode([InventoryObservation].self, forKey: .observations)
         purchaseHistory = try values.decode([InventoryPurchase].self, forKey: .purchaseHistory)
+        forecast = try values.decodeIfPresent(InventoryForecast.self, forKey: .forecast)
+    }
+}
+
+/// Estimates come from the server's consumption history, never from the recorded quantity alone.
+struct InventoryForecast: Decodable, Equatable {
+    let computedAt: Date
+    let method: String
+    let status: String
+    let confidence: String
+    let ratePerDay: Double?
+    let qtyNow: Double?
+    let lastObservedAt: Date?
+    let lastQuantity: Double?
+    let runoutAt: Date?
+    let runoutLo: Date?
+    let runoutHi: Date?
+    let nObs: Int
+    let spanDays: Double
+    let explanation: String
+
+    func matches(_ item: InventoryItem) -> Bool {
+        guard item.status == "active", let observed = item.observedAt, let lastObservedAt,
+              let quantity = item.quantity, let lastQuantity,
+              abs(observed.timeIntervalSince(lastObservedAt)) < 0.001,
+              abs(quantity - lastQuantity) <= 0.001,
+              ["theil_sen", "blended", "prior", "insufficient"].contains(method),
+              ["out", "runs_out", "steady", "unknown"].contains(status),
+              ["low", "medium", "high"].contains(confidence), nObs >= 0,
+              spanDays.isFinite, spanDays >= 0 else { return false }
+        return [ratePerDay, qtyNow, lastQuantity].compactMap { $0 }.allSatisfy { $0.isFinite && $0 >= 0 }
+    }
+
+    func runsOutSoon(at now: Date = Date()) -> Bool {
+        guard method != "insufficient", ["out", "runs_out"].contains(status), let runoutAt else { return false }
+        return runoutAt <= now.addingTimeInterval(7 * 86_400)
+    }
+
+    func summary(at now: Date = Date()) -> String {
+        guard let runoutAt, method != "insufficient" else {
+            return status == "steady" ? "No run-out expected soon" : "Not enough history yet"
+        }
+        if runoutAt <= now { return "May have run out" }
+        let days = max(1, Int(ceil(runoutAt.timeIntervalSince(now) / 86_400)))
+        return days == 1 ? "May run out within a day" : "May run out in \(days) days"
+    }
+
+    var evidenceLabel: String {
+        switch method {
+        case "prior": return "Typical-use estimate · Low confidence"
+        case "blended": return "History + typical use · \(confidence.capitalized) confidence"
+        default: return "Consumption history · \(confidence.capitalized) confidence"
+        }
+    }
+
+    var modelContext: [String: Any] {
+        ["method": method, "confidence": confidence, "status": status,
+         "rate_per_day": ratePerDay as Any? ?? NSNull(), "estimated_quantity": qtyNow as Any? ?? NSNull(),
+         "runout_at": runoutAt.map { ISO8601DateFormatter().string(from: $0) } as Any? ?? NSNull(),
+         "runout_earliest": runoutLo.map { ISO8601DateFormatter().string(from: $0) } as Any? ?? NSNull(),
+         "runout_latest": runoutHi.map { ISO8601DateFormatter().string(from: $0) } as Any? ?? NSNull(),
+         "readings": nObs, "history_days": spanDays, "explanation": explanation]
+    }
+}
+
+struct InventoryRunouts: Decodable {
+    let householdId: UUID
+    let withinDays: Int
+    let runouts: [Entry]
+    struct Entry: Decodable {
+        let item: InventoryItem
+        let forecast: InventoryForecast
     }
 }
 

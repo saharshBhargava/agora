@@ -244,11 +244,18 @@ class NotificationService:
     async def _validate(self, row: asyncpg.Record) -> dict:
         now = datetime.now(UTC)
         async with self.db.system() as conn:
+            # Keep the match's observation even when a newer listing check exists. Requiring the
+            # match row to also be the latest observation used to make deferred quiet-hour pushes
+            # look "unavailable" and suppress permanently before revalidation could run.
             data = await conn.fetchrow(
                 """SELECT w.status, w.confirmed_at, w.criteria_version, m.criteria_version AS match_version,
                           m.observed_at, m.observation_id, m.criteria_version AS match_observation_version,
-                          o.criteria_version AS observation_version, o.observed_at AS latest_observed_at, o.eligible,
-                          NULLIF(o.offer->>'valid_until','')::timestamptz AS valid_until,
+                          o.criteria_version AS observation_version,
+                          latest.id AS latest_observation_id,
+                          latest.observed_at AS latest_observed_at,
+                          latest.criteria_version AS latest_observation_version,
+                          latest.eligible AS latest_eligible,
+                          latest.valid_until,
                           s.push_enabled, s.quiet_start_hour, s.quiet_end_hour, s.timezone, s.daily_cap,
                           s.cooldown_hours, s.last_notified_at, us.agent_paused_at,
                           (SELECT count(*) FROM notification_outbox x
@@ -263,13 +270,17 @@ class NotificationService:
                    FROM price_watches w
                    JOIN watch_matches m ON m.watch_id = w.id AND m.id = $4
                    JOIN watch_observations o ON o.id = m.observation_id
+                   JOIN LATERAL (
+                     SELECT id, observed_at, eligible, criteria_version,
+                            NULLIF(offer->>'valid_until','')::timestamptz AS valid_until
+                     FROM watch_observations
+                     WHERE listing_id = o.listing_id
+                     ORDER BY observed_at DESC, id DESC LIMIT 1
+                   ) latest ON true
                    JOIN watch_subscriptions s ON s.watch_id = w.id AND s.user_id = $2
                    JOIN household_members hm ON hm.household_id = w.household_id AND hm.user_id = s.user_id
                    JOIN user_settings us ON us.user_id = $2
-                   WHERE w.id = $3 AND w.household_id = $1
-                     AND o.listing_id = (SELECT listing_id FROM watch_observations WHERE id = m.observation_id)
-                     AND o.id = (SELECT id FROM watch_observations WHERE listing_id = o.listing_id
-                                ORDER BY observed_at DESC LIMIT 1)""",
+                   WHERE w.id = $3 AND w.household_id = $1""",
                 row["household_id"], row["user_id"], row["watch_id"], row["match_id"])
             devices = await conn.fetch(
                 "SELECT id, token, environment FROM push_devices WHERE user_id = $1 ORDER BY created_at",
@@ -292,11 +303,16 @@ class NotificationService:
             if quiet_start > quiet_end and local_now.hour >= quiet_start:
                 until += timedelta(days=1)
             return {"suppress": False, "defer_until": until.astimezone(UTC), "devices": []}
+        # A completed recheck that found the listing ineligible is terminal for this alert.
+        # Expired valid_until alone is not: queue a bounded recheck so a fresh price can coalesce.
+        if data["latest_eligible"] is not True:
+            return {"suppress": True, "reason": "offer_no_longer_eligible", "devices": []}
         # Quiet hours can make a valid price observation old by morning. Recheck it before
         # delivery instead of either sending a stale price or permanently dropping the inbox item.
-        if (data["eligible"] is not True or data["observed_at"] != data["latest_observed_at"] or
-                data["match_observation_version"] != data["observation_version"] or
-                now - data["observed_at"] > MAX_PRICE_AGE or
+        if (data["observation_id"] != data["latest_observation_id"] or
+                data["match_observation_version"] != data["latest_observation_version"] or
+                data["observed_at"] != data["latest_observed_at"] or
+                now - data["latest_observed_at"] > MAX_PRICE_AGE or
                 (data["valid_until"] is not None and data["valid_until"] <= now)):
             return await self._revalidate(row)
         if data["last_notified_at"] is not None and now - data["last_notified_at"] < timedelta(
@@ -306,7 +322,7 @@ class NotificationService:
             return {"suppress": True, "reason": "daily_cap_reached", "devices": []}
         if data["sent_today_user"] >= getattr(self.settings, "watch_daily_alert_cap", 20):
             return {"suppress": True, "reason": "user_daily_cap_reached", "devices": []}
-        expires_at = data["observed_at"] + MAX_PRICE_AGE
+        expires_at = data["latest_observed_at"] + MAX_PRICE_AGE
         if data["valid_until"] is not None:
             expires_at = min(expires_at, data["valid_until"])
         return {"suppress": False, "defer_until": None, "devices": devices, "expires_at": expires_at}

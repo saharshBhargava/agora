@@ -182,6 +182,7 @@ final class DemoModelClient: ModelClient {
                 "evidenceItemIds": [itemID]]]]
             return response(String(decoding: try JSONSerialization.data(withJSONObject: result), as: UTF8.self))
         case .chat:
+            if let reply = try shoppingReply(request) { return reply }
             if let result = request.messages.last?.toolResults.last {
                 let value = result.value.object ?? [:]
                 if value["error"] != nil { return response("The action could not be completed. Review the account or try a new request when you are ready.") }
@@ -219,4 +220,66 @@ final class DemoModelClient: ModelClient {
             return response("Your household inventory, shopping lists, wishlist and purchase history are ready to explore. Try ‘Check my calendar’ or ‘Schedule a grocery trip’. You can review captured groceries before saving them to inventory.")
         }
     }
+    /// Small, disclosed demo grammar. Ordinary accounts use their configured model's tool calls.
+    private func shoppingReply(_ request: ModelRequest) throws -> ModelResponse? {
+        func reply(_ text: String, calls: [ModelToolCall] = []) -> ModelResponse {
+            ModelResponse(message: .init(role: .assistant, content: [.text(text)], toolCalls: calls))
+        }
+        if let result = request.messages.last?.toolResults.last, ShoppingCall.additions.contains(result.name) {
+            let value = result.value.foundation as? [String: Any] ?? [:]
+            if value["status"] as? String == "already_exists" { return reply("That item already exists. I left its quantity unchanged.") }
+            guard value["status"] as? String == "saved", let title = value["title"] as? String,
+                  let destination = value["destination"] as? String else { return reply("The item wasn’t confirmed saved. Check Lists before retrying.") }
+            let quantity = (value["quantity"] as? NSNumber).map { " (\($0.stringValue)\((value["unit"] as? String).map { " " + $0 } ?? ""))" } ?? ""
+            return reply("Added \(title)\(quantity) to \(destination).")
+        }
+        let prompt = request.messages.reversed().first { message in
+            message.role == .user && message.content.contains { if case .text = $0 { return true }; return false }
+        }?.content.compactMap { if case .text(let text) = $0 { return text }; return nil }.joined(separator: " ") ?? ""
+        let pattern = #"(?i)^(?:please\s+)?(?:add|put|save)\s+(.+?)\s+(?:to|on|in|into)\s+(?:my\s+|the\s+)?(.+?)[.!]?$"#
+        let regex = try NSRegularExpression(pattern: pattern)
+        guard let match = regex.firstMatch(in: prompt, range: NSRange(prompt.startIndex..., in: prompt)),
+              let itemRange = Range(match.range(at: 1), in: prompt), let destinationRange = Range(match.range(at: 2), in: prompt) else { return nil }
+        var title = String(prompt[itemRange])
+        let destination = String(prompt[destinationRange]).lowercased()
+        let tool: String
+        if ["wishlist", "wish list", "watch list"].contains(destination) { tool = "wishlist_add" }
+        else if destination == "inventory" { tool = "inventory_add" }
+        else if destination.hasSuffix("list") || destination.contains("shopping") { tool = "shopping_list_add" }
+        else { return nil }
+        guard request.tools.contains(where: { $0.name == tool }) else { return reply("Open Lists to load your household, then try again.") }
+        // Avoid silently treating several requested items as one title in the fixed demo grammar.
+        guard !title.contains(","), !title.lowercased().contains(" and ") else {
+            return reply("The built-in demo supports one item per message. Try ‘Add eggs to my shopping list’.")
+        }
+        var arguments: [String: ModelJSON] = [:]
+        let words = title.split(separator: " ", maxSplits: 1).map(String.init)
+        if words.count == 2, let number = Double(words[0]) { arguments["quantity"] = .number(number); title = words[1] }
+        else if words.count == 2, ["a", "an"].contains(words[0].lowercased()) { title = words[1]; arguments["quantity"] = .number(1) }
+        if tool != "wishlist_add", let range = title.range(of: " of ", options: .caseInsensitive) {
+            let unit = String(title[..<range.lowerBound])
+            if ["carton", "cartons", "bag", "bags", "bottle", "bottles", "pack", "packs", "box", "boxes", "kg", "liters"].contains(unit.lowercased()) {
+                arguments["unit"] = .string(unit); title = String(title[range.upperBound...])
+            }
+        }
+        arguments["title"] = .string(title)
+        guard let result = request.messages.last?.toolResults.last, result.name == "shopping_context" else {
+            return reply("I’ll check your lists first.", calls: [.init(id: UUID().uuidString, name: "shopping_context", arguments: [:])])
+        }
+        let context = result.value.foundation as? [String: Any] ?? [:]
+        if context["error"] != nil { return reply("I couldn’t read your lists. Try again once they’re available.") }
+        if tool == "shopping_list_add" {
+            let lists = context["shopping_lists"] as? [[String: Any]] ?? []
+            let name = destination.replacingOccurrences(of: " shopping list", with: "").replacingOccurrences(of: " list", with: "")
+            let generic = ["shopping", "shopping list", "list"].contains(destination)
+            let matches = generic ? lists : lists.filter { ($0["name"] as? String)?.lowercased() == name || ($0["name"] as? String)?.lowercased() == destination }
+            guard matches.count == 1, let id = matches[0]["id"] as? String else {
+                return reply(lists.isEmpty ? "Create a shopping list in Lists first, then ask me to add the item." :
+                    "Which shopping list? Repeat your request with its name: " + lists.compactMap { $0["name"] as? String }.joined(separator: ", "))
+            }
+            arguments["listId"] = .string(id)
+        }
+        return reply("", calls: [.init(id: UUID().uuidString, name: tool, arguments: arguments)])
+    }
+
 }

@@ -176,6 +176,58 @@ final class TripLiveTests: XCTestCase {
         _ = try await api.request("v1/lists/\(id)", method: "PATCH", body: ["status": "archived"])
     }
 
+    func testChatAdditionsThroughAgentAndRealPersistence() async throws {
+        var probe = URLRequest(url: URL(string: "http://127.0.0.1:18765/healthz")!); probe.timeoutInterval = 2
+        do { _ = try await URLSession.shared.data(for: probe) }
+        catch { throw XCTSkip("Start tests.support.ios_inventory_server on port 18765.") }
+        let configuration = URLSessionConfiguration.ephemeral; configuration.protocolClasses = [TripLiveHTTP.self]
+        let http = URLSession(configuration: configuration); defer { http.invalidateAndCancel() }
+        let origin = URL(string: "https://trips-live.example.com")!
+        let calendar = CalendarConnection(http: http, demoBaseURL: origin, sessionStore: TripLiveSession())
+        await calendar.connectDemo(handle: "demo", password: "")
+        XCTAssertTrue(calendar.connected, calendar.message ?? "Sign-in failed")
+        let api = AgoraClient(calendar: calendar, baseURL: origin, http: http)
+        let inventory = InventoryStore(api: api, calendar: calendar); await inventory.refresh()
+        let shopping = ShoppingStore(api: api, inventory: inventory)
+        let trips = TripStore(api: api, inventory: inventory, calendar: calendar)
+        let suffix = String(UUID().uuidString.prefix(8)).lowercased()
+        let listName = "Chat groceries " + suffix
+        let listID = try await trips.createList(name: listName, merchantID: nil)
+        let settings = SettingsStore(keychainService: "chat-live-" + suffix, defaults: UserDefaults(suiteName: "chat-live-" + suffix)!)
+        let agent = AgentCoordinator(settings: settings, browser: BrowserSession(policy: settings.policy), calendar: calendar, shopping: shopping, trips: trips)
+        agent.modelClientOverride = DemoModelClient(calendar: calendar, feature: .chat)
+        func send(_ prompt: String) async throws {
+            XCTAssertTrue(agent.send(prompt))
+            for _ in 0..<400 {
+                if !agent.running { break }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            XCTAssertFalse(agent.running); XCTAssertNil(agent.approval)
+            XCTAssertEqual(agent.status, "Ready", agent.messages.map(\.text).joined(separator: "\n"))
+        }
+        try await send("Add 2 cartons of chat milk \(suffix) to inventory")
+        let stock = try XCTUnwrap(inventory.activeItems.first { $0.displayName == "chat milk " + suffix })
+        XCTAssertEqual(stock.quantity, 2); XCTAssertEqual(stock.unit, "cartons")
+        try await send("Add chat grinder \(suffix) to my wishlist")
+        XCTAssertTrue(shopping.active.contains { $0.title == "chat grinder " + suffix })
+        try await send("Add 3 bags of chat oats \(suffix) to my \(listName) list")
+        XCTAssertEqual(trips.lists.first { $0.id == listID }?.items.first?.quantity, 3)
+        XCTAssertTrue(agent.messages.last?.text.contains(listName) == true)
+        try await send("Add chat oats \(suffix) to my \(listName) list")
+        XCTAssertTrue(agent.messages.last?.text.contains("already exists") == true)
+        XCTAssertEqual(trips.lists.first { $0.id == listID }?.items.count, 1)
+        try await send("Add chat bread \(suffix) to my shopping list")
+        XCTAssertTrue(agent.messages.last?.text.contains("Which shopping list") == true)
+        let restored = InventoryStore(api: api, calendar: calendar); await restored.refresh()
+        XCTAssertEqual(restored.activeItems.first { $0.id == stock.id }?.quantity, 2)
+        let savedList = try await api.fetch("v1/lists/\(listID)", as: TripList.self)
+        XCTAssertEqual(savedList.items.count, 1); XCTAssertEqual(savedList.items[0].quantity, 3)
+        let restoredShopping = ShoppingStore(api: api, inventory: restored); await restoredShopping.refresh()
+        XCTAssertTrue(restoredShopping.active.contains { $0.title == "chat grinder " + suffix })
+        await calendar.signOut()
+        XCTAssertTrue(agent.messages.isEmpty); XCTAssertTrue(inventory.items.isEmpty)
+    }
+
     private func render<Content: View>(_ content: Content, name: String) async throws {
         let controller = UIHostingController(rootView: NavigationStack { content })
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)

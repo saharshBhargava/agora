@@ -21,12 +21,12 @@ struct InventoryListView: View {
             $0.status == (showArchived ? "archived" : "active") &&
             (locationID == nil || $0.locationId == locationID) &&
             (search.isEmpty || $0.displayName.localizedStandardContains(search) || ($0.category?.localizedStandardContains(search) ?? false))
-        }.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+        }.sorted(by: store.restockOrder)
     }
 
-    /// Out of stock or under its restock level.
+    /// Out of stock, under its restock level, or predicted to run out soon.
     private func needsRestock(_ item: InventoryItem) -> Bool {
-        item.status == "active" && (item.quantity == 0 || item.isRunningLow)
+        item.status == "active" && (item.quantity == 0 || item.isRunningLow || store.forecast(for: item)?.runsOutSoon() == true)
     }
 
     private var summary: String {
@@ -52,7 +52,7 @@ struct InventoryListView: View {
             if let error = store.error {
                 VStack(alignment: .leading, spacing: 10) {
                     ShelfBanner(message: error, kind: .error)
-                    Button("Try again") { Task { await store.refresh() } }
+                    Button("Try again") { Task { await store.refreshWithForecasts() } }
                         .buttonStyle(.dibs(.secondary, fontSize: 16))
                         .disabled(store.loading)
                 }
@@ -82,7 +82,7 @@ struct InventoryListView: View {
                 }
             }
         }
-        .refreshable { await store.refresh() }
+        .refreshable { await store.refreshWithForecasts() }
         .sheet(isPresented: $adding) { InventoryEditor(store: store, original: nil) }
         .sheet(isPresented: $managingLocations) { InventoryLocationsView(store: store) }
         .id(store.context)
@@ -173,16 +173,17 @@ struct InventoryListView: View {
             ShelfSectionTitle(title)
             ForEach(items) { item in
                 let location = store.locations.first { $0.id == item.locationId }?.name
+                let forecast = store.forecast(for: item)
                 NavigationLink {
                     InventoryDetailView(store: store, itemID: item.id)
                 } label: {
-                    InventoryRowView(item: item, location: location)
+                    InventoryRowView(item: item, location: location, forecast: forecast)
                         .dibsCard(radius: 14, padding: 12)
                         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(InventoryRowView.label(item: item, location: location))
+                .accessibilityLabel(InventoryRowView.label(item: item, location: location, forecast: forecast))
                 .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier("inventory.item.\(item.id)")
             }
@@ -194,14 +195,15 @@ struct InventoryListView: View {
 private struct InventoryRowView: View {
     let item: InventoryItem
     let location: String?
+    var forecast: InventoryForecast? = nil
 
     var body: some View {
         HStack(spacing: 12) {
-            ShelfTile(seed: item.id.uuidString, label: item.displayName, size: 48)
+            ShelfItemTile(kind: "inventory", id: item.id, name: item.displayName, category: item.category, size: 48)
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.displayName).shelfName().lineLimit(2)
                 if let location { Text(location).shelfNote().lineLimit(1) }
-                if let state = Self.state(item) { ShelfPill(text: state.text, style: state.style) }
+                if let state = Self.state(item, forecast: forecast) { ShelfPill(text: state.text, style: state.style) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .trailing, spacing: 0) {
@@ -216,18 +218,20 @@ private struct InventoryRowView: View {
         }
     }
 
-    static func state(_ item: InventoryItem) -> (text: String, style: ShelfPill.Style)? {
+    /// The stock pill: archived, out of stock, the run-out prediction when it says soon, or running low.
+    static func state(_ item: InventoryItem, forecast: InventoryForecast? = nil) -> (text: String, style: ShelfPill.Style)? {
         if item.status == "archived" { return ("Archived", .muted) }
         if item.quantity == 0 { return ("Out of stock", .danger) }
+        if let forecast, forecast.runsOutSoon() { return (forecast.summary(), .ink) }
         if item.isRunningLow { return ("Running low", .ink) }
         return nil
     }
 
-    static func label(item: InventoryItem, location: String?) -> String {
+    static func label(item: InventoryItem, location: String?, forecast: InventoryForecast? = nil) -> String {
         var parts = [item.displayName]
         if let location { parts.append(location) }
         parts.append(item.quantityLabel)
-        if let state = state(item) { parts.append(state.text) }
+        if let state = state(item, forecast: forecast) { parts.append(state.text) }
         return parts.joined(separator: ", ")
     }
 }
@@ -235,6 +239,7 @@ private struct InventoryRowView: View {
 struct InventoryDetailView: View {
     @ObservedObject var store: InventoryStore
     let itemID: UUID
+    @Environment(\.scenePhase) private var phase
     @State private var detail: InventoryDetail?
     @State private var days = 30
     @State private var loading = true
@@ -245,6 +250,12 @@ struct InventoryDetailView: View {
     @State private var saving = false
     @State private var loadID = UUID()
     private var item: InventoryItem? { store.items.first { $0.id == itemID } }
+    private var currentForecast: InventoryForecast? {
+        guard let item else { return nil }
+        if let forecast = store.forecast(for: item) { return forecast }
+        if let forecast = detail?.forecast, forecast.matches(item) { return forecast }
+        return nil
+    }
 
     var body: some View {
         Group {
@@ -252,6 +263,7 @@ struct InventoryDetailView: View {
                 ShelfPage {
                     ShelfHero(title: item.displayName, size: 30, subtitle: subtitle(item))
                     stock(item)
+                    prediction(item)
                     facts(item)
                     purchaseInformation(item)
                     history(item)
@@ -290,9 +302,17 @@ struct InventoryDetailView: View {
                 }
             }
         }
-        .task(id: days) { await load() }
+        .task(id: "\(days)-\(store.context)-\(phase == .active)") {
+            await load()
+            guard phase == .active else { return }
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                await load()
+            }
+        }
         .onChange(of: item) { _, _ in Task { await load() } }
-        .refreshable { await store.refresh(); await load() }
+        .onChange(of: store.forecasts[itemID]) { _, _ in Task { await load() } }
+        .refreshable { await store.refreshWithForecasts(); await load() }
     }
 
     // MARK: sections
@@ -313,12 +333,53 @@ struct InventoryDetailView: View {
                 .font(.system(size: 17))
                 .foregroundStyle(Color.muted)
             Spacer(minLength: 8)
-            if let state = InventoryRowView.state(item) { ShelfPill(text: state.text, style: state.style) }
+            if let state = InventoryRowView.state(item, forecast: currentForecast) { ShelfPill(text: state.text, style: state.style) }
+            ShelfItemTile(kind: "inventory", id: item.id, name: item.displayName, category: item.category, size: 56)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .dibsCard()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Quantity: \(item.quantityLabel)")
+    }
+
+    /// When it should run out, learned from the quantity readings (the team's forecasts), as its own card.
+    private func prediction(_ item: InventoryItem) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ShelfSectionTitle("Run-out prediction")
+            VStack(alignment: .leading, spacing: 10) {
+                if let forecast = currentForecast {
+                    Text(forecast.summary()).font(.display(22)).foregroundStyle(Color.ink)
+                    Text(forecast.evidenceLabel).shelfNote()
+                    let rows = predictionRows(forecast, item: item)
+                    if !rows.isEmpty { ShelfFacts(rows: rows) }
+                    Text(forecast.explanation).shelfBody()
+                    Text("\(forecast.nObs) readings across \(forecast.spanDays.formatted(.number.precision(.fractionLength(0...1)))) days. Estimates account for recorded restocks; they do not change your recorded quantity.")
+                        .shelfNote()
+                } else if loading {
+                    ProgressView("Loading prediction…").font(.system(size: 14)).foregroundStyle(Color.muted)
+                } else {
+                    Text(error == nil ? "A current prediction isn’t available yet. Scan this item or update its quantity over time to learn your consumption." : "Couldn’t load the prediction. Pull to refresh.")
+                        .shelfNote()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dibsCard()
+        }
+    }
+
+    private func predictionRows(_ forecast: InventoryForecast, item: InventoryItem) -> [(title: String, value: String)] {
+        var rows: [(title: String, value: String)] = []
+        if let date = forecast.runoutAt { rows.append(("Estimated run-out", date.formatted(.dateTime.month().day()))) }
+        if let low = forecast.runoutLo, let high = forecast.runoutHi, low < high {
+            rows.append(("Estimated range", "\(low.formatted(date: .abbreviated, time: .omitted)) – \(high.formatted(date: .abbreviated, time: .omitted))"))
+        }
+        if let rate = forecast.ratePerDay {
+            rows.append(("Estimated daily use", "\(rate.formatted(.number.precision(.fractionLength(0...3)))) \(item.unit)/day"))
+        }
+        if let remaining = forecast.qtyNow {
+            rows.append(("Estimated remaining", "\(remaining.formatted(.number.precision(.fractionLength(0...2)))) \(item.unit)"))
+        }
+        return rows
     }
 
     @ViewBuilder private func facts(_ item: InventoryItem) -> some View {

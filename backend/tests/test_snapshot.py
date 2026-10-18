@@ -27,7 +27,8 @@ async def test_snapshot_round_trip_preserves_rows_and_audit_chain(app, client, t
         src, dst = await asyncpg.connect(source), await asyncpg.connect(target)
         try:
             for table in ("users", "households", "inventory_items", "inventory_observations", "scans",
-                          "scan_detections", "merchants", "audit_log", "replenishment_trips"):
+                          "scan_detections", "merchants", "audit_log", "replenishment_trips",
+                          "item_images", "item_image_assets"):
                 expected = await src.fetchval(f"SELECT count(*) FROM {table}")
                 assert counts[table] == expected == await dst.fetchval(f"SELECT count(*) FROM {table}"), table
             # Hashes were copied verbatim, so the restored chain still verifies, and new rows extend it.

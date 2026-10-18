@@ -67,7 +67,11 @@ struct NextRunRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            DibsItemTile(id: row.id, name: row.name)
+            if let image = row.image {
+                ShelfItemTile(kind: image.kind, id: image.id, name: row.name, category: image.category, size: 44)
+            } else {
+                DibsItemTile(id: row.id, name: row.name)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.name)
                     .font(.system(size: 15, weight: .semibold))

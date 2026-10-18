@@ -175,14 +175,15 @@ private struct HouseholdCards: View {
 
     private var nextRun: [NextRunRow] {
         guard calendar.connected else { return [] }
-        return NextRunPicks.rows(inventory: inventory.activeItems, wishlist: shopping.active, suggestions: shopping.suggestions)
+        return NextRunPicks.rows(inventory: inventory.activeItems, wishlist: shopping.active, suggestions: shopping.suggestions,
+                                 forecast: inventory.forecast(for:))
     }
 
     var body: some View {
         let rows = nextRun
         if !rows.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
-                CardTitle(title: "For your next run", subtitle: "Running low at home, and on your household's wishlist.")
+                CardTitle(title: "For your next run", subtitle: "Running low or about to run out at home, and on your household's wishlist.")
                     .padding(.bottom, 4)
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                     if index > 0 { Hairline() }

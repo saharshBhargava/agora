@@ -97,6 +97,58 @@ final class DibsNextRunTests: XCTestCase {
     }
 }
 
+/// Run-out predictions (the team's consumption forecasts) in "For your next run".
+final class DibsNextRunForecastTests: XCTestCase {
+    private let household = UUID()
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func item(_ name: String, quantity: Double, restockBelow: Double? = nil) -> InventoryItem {
+        InventoryItem(id: UUID(), householdId: household, displayName: name, category: "dairy", locationId: nil, unit: "each",
+                      parLevel: restockBelow, status: "active", quantity: quantity, observedAt: now, source: nil,
+                      preferredMerchantId: nil, lastPurchasedFrom: nil, lastPurchasedOn: nil)
+    }
+
+    private func forecast(runsOutInDays days: Double?, method: String = "theil_sen", status: String = "runs_out") -> InventoryForecast {
+        InventoryForecast(computedAt: now, method: method, status: status, confidence: "high", ratePerDay: 1, qtyNow: 3,
+                          lastObservedAt: now, lastQuantity: 3, runoutAt: days.map { now.addingTimeInterval($0 * 86_400) },
+                          runoutLo: nil, runoutHi: nil, nObs: 11, spanDays: 10, explanation: "Steady use")
+    }
+
+    func testAnItemPredictedToRunOutSoonShowsAboveItsRestockLevel() {
+        let yogurt = item("Yogurt", quantity: 3)
+        let rice = item("Rice", quantity: 9)
+        let forecasts = [yogurt.id: forecast(runsOutInDays: 3), rice.id: forecast(runsOutInDays: 30)]
+        let rows = NextRunPicks.rows(inventory: [rice, yogurt], wishlist: [], suggestions: [],
+                                     forecast: { forecasts[$0.id] }, now: now)
+        XCTAssertEqual(rows.map(\.name), ["Yogurt"], "a run-out a month away is not shown")
+        XCTAssertEqual(rows.first?.reason, "May run out in 3 days")
+        XCTAssertEqual(rows.first?.page, .pantry)
+        XCTAssertEqual(rows.first?.image, NextRunImage(kind: "inventory", id: yogurt.id, category: "dairy"))
+    }
+
+    func testOutOfStockFirstThenSoonestRunOutThenTheOldOrder() {
+        let eggs = item("Eggs", quantity: 0, restockBelow: 6)
+        let milk = item("Milk", quantity: 2, restockBelow: 1)
+        let bread = item("Bread", quantity: 1, restockBelow: 2)
+        let coffee = item("Coffee", quantity: 4)
+        let forecasts = [milk.id: forecast(runsOutInDays: 5), coffee.id: forecast(runsOutInDays: 2)]
+        let low = NextRunPicks.lowItems([bread, milk, coffee, eggs], forecast: { forecasts[$0.id] }, now: now)
+        XCTAssertEqual(low.map(\.displayName), ["Eggs", "Coffee", "Milk", "Bread"])
+        let rows = NextRunPicks.rows(inventory: [bread, milk, coffee, eggs], wishlist: [], suggestions: [],
+                                     forecast: { forecasts[$0.id] }, now: now)
+        XCTAssertEqual(rows.map(\.reason), ["Running low", "May run out in 2 days", "May run out in 5 days"])
+    }
+
+    func testAnUnreliableOrDistantForecastChangesNothing() {
+        let tea = item("Tea", quantity: 1, restockBelow: 2)
+        let jam = item("Jam", quantity: 5)
+        let forecasts = [tea.id: forecast(runsOutInDays: 1, method: "insufficient"), jam.id: forecast(runsOutInDays: nil, status: "steady")]
+        let rows = NextRunPicks.rows(inventory: [tea, jam], wishlist: [], suggestions: [], forecast: { forecasts[$0.id] }, now: now)
+        XCTAssertEqual(rows.map(\.name), ["Tea"])
+        XCTAssertEqual(rows.first?.reason, "Running low")
+    }
+}
+
 /// `Route.household` next to the run routes: the path and resume logic leaves it alone.
 @MainActor
 final class DibsHouseholdRouteTests: XCTestCase {

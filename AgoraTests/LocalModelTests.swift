@@ -243,6 +243,13 @@ final class LocalModelTests: XCTestCase {
         for url in ["http://010.0.0.1/v1", "http://0x0a.0.0.1/v1", "http://167772161/v1", "http://10.1/v1", "http://0xa000001/v1"] {
             XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint(url, addressesForHost: { _ in ["10.0.0.1"] }), url)
         }
+        // Reject ambiguous numeric IP spellings before the hostname/DNS path can normalize them.
+        for host in ["010.0.0.1", "127.1", "2130706433", "0x7f000001", "0x7f.0.0.1", "127.000.0.1", "%30%31%30.0.0.1"] {
+            XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint("http://\(host)/v1", addressesForHost: { _ in
+                XCTFail("Numeric IP spellings must not be treated as hostnames")
+                return ["10.0.0.1"]
+            }), host)
+        }
         XCTAssertEqual(try OpenAICompatibleClient.validateEndpoint("http://localhost:1234").absoluteString, "http://localhost:1234/v1")
         XCTAssertNoThrow(try OpenAICompatibleClient.validateEndpoint("http://macbook.local/v1", addressesForHost: { _ in ["192.168.1.10"] }))
         XCTAssertThrowsError(try OpenAICompatibleClient.validateEndpoint("http://macbook.local/v1", addressesForHost: { _ in ["8.8.8.8"] }))

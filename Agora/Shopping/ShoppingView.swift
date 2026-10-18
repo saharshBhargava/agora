@@ -11,13 +11,12 @@ struct ShoppingView: View {
     @State private var editing: WishlistItem?
     @State private var rejecting: WishlistItem?
     @State private var expandedHistory = false
-    @State private var watching: WishlistItem?
 
     var body: some View {
         ShelfPage {
             ShelfHero(title: selection == "wishlist" ? "Your wishlist" : "Suggested for you",
                       subtitle: selection == "wishlist"
-                        ? "Save what you want and the price you'd like to pay. Set up a price watch to review exact product criteria and find matching offers."
+                        ? "Every wishlist item is watched automatically. Dibs searches for current prices and compares them with your target when you set one."
                         : "Useful additions, grounded in what you keep at home.")
             ShelfSegments(label: "Shopping", options: [("Wishlist", "wishlist"), ("Suggestions", "suggestions")], selection: $selection)
             status
@@ -36,11 +35,10 @@ struct ShoppingView: View {
             }
         }
         .overlay { if store.loading && store.items.isEmpty { ProgressView("Loading shopping…") } }
-        .refreshable { await store.refresh() }
+        .refreshable { await store.refresh(); await store.watches.refresh() }
         .task { await store.refresh(); await store.watches.refresh() }
         .sheet(isPresented: $adding) { WishlistEditor(store: store) }
         .sheet(item: $editing) { WishlistEditor(store: store, item: $0) }
-        .sheet(item: $watching) { item in WatchEditor(store: store.watches, itemID: item.id, item: item, watch: store.watches.watch(for: item)) }
         .sheet(item: $rejecting) { WishlistRejection(store: store, item: $0) }
     }
 
@@ -219,7 +217,7 @@ struct ShoppingView: View {
     private func card(_ item: WishlistItem) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 12) {
-                ShelfTile(seed: item.id.uuidString, label: item.title, size: 48)
+                ShelfItemTile(kind: "wishlist", id: item.id, name: item.title, category: item.category, size: 48)
                     .overlay(alignment: .topTrailing) {
                         if item.pinned {
                             Image(systemName: "pin.fill")
@@ -294,13 +292,11 @@ struct ShoppingView: View {
             .disabled(store.busy)
             footer(item)
         } else if item.status == "active" {
-            VStack(spacing: 4) {
-                HStack(spacing: 8) {
-                    Button("Set up price watch") { watching = item }.buttonStyle(.shelfAction())
-                    Button("Purchased") { Task { await store.act(item, action: "purchased") } }
-                        .buttonStyle(.shelfAction())
-                        .disabled(store.busy)
-                }
+            VStack(alignment: .leading, spacing: 8) {
+                WishlistWatchSummary(store: store.watches, item: item)
+                Button("Purchased") { Task { await store.act(item, action: "purchased") } }
+                    .buttonStyle(.shelfAction())
+                    .disabled(store.busy)
                 footer(item, removable: true)
             }
         }
@@ -361,7 +357,7 @@ struct ShoppingView: View {
     /// A line in History: tile, name, the outcome and the target.
     private func historyRow(_ item: WishlistItem) -> some View {
         HStack(spacing: 12) {
-            ShelfTile(seed: item.id.uuidString, label: item.title, size: 40)
+            ShelfItemTile(kind: "wishlist", id: item.id, name: item.title, category: item.category, size: 40)
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ink).lineLimit(2)
                 ShelfPill(text: item.status.capitalized, style: .muted)
@@ -381,6 +377,41 @@ private struct WishlistWatchNotice: View {
     @ObservedObject var store: WatchStore
     var body: some View {
         if let notice = store.notice { ShelfBanner(message: notice) }
+    }
+}
+
+/// Every active wish is watched automatically: where its price search stands, the best current price in
+/// display type with how it compares to the target, and a link to the watch.
+private struct WishlistWatchSummary: View {
+    @ObservedObject var store: WatchStore
+    let item: WishlistItem
+    var body: some View {
+        if let watch = store.watch(for: item) {
+            VStack(alignment: .leading, spacing: 6) {
+                if let price = watch.currentPrices.first {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(WishlistItem.money(price.unitPriceCents)).font(.display(20)).foregroundStyle(Color.ink).monospacedDigit()
+                        Text("at \(price.merchant)").shelfNote().lineLimit(1)
+                    }
+                    ShelfPill(text: price.comparison(target: watch.criteria.targetPriceCents), style: .line)
+                }
+                Text(store.browserFallbackStatus[watch.id] ?? watch.resultLabel).shelfNote()
+                if let disclosure = watch.simulationDisclosure { Text(disclosure).shelfNote() }
+                NavigationLink { WatchDetailView(store: store, watchID: watch.id) } label: {
+                    HStack(spacing: 4) {
+                        Text("Prices and watch settings")
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold))
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.ink)
+                    .frame(minHeight: Metrics.tap)
+                }
+                .buttonStyle(.plain)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text(store.missingWatchStatus).shelfNote()
+        }
     }
 }
 
@@ -411,10 +442,13 @@ private struct WishlistEditor: View {
 
                 VStack(alignment: .leading, spacing: 12) {
                     ShelfSectionTitle("Price and timing")
-                    ShelfField(label: "Target price in USD",
+                    ShelfField(label: "Target price in USD (optional)",
                                note: "Your desired price per item, before shipping and tax. This is a target, not a live offer.") {
                         TextField("Not set", text: $draft.targetPrice).keyboardType(.decimalPad)
                     }
+                    Text("Saving starts automatic price searches for new items with US delivery. You can refine the product, region and alerts in watch settings. Nothing is purchased.")
+                        .shelfNote()
+                        .fixedSize(horizontal: false, vertical: true)
                     Toggle("Needed by a date", isOn: $draft.hasDeadline)
                         .font(.system(size: 16)).foregroundStyle(Color.ink).tint(Color.ink)
                         .dibsInput()

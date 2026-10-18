@@ -67,7 +67,7 @@ final class BrowserToolExecutor {
     }
     private func executeImpl(_ call: BrowserCall) async throws -> [String: Any] {
         // The coordinator is the sole FIFO consumer. Reject other callers across awaits.
-        guard !executing else { throw BrowserError("executor_busy") }
+        guard !executing, session.priceResearchID == nil else { throw BrowserError("executor_busy") }
         executing = true; defer { executing = false }
         let epoch = session.epoch, lease = session.lease
         try session.check(epoch: epoch, lease: lease)

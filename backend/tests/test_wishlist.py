@@ -449,7 +449,11 @@ async def test_changes_are_broadcast_for_live_refresh(database_url, client):
         await listener.add_listener("agora_events", lambda *args: events.put_nowait(json.loads(args[3])))
         item = (await suggest(client, h, "Basil")).json()
         await client.post(f"/v1/wishlist/{item['id']}/accept", headers=h)
-        seen = [await asyncio.wait_for(events.get(), 5) for _ in range(2)]
+        seen = [await asyncio.wait_for(events.get(), 5) for _ in range(3)]
     finally:
         await listener.close()
-    assert all(e == {"household_id": household, "type": "wishlist.updated", "id": item["id"]} for e in seen)
+    wishlist_events = [e for e in seen if e['type'] == 'wishlist.updated']
+    assert len(wishlist_events) == 2
+    assert all(e == {"household_id": household, "type": "wishlist.updated", "id": item["id"]}
+               for e in wishlist_events)
+    assert any(e['type'] == 'watch.updated' and e['household_id'] == household for e in seen)

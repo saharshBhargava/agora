@@ -34,8 +34,11 @@ async def _delivery_rows(client, app, handle: str, *, notification_count: int = 
         watch_id = await conn.fetchval(
             """INSERT INTO price_watches (household_id, wishlist_item_id, created_by, status, criteria,
                                             confirmed_at)
-               VALUES ($1, $2, $3, 'active', '{}'::jsonb, $4) RETURNING id""",
+               VALUES ($1, $2, $3, 'active', '{}'::jsonb, $4)
+               ON CONFLICT(wishlist_item_id) DO UPDATE SET criteria=EXCLUDED.criteria,
+                 confirmed_at=EXCLUDED.confirmed_at RETURNING id""",
             household_id, wishlist.json()["id"], user_id, now)
+        await conn.execute("UPDATE watch_runs SET status='skipped',finished_at=now() WHERE watch_id=$1", watch_id)
         listing_id = await conn.fetchval(
             """INSERT INTO watch_listings (household_id, watch_id, url, merchant)
                VALUES ($1, $2, $3, 'Market') RETURNING id""",
@@ -70,7 +73,8 @@ async def _delivery_rows(client, app, handle: str, *, notification_count: int = 
         await conn.execute(
             """INSERT INTO watch_subscriptions (watch_id, household_id, user_id, push_enabled, timezone,
                                                 daily_cap, cooldown_hours)
-               VALUES ($1, $2, $3, true, 'UTC', 3, 24)""",
+               VALUES ($1, $2, $3, true, 'UTC', 3, 24)
+               ON CONFLICT(watch_id,user_id) DO UPDATE SET push_enabled=true""",
             watch_id, household_id, user_id)
         token = uuid4().hex * 2
         await conn.execute(
@@ -87,8 +91,11 @@ async def _add_delivery_watch(client, app, rows: dict, suffix: str) -> tuple:
     async with app.state.db.system() as conn:
         watch_id = await conn.fetchval(
             """INSERT INTO price_watches (household_id, wishlist_item_id, created_by, status, criteria, confirmed_at)
-               VALUES ($1, $2, $3, 'active', '{}'::jsonb, $4) RETURNING id""",
+               VALUES ($1, $2, $3, 'active', '{}'::jsonb, $4)
+               ON CONFLICT(wishlist_item_id) DO UPDATE SET criteria=EXCLUDED.criteria,
+                 confirmed_at=EXCLUDED.confirmed_at RETURNING id""",
             rows["household_id"], wishlist.json()["id"], rows["user_id"], now)
+        await conn.execute("UPDATE watch_runs SET status='skipped',finished_at=now() WHERE watch_id=$1", watch_id)
         listing_id = await conn.fetchval(
             "INSERT INTO watch_listings (household_id, watch_id, url, merchant) "
             "VALUES ($1, $2, $3, 'Market') RETURNING id",
@@ -118,7 +125,8 @@ async def _add_delivery_watch(client, app, rows: dict, suffix: str) -> tuple:
             rows["household_id"], rows["user_id"], notification_id)
         await conn.execute(
             "INSERT INTO watch_subscriptions (watch_id, household_id, user_id, push_enabled, timezone) "
-            "VALUES ($1,$2,$3,true,'UTC')", watch_id, rows["household_id"], rows["user_id"])
+            "VALUES ($1,$2,$3,true,'UTC') ON CONFLICT(watch_id,user_id) DO UPDATE SET push_enabled=true",
+            watch_id, rows["household_id"], rows["user_id"])
     return watch_id, notification_id, outbox_id
 
 
@@ -227,9 +235,11 @@ async def test_notification_inbox_is_user_scoped_and_read_mutation_is_audited(cl
     async with app.state.db.system() as conn:
         watch_id = await conn.fetchval(
             """INSERT INTO price_watches (household_id, wishlist_item_id, created_by, criteria)
-               VALUES ($1, $2, $3, '{}'::jsonb) RETURNING id""",
+               VALUES ($1, $2, $3, '{}'::jsonb)
+               ON CONFLICT(wishlist_item_id) DO UPDATE SET criteria=EXCLUDED.criteria RETURNING id""",
             household_id, wishlist_item_id, first_user_id)
         assert watch_id is not None
+        await conn.execute("UPDATE watch_runs SET status='skipped',finished_at=now() WHERE watch_id=$1", watch_id)
         match_id = await conn.fetchval(
             """INSERT INTO watch_matches (household_id, watch_id, observation_id, criteria_version, fingerprint,
                                           title, url, merchant, unit_price_cents, currency, quantity,
@@ -578,7 +588,53 @@ async def test_overnight_notification_suppresses_when_recheck_finds_unavailable_
 
     assert requests == []
     async with app.state.db.system() as conn:
-        assert await conn.fetchval("SELECT status FROM notification_outbox WHERE id = $1", outbox_id) == "suppressed"
+        row = await conn.fetchrow("SELECT status, last_error FROM notification_outbox WHERE id = $1", outbox_id)
+        assert row["status"] == "suppressed"
+        assert row["last_error"] == "offer_no_longer_eligible"
+
+
+async def test_overnight_newer_eligible_observation_revalidates_instead_of_suppressing(client, app):
+    """A fresher eligible listing observation must not look like the watch disappeared."""
+    rows = await _delivery_rows(client, app, "notify_overnight_newer")
+    notification_id, outbox_id = rows["notification_ids"][0]
+    old = datetime.now(UTC) - timedelta(hours=20)
+    async with app.state.db.system() as conn:
+        await conn.execute("UPDATE notifications SET created_at = $2 WHERE id = $1", notification_id, old)
+        await conn.execute("UPDATE watch_observations SET observed_at = $2 WHERE watch_id = $1",
+                           rows["watch_id"], old)
+        await conn.execute("UPDATE watch_matches SET observed_at = $2 WHERE watch_id = $1",
+                           rows["watch_id"], old)
+
+    requests = []
+    async with _mock_apns([], requests) as transport:
+        service = NotificationService(app.state.db, _settings(), transport)
+        await service.send_pending(notification_id=str(notification_id))
+        async with app.state.db.system() as conn:
+            queued = await conn.fetchrow(
+                "SELECT id FROM watch_runs WHERE watch_id = $1 ORDER BY created_at DESC LIMIT 1",
+                rows["watch_id"])
+            await conn.execute(
+                """INSERT INTO watch_observations (household_id, watch_id, listing_id, run_id, criteria_version,
+                                                   offer, observed_at, eligible, reason)
+                   SELECT household_id, watch_id, listing_id, $2, criteria_version, offer, now(), true, 'matched'
+                   FROM watch_observations WHERE watch_id = $1
+                   ORDER BY observed_at ASC, id ASC LIMIT 1""",
+                rows["watch_id"], queued["id"])
+            await conn.execute("UPDATE watch_runs SET status = 'succeeded', finished_at = now() WHERE id = $1",
+                               queued["id"])
+            await conn.execute("UPDATE notification_outbox SET run_at = now() WHERE id = $1", outbox_id)
+        await service.handlers["notification.deliver"]({"notification_id": str(notification_id)}, 1)
+
+    assert requests == []
+    async with app.state.db.system() as conn:
+        deferred = await conn.fetchrow(
+            "SELECT status, last_error, run_at FROM notification_outbox WHERE id = $1", outbox_id)
+        assert deferred["status"] == "pending"
+        assert deferred["last_error"] is None
+        assert deferred["run_at"] > datetime.now(UTC)
+        assert await conn.fetchval(
+            "SELECT count(*) FROM watch_runs WHERE watch_id = $1 AND status = 'queued'",
+            rows["watch_id"]) == 1
 
 
 async def test_overnight_higher_qualifying_price_coalesces_stale_pending_notification(client, app, monkeypatch):

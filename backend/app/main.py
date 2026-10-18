@@ -16,6 +16,7 @@ from app.config import Settings, get_settings
 from app.db import Database
 from app.errors import Problem, handle_problem, handle_validation, problem_response
 from app.google_calendar import GoogleCalendar
+from app.item_images import ItemImageService
 from app.jobs import Worker
 from app.migrate import migration_status
 from app.notifications import NotificationService
@@ -32,6 +33,7 @@ from app.routers import (
     events,
     forecasts,
     inventory,
+    item_images,
     lists,
     merchants,
     notifications,
@@ -92,9 +94,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.verifier = TokenVerifier(settings)
         app.state.shopping = ShoppingRefresher(db)
         app.state.watches = WatchService(db, settings, PriceSearchProvider(settings, client))
+        app.state.images = ItemImageService(db, PriceSearchProvider(settings, client))
         app.state.notifications = NotificationService(db, settings)
         app.state.worker = Worker(db, {**pipeline.handlers, **app.state.shopping.handlers,
-                                      **app.state.watches.handlers, **app.state.notifications.handlers},
+                                      **app.state.watches.handlers, **app.state.notifications.handlers,
+                                      **app.state.images.handlers},
                                   settings.worker_concurrency)
         worker_task = None
         if settings.run_worker_in_process:
@@ -102,6 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await app.state.shopping.start()
             await app.state.watches.start()
             await app.state.notifications.start()
+            await app.state.images.start()
             worker_task = asyncio.create_task(app.state.worker.run())
         log.info("startup env=%s timescale=%s vision=%s/%s auth=%s", settings.env, db.timescale,
                  settings.vision_provider, settings.vision_fallback, settings.auth_mode)
@@ -170,7 +175,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     for router in (account.router, inventory.router, merchants.router, scans.router, events.router,
                    audit.router, calendar.router, wishlist.router, forecasts.router, lists.router,
-                   agent.router, budgets.router, demo.router, trips.router, watches.router, notifications.router):
+                   agent.router, budgets.router, demo.router, trips.router, watches.router, notifications.router,
+                   item_images.router):
         app.include_router(router)
     return app
 

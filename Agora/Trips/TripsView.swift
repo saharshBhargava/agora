@@ -11,7 +11,7 @@ struct TripsView: View {
         ScrollViewReader { proxy in
             ShelfPage {
                 ShelfHero(title: "Your lists",
-                          subtitle: "Make a shopping list or generate one from items running out, then find time to shop. Review each trip before adding it to your calendar.")
+                          subtitle: "Restock lists update automatically as essentials run low. Calendar trips need your approval.")
                 status
                 if !store.proposals.isEmpty { suggestedTimes.id("suggested") }
                 shoppingLists
@@ -126,34 +126,65 @@ struct TripsView: View {
                 ShelfEmpty(symbol: "list.bullet.clipboard", title: "No lists yet",
                            message: "Create a list and add what you need, or find shopping times to generate lists from upcoming run-outs.")
             }
-            ForEach(store.lists) { list in
-                NavigationLink {
-                    TripListView(store: store, listID: list.id)
-                } label: {
-                    HStack(spacing: 12) {
-                        ShelfTile(seed: list.id.uuidString, label: list.name, size: 48)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(list.name).shelfName().lineLimit(2)
-                            if let merchant = list.merchant { Text(merchant.label).shelfNote() }
-                            if let due = list.neededBy {
-                                Text("Needed by \(due.formatted(date: .abbreviated, time: .shortened))").shelfNote()
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        VStack(alignment: .trailing, spacing: 0) {
-                            Text("\(list.openCount)").font(.display(22)).foregroundStyle(Color.ink).monospacedDigit()
-                            Text("left").shelfNote()
-                        }
-                    }
-                    .dibsCard(radius: 14, padding: 12)
-                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            // Lists grouped by store (separate locations stay apart; lists without a store come last).
+            let groups = TripListStoreGroup.group(store.lists)
+            ForEach(groups) { group in
+                if groups.count > 1 || group.id != nil {
+                    Label(group.name, systemImage: "storefront")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.muted)
+                        .padding(.top, 4)
+                        .accessibilityAddTraits(.isHeader)
                 }
-                .buttonStyle(.plain)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(listLabel(list))
-                .accessibilityAddTraits(.isButton)
+                ForEach(group.lists) { list in listCard(list) }
             }
         }
+    }
+
+    /// One list: its tile, name, store and due time, what's left in display type, and the open items' photos.
+    private func listCard(_ list: TripList) -> some View {
+        NavigationLink {
+            TripListView(store: store, listID: list.id)
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    ShelfTile(seed: list.id.uuidString, label: list.name, size: 48)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(list.name).shelfName().lineLimit(2)
+                        if let merchant = list.merchant { Text(merchant.label).shelfNote() }
+                        if let due = list.neededBy {
+                            Text("Needed by \(due.formatted(date: .abbreviated, time: .shortened))").shelfNote()
+                        }
+                        if list.items.isEmpty { Text("No items yet").shelfNote() }
+                        else if list.openItems.isEmpty { Text("Everything is checked off").shelfNote() }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text("\(list.openCount)").font(.display(22)).foregroundStyle(Color.ink).monospacedDigit()
+                        Text("left").shelfNote()
+                    }
+                }
+                if !list.openItems.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(list.openItems.prefix(6)) { item in
+                            ShelfItemTile(kind: "list", id: item.id, name: item.title, size: 36)
+                        }
+                        if list.openItems.count > 6 {
+                            Text("+\(list.openItems.count - 6)").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.muted)
+                                .padding(.leading, 2)
+                        }
+                    }
+                    .accessibilityHidden(true)
+                }
+            }
+            .dibsCard(radius: 14, padding: 12)
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(listLabel(list))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("lists.shopping.\(list.id)")
     }
 
     private func listLabel(_ list: TripList) -> String {
@@ -451,6 +482,17 @@ private struct TripRecordRow: View {
                             .buttonStyle(.dibs(.secondary, fontSize: 16))
                             .disabled(store.busy)
                     }
+                    Button("Release reservation", role: .destructive) {
+                        Task { await store.release(trip) }
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.danger)
+                    .frame(minHeight: Metrics.tap, alignment: .leading)
+                    .disabled(store.busy)
+                    .accessibilityIdentifier("trips.release.\(trip.id)")
+                    Text("Only release after confirming this trip is not in Calendar. Releasing incorrectly can lead to a duplicate event.")
+                        .shelfNote()
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             if let raw = trip.eventUrl, let url = URL(string: raw), url.scheme == "https",
@@ -469,7 +511,7 @@ private struct TripRecordRow: View {
             NavigationStack {
                 ShelfPage {
                     ShelfHero(title: "Review saved trip", size: 30,
-                              subtitle: "Checks for this exact event first. If it has not been saved, checks your availability and submits the same saved request.")
+                              subtitle: "Finish checks for this exact event first. If it has not been saved, checks your availability and submits the same saved request. Release only if the slot has passed or Calendar has no matching event.")
                     VStack(alignment: .leading, spacing: 10) {
                         ShelfSectionTitle("Saved Calendar request")
                         VStack(alignment: .leading, spacing: 10) {
@@ -488,11 +530,18 @@ private struct TripRecordRow: View {
                         .dibsCard()
                     }
                 } bottom: {
-                    Button("Finish adding this trip") {
-                        reviewingSavedTrip = false
-                        Task { await store.resume(trip) }
+                    VStack(spacing: 8) {
+                        Button("Finish adding this trip") {
+                            reviewingSavedTrip = false
+                            Task { await store.resume(trip) }
+                        }
+                        .buttonStyle(.dibs)
+                        Button("Release reservation", role: .destructive) {
+                            reviewingSavedTrip = false
+                            Task { await store.release(trip) }
+                        }
+                        .buttonStyle(.dibs(.secondary, fontSize: 16))
                     }
-                    .buttonStyle(.dibs)
                 }
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { reviewingSavedTrip = false } } }
             }
@@ -554,7 +603,7 @@ struct TripListView: View {
                 Button {
                     Task { await store.setChecked(listID: list.id, itemID: item.id, checked: !item.checked) }
                 } label: {
-                    ShelfTile(seed: item.id.uuidString, label: item.title, size: 44, checked: item.checked)
+                    ShelfItemTile(kind: "list", id: item.id, name: item.title, size: 44, checked: item.checked)
                         .frame(width: Metrics.tap, height: Metrics.tap)
                         .contentShape(Rectangle())
                 }

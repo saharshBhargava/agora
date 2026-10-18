@@ -136,6 +136,55 @@ struct ShelfTile: View {
     }
 }
 
+/// An item's tile with its photo: the household or product image the image service found for it (the team's
+/// `ItemImageStore`, from the environment), shown in the same rounded square; until one loads, or when there is
+/// none, the plain `ShelfTile` letter tile. `kind` is the image service's item kind ("inventory", "list",
+/// "wishlist").
+struct ShelfItemTile: View {
+    let kind: String
+    let id: UUID
+    let name: String
+    var category: String? = nil
+    var size: CGFloat = 44
+    var checked: Bool? = nil
+    @Environment(\.itemImages) private var images
+
+    var body: some View {
+        if checked != true, let images {
+            ShelfPhotoTile(store: images, ref: ItemImageReference(kind: kind, id: id, name: name, category: category), size: size)
+        } else {
+            ShelfTile(seed: id.uuidString, label: name, size: size, checked: checked)
+        }
+    }
+}
+
+private struct ShelfPhotoTile: View {
+    @ObservedObject var store: ItemImageStore
+    let ref: ItemImageReference
+    let size: CGFloat
+    @Environment(\.scenePhase) private var phase
+
+    var body: some View {
+        Group {
+            if let asset = store.descriptors[ref]?.displayAsset, let image = store.pictures[asset.id] {
+                ZStack {
+                    Color.white
+                    Image(uiImage: image).resizable().scaledToFit().padding(size * 0.06)
+                }
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous).stroke(Color.line, lineWidth: 1))
+                .accessibilityHidden(true)
+            } else {
+                ShelfTile(seed: ref.id.uuidString, label: ref.name, size: size)
+            }
+        }
+        .task(id: "\(ref)-\(store.context)-\(store.revision)-\(phase == .active)") {
+            if phase == .active { await store.observe(ref) }
+        }
+    }
+}
+
 /// A small fact in a capsule: outlined, ink, muted or danger.
 struct ShelfPill: View {
     enum Style { case line, ink, muted, danger }

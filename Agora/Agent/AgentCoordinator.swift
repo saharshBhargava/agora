@@ -26,6 +26,9 @@ final class AgentCoordinator: ObservableObject {
     private let settings: SettingsStore
     private let calendar: CalendarConnection?
     private let shopping: ShoppingStore?
+    private let trips: TripStore?
+    private var householdSubscription: AnyCancellable?
+    private var shoppingMutationInFlight: UUID?
     private let executor: BrowserToolExecutor
     private let repository = TaskRepository()
     private var history: [ModelMessage] {
@@ -41,9 +44,10 @@ final class AgentCoordinator: ObservableObject {
     var providerOverride: ModelProvider?
     var modelClientOverride: ModelClient?
 
-    init(settings: SettingsStore, browser: BrowserSession, calendar: CalendarConnection? = nil, shopping: ShoppingStore? = nil) {
+    init(settings: SettingsStore, browser: BrowserSession, calendar: CalendarConnection? = nil, shopping: ShoppingStore? = nil, trips: TripStore? = nil) {
         self.calendar = calendar
         self.shopping = shopping
+        self.trips = trips
         self.settings = settings; self.browser = browser; executor = BrowserToolExecutor(session: browser)
         browser.onHumanInteraction = { [weak self] in self?.stop(reason: "Paused for you. Press Resume when ready.", paused: true) }
         settingsSubscription = settings.$chatRevision.dropFirst().sink { [weak self] _ in
@@ -55,8 +59,11 @@ final class AgentCoordinator: ObservableObject {
         accountSubscription = calendar?.$accountID.removeDuplicates().dropFirst().sink { [weak self] _ in
             self?.resetConversations()
         }
+        householdSubscription = shopping?.$context.removeDuplicates().dropFirst().sink { [weak self] _ in
+            self?.resetConversations()
+        }
         if repository.needsRecovery {
-            messages.append(ChatMessage(role: "notice", text: "The previous task was interrupted. Inspect the website or Google Calendar before retrying any action; actions are never replayed automatically."))
+            messages.append(ChatMessage(role: "notice", text: "The previous task was interrupted. Inspect Lists, the website or Google Calendar before retrying any action; actions are never replayed automatically."))
         }
     }
     @discardableResult
@@ -83,6 +90,7 @@ final class AgentCoordinator: ObservableObject {
         guard (try? userMessage.byteCount()) ?? Int.max < 1_400_000 else {
             messages.append(ChatMessage(role: "notice", text: "These attachments are too large to send together. Remove an attachment or choose smaller images.")); return false
         }
+        browser.cancelPriceResearch()
         browser.policy = settings.policy
         messages.append(ChatMessage(role: "user", text: text, attachments: attachments))
         if conversations.current.title == "New chat" { conversations.current.title = String((text.isEmpty ? attachments.first?.name ?? "Attachments" : text).prefix(48)) }
@@ -103,22 +111,24 @@ final class AgentCoordinator: ObservableObject {
         approval = nil; let reply = approvalReply; approvalReply = nil; reply?.resume(returning: allowed)
     }
     func stop(reason: String = "Stopped. The browser is still available.", paused: Bool = false) {
+        browser.cancelPriceResearch()
         AppLog.$taskID.withValue(generation.uuidString) { AppLog.event(.agent, paused ? "task.paused" : "task.stopped", count: running ? 1 : 0) }
         let old = generation, wasRunning = running
         let uncertainCalendar = calendarMutationInFlight == old
-        generation = UUID(); task?.cancel(); task = nil; calendarMutationInFlight = nil
+        let uncertainShopping = shoppingMutationInFlight == old
+        generation = UUID(); task?.cancel(); task = nil; calendarMutationInFlight = nil; shoppingMutationInFlight = nil
         let expired = messages.last(where: { $0.approval?.id == approval?.id && $0.approval != nil })
         resolveApproval(false); expired?.approval?.status = .expired
         for row in messages {
             row.streaming = false
             if row.tool?.status == .running { row.tool?.status = .stopped }
         }
-        browser.revoke(); running = false; self.paused = paused && !uncertainCalendar
+        browser.revoke(); running = false; self.paused = paused && !uncertainCalendar && !uncertainShopping
         let calendarName = calendar?.isDemoAccount == true ? "Dibs calendar" : "Google Calendar"
-        status = uncertainCalendar ? "A Calendar event may have been saved. Check \(calendarName) before retrying." : reason
+        status = uncertainShopping ? "An item may have been saved. Check Lists before retrying." : uncertainCalendar ? "A Calendar event may have been saved. Check \(calendarName) before retrying." : reason
         browser.state.status = status
-        if uncertainCalendar { messages.append(ChatMessage(role: "notice", text: status)) }
-        if wasRunning { try? repository.record(task: old, operation: "task", phase: browser.state.busy || uncertainCalendar ? "outcome_unknown" : "stopped") }
+        if uncertainCalendar || uncertainShopping { messages.append(ChatMessage(role: "notice", text: status)) }
+        if wasRunning { try? repository.record(task: old, operation: "task", phase: browser.state.busy || uncertainCalendar || uncertainShopping ? "outcome_unknown" : "stopped") }
     }
     func newChat() {
         AppLog.event(.agent, "chat.new")
@@ -174,6 +184,7 @@ final class AgentCoordinator: ObservableObject {
         var turn = 0
         defer {
             if calendarMutationInFlight == id { calendarMutationInFlight = nil }
+            if shoppingMutationInFlight == id { shoppingMutationInFlight = nil }
             if generation == id { running = false; task = nil; browser.state.status = status }
         }
         do {
@@ -224,9 +235,11 @@ final class AgentCoordinator: ObservableObject {
                         if let name = raw["name"] as? String, ShoppingCall.names.contains(name) {
                             guard let shopping else { throw BrowserError("shopping_unavailable") }
                             let call = try ShoppingCall(raw)
-                            status = name == "shopping_context" ? "Reading your shopping context…" : "Saving suggestion…"
+                            status = name == "shopping_context" ? "Reading your shopping context…" : call.isAddition ? "Adding item…" : "Saving suggestion…"
                             try repository.record(task: id, operation: name, phase: "dispatched")
-                            result = try await shopping.execute(call, taskID: id)
+                            if call.isAddition { shoppingMutationInFlight = id }
+                            result = try await shopping.execute(call, taskID: id, trips: trips)
+                            if shoppingMutationInFlight == id { shoppingMutationInFlight = nil }
                             try repository.record(task: id, operation: name, phase: "observed")
                         } else if let name = raw["name"] as? String, CalendarCall.names.contains(name) {
                             guard let calendar, calendar.connected else { throw BrowserError("calendar_reconnect_required") }
@@ -263,6 +276,7 @@ final class AgentCoordinator: ObservableObject {
                     } catch {
                         try Task.checkCancellation(); guard generation == id else { return }
                         if calendarMutationInFlight == id { calendarMutationInFlight = nil }
+                        if shoppingMutationInFlight == id { shoppingMutationInFlight = nil }
                         AppLog.failure(.agent, "tool.failed", error: error)
                         result = ["error": error.localizedDescription]; failures += 1
                         try repository.record(task: id, operation: raw["name"] as? String ?? "invalid_tool", phase: "failed_or_uncertain")

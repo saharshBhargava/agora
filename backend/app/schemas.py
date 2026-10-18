@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 
 class Strict(BaseModel):
@@ -134,6 +134,11 @@ class ItemOut(BaseModel):
     preferred_merchant_id: UUID | None = None
     last_purchased_from: MerchantRef | None = None
     last_purchased_on: date | None = None
+
+    @computed_field
+    @property
+    def image_path(self) -> str:
+        return f"v1/item-images/inventory/{self.id}"
 
 
 class ItemIn(Strict):
@@ -499,6 +504,11 @@ class WishlistItem(BaseModel):
     decided_at: datetime | None
     completed_at: datetime | None
 
+    @computed_field
+    @property
+    def image_path(self) -> str:
+        return f"v1/item-images/wishlist/{self.id}"
+
 
 class WishlistRefreshIn(Strict):
     household_id: UUID | None = None
@@ -740,6 +750,11 @@ class ShoppingListItem(BaseModel):
     checked_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def image_path(self) -> str:
+        return f"v1/item-images/list/{self.id}"
 
 
 class ShoppingList(BaseModel):
