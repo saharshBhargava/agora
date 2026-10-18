@@ -1,4 +1,4 @@
-"""Household price watches require a person's explicit confirmation before any checks run."""
+"""Wishlist-backed price research, explicit watch settings, and optional foreground browser evidence."""
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -12,11 +12,35 @@ from app.db import audit, notify
 from app.demo_account import is_demo_user
 from app.errors import Problem, not_found
 from app.routers.account import require_household
+from app.watch_browser import BrowserClaim, BrowserResult, claim_browser, finish_browser
 from app.watch_ops import MANUAL_COOLDOWN, load_watch, queue_check
 from app.watch_schemas import WatchPatch, WatchPut
 from app.wishlist_ops import lock_household
 
 router = APIRouter(prefix='/v1', tags=['price watches'])
+
+
+async def _browser_request(watch_id, body, request, user, operation, handler):
+    key = idempotency.key_from(request)
+    digest = idempotency.request_hash(operation, watch_id, body.model_dump(mode='json'))
+    async with request.app.state.db.scoped(user.user_id) as conn:
+        row = await _locked(conn, watch_id)
+        if cached := await idempotency.lookup(conn, user.user_id, key, digest):
+            return JSONResponse(cached)
+        response = jsonable_encoder(await handler(conn, row, user.user_id, body))
+        if not await idempotency.claim(conn, user.user_id, key, digest, 200, response):
+            raise Problem(409, 'duplicate_request', 'Retry this request shortly.')
+        return JSONResponse(response)
+
+
+@router.post('/watches/{watch_id}/browser-claim')
+async def browser_claim(watch_id: UUID, body: BrowserClaim, request: Request, user: Principal = CurrentUser):
+    return await _browser_request(watch_id, body, request, user, 'watch.browser_claim', claim_browser)
+
+
+@router.post('/watches/{watch_id}/browser-result')
+async def browser_result(watch_id: UUID, body: BrowserResult, request: Request, user: Principal = CurrentUser):
+    return await _browser_request(watch_id, body, request, user, 'watch.browser_result', finish_browser)
 
 
 async def _capabilities(request, user_id):
@@ -70,7 +94,8 @@ async def list_watches(request: Request, household_id: UUID | None = None, user:
         watches = [await load_watch(conn, r['id'], user.user_id, available=available,
                                     discovery_available=discovery) for r in rows]
         provider = request.app.state.watches.provider
-        return {'watches': watches, 'search_available': available, 'discovery_available': discovery,
+        return {'watches': watches, 'automatic_watches': True,
+                'search_available': available, 'discovery_available': discovery,
                 'discovery_status': ('available' if discovery else
                                      getattr(provider, 'discovery_status', 'search_not_configured'))}
 

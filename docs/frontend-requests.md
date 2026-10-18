@@ -310,7 +310,24 @@ Backend URL and accounts for testing: see [SETUP.md](../SETUP.md). The "Purchase
 
 ---
 
+## Automatic replenishment lists — implemented October 18, 2026
+
+The backend creates and maintains store-grouped lists after stock updates and every six hours, including
+recorded zeroes, restock-threshold items and fresh seven-day consumption forecasts. Native Home/Lists and
+shopping trips read these through the existing foreground refresh. No trip-planning or chat action is
+needed to create them. Chat receives list stores, sources, checked flags and explanations. User edits,
+checks/removals, restocks and the agent pause are handled as documented in the
+[API contract](api/forecasts-and-lists.md#automatic-background-replenishment).
+This supersedes older descriptions of list creation as exclusively a one-tap operation.
+
 ## Requested frontend features: run-outs and shopping lists
+
+**Native implementation update (October 18, 2026):** Home's Running low carousel now combines seven-day
+consumption predictions with recorded zeroes/restock thresholds. Lists use the same ordering; item detail
+shows date/range, consumption rate, estimated remaining quantity, confidence and evidence. Gemini chat can
+read these forecasts through `shopping_context`. Foreground refresh uses the existing 30-second cadence;
+new quantities invalidate old predictions. The horizon toggle, projection chart and SSE-specific refresh
+below remain follow-up proposals. See [native behavior](api/forecasts-and-lists.md#native-consumption-predictions).
 
 **Backend status:** done. **API contract:** [docs/api/forecasts-and-lists.md](api/forecasts-and-lists.md).
 **For:** iOS first; the laptop/desktop view can reuse the same screens.
@@ -425,9 +442,12 @@ See [backend refresh design](backend-spec.md#45-prices-deals-small-businesses).
 - Accept, reject with a reason, snooze, feedback, edit, pin, priorities, mark purchased and remove all use
   existing wishlist endpoints. Failed refreshes retain previous results; account/household switches clear
   shopping state and discard stale responses.
-- Price-watch checks run every six hours plus initial/manual checks; they use server credentials and durable
-  jobs independently of Find ideas. The active wishlist row opens **Set up price watch**. Confirm product,
-  per-item target, optional total, quantity, condition, fulfillment and alerts before activating.
+- Price-watch checks run every six hours plus initial/manual checks. Saving an active wishlist item or
+  accepting a suggestion starts the first check automatically. **Lists → Watch list** opens the wishlist
+  with its Add item action. Targets are optional. Rows show current source prices and target comparisons,
+  and **Prices and watch settings** opens details and optional refinements. There is no separate activation.
+- The client reloads watches after wishlist mutations and polls pending checks every two seconds for at
+  most 90 seconds. Account/household changes cancel polling. Work continues in the backend afterwards.
 - The wishlist toolbar opens **Price watches** and **Offer inbox**. Detail shows last successful/next check,
   failures vs no matches, explicit verification gaps, current vs historical offers, evidence and retailer link.
 - Push permission is requested after explicit opt-in; denial or unavailable APNs does not hide the inbox.
@@ -455,7 +475,9 @@ Agora Calendar. Planning alone creates no Calendar events. No invitations are se
 Saved trips appear on Home and in Shopping trips after app restart. A reserved trip can be reviewed again
 to finish the same saved request; recovery first looks for the original event and keeps its deterministic
 identity. Uncertain outcomes offer **Check Calendar status**, which only reads the provider and never
-creates another event. Account or household switches invalidate reviews and pending local state.
+creates another event. When that read finds no matching event—or a reserved slot can no longer finish—
+**Release reservation** reports `failed` so the list can be planned again. Do not auto-release on
+timeouts. Account or household switches invalidate reviews and pending local state.
 
 Store lists can be opened and items checked/unchecked with their replenishment explanations visible.
 This does not increment inventory or record a purchase. Existing wishlist and shopping suggestion flows
@@ -467,7 +489,58 @@ the same request key concurrently; the losing write is rolled back. Preserve the
 and reload trips to recover saved state. A key already used for different input returns
 `422 idempotency_key_reused`.
 
-Price-watch capability responses now include `discovery_status` (`available`, `model_not_configured`,
-`search_not_configured`). The watch UI distinguishes model setup from web-provider setup and does not
-interpret a failed capability request or a service 404 as unavailable retailer discovery. Scheduled
-research uses server model/provider settings; foreground model credentials remain on the phone.
+Price-watch capability responses include `discovery_status` (`available` or `search_not_configured`).
+A reasoning model is optional: enabled providers can search the product title and verify source pages
+deterministically. The client retains support for older `model_not_configured` responses and does not
+interpret a failed capability request or service 404 as provider availability. Scheduled research uses
+server settings; foreground model credentials remain on the phone. Demo prices remain explicitly simulated.
+
+## Automatic item images
+
+Inventory, Home, wishlist/suggestions, shopping lists and watch/offer views use shared thumbnails. The app
+shows the server's selected image for exact and best-match results. When an older server only supplies
+usable alternatives, it displays a default immediately instead of leaving the main thumbnail empty.
+The app settles on the automatic image. Image chooser sheets, tap/long-press editing, photo upload,
+removal, alternative-selection and search-refinement controls have been removed. Previously saved
+choices remain respected by the compatible backend.
+
+The backend automatically selects from new searches and cached results and adopts existing candidate-only
+items at startup. It preserves source evidence and every manual override. Inventory-linked items inherit
+the selected image. Source URLs and sanitized image bytes are saved; the app loads authenticated API copies.
+See [the contract](api/item-images.md) and [current deployment state](current-state.md). Native source passed
+eight focused simulator tests, including the alternatives-only main-thumbnail regression; rebuilding the
+app is required to distribute these client changes.
+
+Existing-inventory recovery now repairs missing bindings, retries expired empty results, and revisits old
+search-version misses at startup. Visible thumbnails continue checking beyond the first 90-second batch
+while the app is active, including automatic retries after connection failures. The local change passed
+nine image simulator tests; see the current-state record for backend and live-search verification.
+The subsequent native startup change preloads the entire household inventory before thumbnails appear,
+using four concurrent reads per pass and revisiting pending work while active. New and renamed items
+join automatically; account and household changes stop prior work and clear private imagery.
+
+## Shared-browser price fallback — implemented locally
+
+After normal multi-retailer research finishes without a usable price, an ordinary-account watch can
+request a final hidden check in the existing Chat browser. The runner waits while Chat owns a page,
+uses the same web view, and yields on human interaction, new chat work, account change or app inactivity.
+It runs only while the app is open. It does not automatically show the browser or switch tabs.
+
+Watch list/detail screens show waiting/checking/completed/unavailable states and persisted current prices
+with an optional-target comparison. Browser observations disclose that condition, stock and delivery need
+retailer confirmation; they do not generate verified offer alerts. Private/challenge pages can expose a
+manual review action. Demo accounts never open external pages. See the [API contract](api/price-watches.md#final-fallback-in-the-shared-chat-browser).
+Both migration 0019/backend changes and a rebuilt iOS app are required; this is not a deployment claim.
+
+The missing-watch row now uses `automatic_watches` from the watch-list response. A successful empty
+response from an older backend shows that automatic checks are unavailable; network failures and unloaded
+state remain distinct. An absent watch is never represented as an indefinitely running preparation step.
+
+
+## Chat additions MVP — implemented locally, October 18, 2026
+
+Chat can add items to existing shopping lists, the active wishlist and new inventory entries. Explicit
+requests save immediately; ambiguous destinations are clarified and duplicates leave quantities unchanged.
+Shared screens update after confirmed saves. Existing suggestions remain a separate acceptance flow.
+See [chat additions](api/chat-additions.md) for argument limits, demo examples and retry behavior.
+List creation from chat, existing-stock changes, browser/photo extraction and undo remain outside this MVP.

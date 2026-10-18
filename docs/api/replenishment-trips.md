@@ -16,7 +16,8 @@ device's reported result, and make no Calendar or model requests.
    create/recovery flow. Keep that key through retries and restarts.
 6. Report the result with `PATCH /v1/trips/{id}/outcome`, then refetch trips. A reservation alone does
    not indicate that an event was created. An uncertain write remains blocked until the same event is
-   verified; do not create a new event or report failure to clear uncertainty.
+   verified or the owner explicitly releases it. Do not create a new event, and do not automatically
+   report `failed` on timeouts—only the user may release after confirming Calendar has no matching event.
 
 The designated account uses its existing private Calendar implementation for free/busy and event
 creation. Ordinary accounts use their native Calendar connection. The persistence API behaves identically
@@ -117,13 +118,14 @@ independently verified by this backend; verification happens in the native Calen
 | Current status | Allowed next status |
 | --- | --- |
 | reserved | scheduled, outcome_unknown, failed |
-| outcome_unknown | scheduled after verifying the original event |
+| outcome_unknown | scheduled after verifying the original event; failed to release after confirmed absence |
 | scheduled | identical scheduled result only |
 | failed | identical failed result only |
 
 Disallowed transitions or altered terminal event details return 409 `invalid_trip_transition`.
-There is no automatic expiration, cancellation, rescheduling or Calendar deletion endpoint. A trip's
-scheduled status does not mark its list items purchased or checked.
+Releasing (`failed`) clears the list block so another trip can be reserved. There is no automatic
+expiration, rescheduling or Calendar deletion endpoint. A trip's scheduled status does not mark its
+list items purchased or checked.
 
 Every state change writes an audit action with identifiers/status only and emits household SSE
 `trip.updated` (resource ID is the trip ID); refetch trips when received. Replays add no duplicate audit
@@ -150,3 +152,5 @@ The native client must compute the same Calendar request key from the reserved t
 trip, a confirmed absent result permits the original create/recovery flow with the same key and fields,
 after refreshing free/busy. An unknown trip permits read-only verification of the original event.
 An unavailable lookup or mismatch must remain uncertain and must never permit a new Calendar write.
+When a read confirms the event is absent (or a reserved slot can no longer be finished), the owner may
+`PATCH` `failed` to release the list. Do not auto-release on transport errors.

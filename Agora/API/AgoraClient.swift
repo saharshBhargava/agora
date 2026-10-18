@@ -91,6 +91,16 @@ final class AgoraClient {
         return json
     }
 
+    /// Only same-origin, application-owned image paths can receive the account credential.
+    func imageData(_ path: String) async throws -> Data {
+        let parts = path.split(separator: "/")
+        guard parts.count == 4, parts[0] == "v1", parts[1] == "item-images", parts[2] == "assets",
+              UUID(uuidString: String(parts[3])) != nil else { throw BrowserError("invalid_image_path") }
+        let data = try await perform(path, method: "GET", body: nil, key: nil)
+        guard data.count <= 500_000 else { throw BrowserError("invalid_image") }
+        return data
+    }
+
     private func perform(
         _ path: String,
         method: String,

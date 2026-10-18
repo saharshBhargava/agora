@@ -77,6 +77,10 @@ async def test_ordinary_account_complete_discovery_delivery_pipeline(
         async with httpx.AsyncClient(transport=httpx.MockTransport(remote)) as external:
             async with app.router.lifespan_context(app):
                 app.state.watches.provider = PriceSearchProvider(settings, external, ProductFetcher(external))
+                # Image jobs share the queue but this fixture exercises price verification.
+                app.state.images.provider = PriceSearchProvider(
+                    Settings(_env_file=None, watch_search_providers=[], gemini_api_key=None,
+                             watch_search_api_key=None, openai_model=""), external)
                 app.state.notifications.http_client = external
                 app.state.notifications._owns_client = False
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test") as api:
@@ -98,7 +102,11 @@ async def test_ordinary_account_complete_discovery_delivery_pipeline(
                     assert watch_response.status_code == 200, watch_response.text
                     watch_id = watch_response.json()["id"]
                     # The actual worker claims the committed check and then its committed delivery job.
-                    assert await app.state.worker.drain() == 1 + int(push_requested)
+                    # The initial automatic check is superseded by the more specific settings below;
+                    # its durable job is consumed without making a stale external request.
+                    async with app.state.db.system() as conn:
+                        image_jobs = await conn.fetchval("SELECT count(*) FROM jobs WHERE kind='image.resolve'")
+                    assert await app.state.worker.drain() == 2 + int(push_requested) + image_jobs
                     watch = (await api.get(f"/v1/watches/{watch_id}", headers=headers)).json()
                     assert watch["last_result"] == "matched"
                     assert watch["runs"][0]["status"] == "succeeded"

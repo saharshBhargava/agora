@@ -1,5 +1,34 @@
 # Merged-work handoff for returning agents
 
+## Combined native integration on main
+
+PR [#41](https://github.com/saharshBhargava/agora/pull/41), merge `75a3f88`, brings the pending native
+image startup loading, automatic image presentation, Home/Lists carousels, scan review and watch-browser
+fallback onto main. Earlier references to these files as local-only are superseded. All PR checks and
+the managed deployment passed; see [current state](current-state.md). A rebuilt iOS app is still required.
+
+## Existing inventory images released
+
+PR [#39](https://github.com/saharshBhargava/agora/pull/39), merge `343f183`, is deployed. Missing
+inventory image bindings and older automatic-search misses now recover through the shared image pipeline.
+Demo imagery and user overrides remain preserved; no migration was added. Do not replay the shared
+checkout’s uncommitted backend copies. Native continued polling remains local and requires a rebuilt app.
+See [current state](current-state.md) for deployment and validation evidence.
+
+## Price discovery correction released
+
+PR [#36](https://github.com/saharshBhargava/agora/pull/36), merge `be1e9de`, is deployed. Preserve the
+product-link discovery, editorial/document filtering and browser-candidate ordering when reconciling
+older copies of `price_search.py`/`watch_research.py`. No new migration. Native five-source fallback
+remains in the shared local app checkout and needs a rebuilt app. See current state for live verification.
+
+## Automatic wishlist watches released
+
+PR [#34](https://github.com/saharshBhargava/agora/pull/34), merge `047c8f5`, is live with migration
+`0019_watch_browser_fallback.sql`. Automatic save/acceptance watches, existing-item backfill, optional targets,
+multi-retailer research and browser claim/result APIs are merged. Do not replay their uncommitted shared
+checkout copies or renumber migration 0019. Native browser/status changes remain local; see current state.
+
 Updated October 17, 2026 PDT. **The original pending PRs are finished and merged.** This file is a
 reconciliation/history guide, not a list of PRs still waiting for implementation or deployment.
 Read [current state](current-state.md) first and [deployment](deployment.md) before operational work.
@@ -121,3 +150,12 @@ Wishlist UI, model-backed ideas and six-hour replenishment jobs include the pass
 The refresh-state migration is `0014_wishlist_refresh.sql`; `0013_calendar_events.sql` is already merged and
 must not be renamed. Demo backfill preserves both Calendar events and shopping refresh state. The built-in,
 server-verified demo model also supports Shopping suggestions without external model calls.
+
+## Item images released — October 18, 2026
+
+[#31](https://github.com/saharshBhargava/agora/pull/31), merge `190de200`, adds item image routes, broad
+text discovery, explicit candidate choices and private photos. Migrations **0017_item_images.sql** and
+**0018_exact_item_images.sql** are now merged and applied; do not edit or renumber them. Existing items
+are backfilled, while demo artwork and user selections remain isolated/preserved. This backend release
+does not distribute the local native image UI. See [current state](current-state.md) and the
+[item image contract](api/item-images.md) for verification and behavior.

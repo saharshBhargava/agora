@@ -165,6 +165,8 @@ class Forecaster:
             if not await conn.fetchval("SELECT 1 FROM households WHERE id = $1", household_id):
                 return
             await refresh(conn, household_id, user_id, timescale=self.db.timescale, item_ids=item_ids)
+            from app.replenishment import enqueue
+            await enqueue(conn, household_id, user_id)
 
     async def nightly_job(self, payload: dict[str, Any], attempt: int) -> None:
         """Fan out one refresh per household with active items, then book tomorrow's run. One transaction, so a

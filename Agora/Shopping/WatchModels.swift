@@ -6,7 +6,7 @@ struct WatchCriteria: Decodable {
     let requiredTerms: [String]
     let excludedTerms: [String]
     let quantity: Int
-    let targetPriceCents: Int
+    let targetPriceCents: Int?
     let maxTotalCents: Int?
     let currency: String
     let fulfillment: String
@@ -66,6 +66,49 @@ struct WatchRun: Decodable, Identifiable {
     let errorCode: String?
 }
 
+struct WatchPrice: Decodable, Identifiable {
+    let id: UUID
+    let title: String
+    let url: String
+    let merchant: String
+    let unitPriceCents: Int
+    let currency: String
+    let observedAt: Date
+    let reason: String
+    let isCurrent: Bool
+    let provenance: String?
+    let verificationNote: String?
+
+    func comparison(target: Int?) -> String {
+        guard let target else { return "Add a target price to compare." }
+        let difference = unitPriceCents - target
+        if difference == 0 { return "At your target price" }
+        return "\(WishlistItem.money(abs(difference))) \(difference > 0 ? "above" : "below") your target"
+    }
+    var safeURL: URL? {
+        guard let value = URL(string: url), (try? BrowserPolicy().validate(value)) != nil else { return nil }
+        return value
+    }
+}
+
+struct WatchBrowserFallback: Decodable {
+    let runId: UUID
+    let status: String
+    let urls: [String]
+}
+
+struct WatchBrowserClaim: Decodable {
+    let runId: UUID
+    let token: UUID
+    let expiresAt: Date
+    let urls: [String]
+}
+
+struct WatchBrowserResult: Decodable {
+    let status: String
+    let priceCount: Int
+}
+
 struct PriceWatch: Decodable, Identifiable {
     let id: UUID
     let wishlistItemId: UUID
@@ -81,10 +124,20 @@ struct PriceWatch: Decodable, Identifiable {
     let nextCheckAt: Date?
     let lastError: String?
     let lastResult: String
+    let simulationDisclosure: String?
     let rejectionReasons: [String]?
     let searchAvailable: Bool
     let matches: [WatchOffer]
     let runs: [WatchRun]
+    let prices: [WatchPrice]?
+    let browserFallback: WatchBrowserFallback?
+    var isChecking: Bool {
+        runs.contains { ($0.criteriaVersion == nil || $0.criteriaVersion == criteriaVersion) && ["queued", "running"].contains($0.status) }
+    }
+    var currentPrices: [WatchPrice] {
+        (prices ?? []).filter { $0.isCurrent && Date().timeIntervalSince($0.observedAt) <= 1800 }
+            .sorted { $0.unitPriceCents < $1.unitPriceCents }
+    }
     var currentOffers: [WatchOffer] {
         matches.filter { $0.criteriaVersion == criteriaVersion && $0.isCurrent }
             .sorted { ($0.totalPriceCents ?? $0.unitPriceCents * $0.quantity) < ($1.totalPriceCents ?? $1.unitPriceCents * $1.quantity) }
@@ -118,6 +171,7 @@ struct PriceWatch: Decodable, Identifiable {
             "insufficient_stock": "The available quantity was too low.",
             "quantity_unverified": "Stock for the requested quantity could not be verified.",
             "above_target": "The unit price exceeded your target.",
+            "target_not_set": "Add a target price to receive matching-price alerts.",
             "total_unknown": "The full cost including shipping, tax and fees could not be verified.",
             "above_total_cap": "The full cost exceeded your maximum total.",
             "invalid_product_url": "The source did not provide a valid retailer product link."
@@ -125,7 +179,23 @@ struct PriceWatch: Decodable, Identifiable {
         return (rejectionReasons ?? []).prefix(10).map { labels[$0] ?? "An offer could not be verified against all your criteria." }
     }
     var resultLabel: String {
+        if status == "paused" { return "Price checks are paused." }
+        if status == "completed" { return "This item is no longer being watched." }
+        if status == "expired" { return "Update the needed-by date to continue price checks." }
+        if lastError == "agent_paused" { return "Price checks will continue when your agent resumes." }
+        if ["check_budget_exhausted", "check_budget_exceeded"].contains(lastError ?? "") {
+            return "The price-check limit was reached. Automatic checks will resume later."
+        }
         if !searchAvailable { return "Retailer search is unavailable. Your criteria are saved." }
+        if isChecking { return "Searching the web for current prices…" }
+        if !currentPrices.isEmpty && currentPrices.contains(where: { $0.provenance == "device_browser" }) {
+            return "Prices read in your browser. Confirm details with the retailer."
+        }
+        if browserFallback?.status == "pending" { return "Retailer checks finished. Waiting for the browser backup while the app is open." }
+        if browserFallback?.status == "claimed" { return "Reading retailer pages in the browser backup…" }
+        if browserFallback?.status == "unavailable" { return "Retailer and browser checks could not verify a price. Try a specific product link." }
+        if browserFallback?.status == "completed" && currentPrices.isEmpty { return "The browser prices are no longer current. Check again for updated prices." }
+        if !currentPrices.isEmpty && criteria.targetPriceCents == nil { return "Current prices found. Add a target to compare." }
         switch lastResult {
         case "matched": return currentOffers.isEmpty ? "Previous matches are no longer current. Review your watch and check again." : "Verified offers found. Check the retailer before purchasing."
         case "no_match": return "No offers met all your criteria in the last successful check."
@@ -137,6 +207,7 @@ struct PriceWatch: Decodable, Identifiable {
 }
 
 struct WatchListResponse: Decodable {
+    let automaticWatches: Bool?
     let discoveryStatus: String?
     let watches: [PriceWatch]
     let searchAvailable: Bool
@@ -158,7 +229,7 @@ struct WatchDraft {
     var targetPrice = ""
     var maxTotal = ""
     var fulfillment = "delivery"
-    var location = ""
+    var location = "US"
     var allowedDomains = ""
     var condition = "new"
     var allowMembership = false
@@ -200,10 +271,11 @@ struct WatchDraft {
     }
     func criteriaBody() throws -> [String: Any] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines), location = location.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (2...200).contains(query.count), location.count >= 2, location.count <= 200,
-              (1...99).contains(quantity), let target = try WishlistDraft.cents(targetPrice), target > 0 else {
-            throw BrowserError("invalid_watch", "Add a specific product, a location and a target price greater than zero.")
+        guard (1...200).contains(query.count), location.count >= 2, location.count <= 200,
+              (1...99).contains(quantity) else {
+            throw BrowserError("invalid_watch", "Add a specific product and a location.")
         }
+        let target = try WishlistDraft.cents(targetPrice)
         let url = productURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !url.isEmpty {
             guard let parsed = URL(string: url), parsed.scheme == "https", parsed.host != nil,
@@ -222,7 +294,7 @@ struct WatchDraft {
         if let total, total <= 0 { throw BrowserError("invalid_total", "The maximum total must be greater than zero.") }
         return ["query": query, "product_url": url.isEmpty ? NSNull() : url as Any,
                 "required_terms": required, "excluded_terms": excluded, "quantity": quantity,
-                "target_price_cents": target, "max_total_cents": total.map { $0 as Any } ?? NSNull(), "currency": "USD",
+                "target_price_cents": target.map { $0 as Any } ?? NSNull(), "max_total_cents": total.map { $0 as Any } ?? NSNull(), "currency": "USD",
                 "fulfillment": fulfillment, "location": location, "allowed_domains": domains,
                 "condition": condition, "allow_membership": allowMembership,
                 "needed_by": hasDeadline ? WishlistDraft.dateFormatter.string(from: deadline) as Any : NSNull()]

@@ -48,6 +48,7 @@ def google_token(key, **claims):
 async def demo_app(database_url, tmp_path_factory, signing_key):
     settings = Settings(env="demo", auth_mode="google", google_ios_client_id=CLIENT_ID, database_url=database_url,
                         storage_dir=tmp_path_factory.mktemp("demo-media"), run_worker_in_process=False,
+                        watch_search_providers=[], watch_search_api_key=None, gemini_api_key=None, openai_model="",
                         dev_jwt_secret="a-real-random-secret-for-the-demo-0123456789",
                         demo_password=PASSWORD, demo_google_emails=f" {DEMO_EMAIL.upper()} ,other@example.com")
     app = create_app(settings)
@@ -84,6 +85,21 @@ async def test_demo_account_covers_every_feature_table(demo_app):
                 missing.append(t["table_name"])
     assert not missing, (f"demo account has no rows in {missing}: add realistic demo data in app/demo_account.py "
                          "(see CLAUDE.md), or list the table in NO_DEMO_DATA with a reason")
+
+
+async def test_demo_backfills_missing_inventory_image_without_web_search(demo_app):
+    app, client = demo_app
+    headers = await demo_headers(client)
+    items = (await client.get("/v1/inventory", headers=headers)).json()
+    item = items[0]
+    async with app.state.db.system() as conn:
+        await conn.execute("DELETE FROM item_images WHERE kind='inventory' AND item_id=$1", UUID(item["id"]))
+    await ensure_demo_account(app.state.db, app.state.settings)
+    await ensure_demo_account(app.state.db, app.state.settings)
+    result = (await client.get("/" + item["image_path"], headers=headers)).json()
+    assert result["status"] == "ready" and result["match_status"] == "demo"
+    assert result["asset"]["match_kind"] == "representative"
+    assert result["asset"]["source_url"] is None
 
 
 async def test_demo_account_looks_real_and_is_full(demo_app):

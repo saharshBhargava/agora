@@ -10,7 +10,7 @@ struct TripsView: View {
     var body: some View {
         List {
             Section {
-                Text("Make a shopping list or generate one from items running out, then find time to shop. Review each trip before adding it to your calendar.")
+                Text("Restock lists update automatically. Calendar trips need your approval.")
                     .foregroundStyle(.secondary)
                 DisclosureGroup("Shopping times") {
                     Stepper("Look ahead \(options.days) days", value: $options.days, in: 1...14)
@@ -345,6 +345,13 @@ private struct TripRecordRow: View {
                         Button("Review saved trip") { reviewingSavedTrip = true }
                             .disabled(store.busy)
                     }
+                    Button("Release reservation", role: .destructive) {
+                        Task { await store.release(trip) }
+                    }
+                    .disabled(store.busy)
+                    .accessibilityIdentifier("trips.release.\(trip.id)")
+                    Text("Only release after confirming this trip is not in Calendar. Releasing incorrectly can lead to a duplicate event.")
+                        .font(.caption2).foregroundStyle(.secondary)
                 }
             }
             if let raw = trip.eventUrl, let url = URL(string: raw), url.scheme == "https",
@@ -370,8 +377,12 @@ private struct TripRecordRow: View {
                             reviewingSavedTrip = false
                             Task { await store.resume(trip) }
                         }
+                        Button("Release reservation", role: .destructive) {
+                            reviewingSavedTrip = false
+                            Task { await store.release(trip) }
+                        }
                     } footer: {
-                        Text("Checks for this exact event first. If it has not been saved, checks your availability and submits the same saved request.")
+                        Text("Finish checks for this exact event first. If it has not been saved, checks your availability and submits the same saved request. Release only if the slot has passed or Calendar has no matching event.")
                     }
                 }
                 .navigationTitle("Review saved trip")
@@ -411,6 +422,7 @@ struct TripListView: View {
                             .buttonStyle(.borderless)
                             .disabled(store.busy || list.status != "open")
                             .accessibilityLabel("\(item.checked ? "Uncheck" : "Check") \(item.title)")
+                            ItemThumbnail(kind: "list", id: item.id, name: item.title)
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(item.title).strikethrough(item.checked)
                                 Text("\(item.quantity.formatted()) \(item.unit ?? "")")

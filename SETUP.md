@@ -194,11 +194,12 @@ for that destination. Browser and Calendar tool validation and approval rules ap
 
 ## Price watches and remote alerts
 
-The wishlist now has **Set up price watch**, reviewed product/price/fulfillment criteria, six-hour checks,
-verified offers and a persistent offer inbox. Add a direct HTTPS product URL, or configure server-side web
-discovery with a reasoning model and enabled search providers, configured separately:
+Every active wishlist item automatically starts price research, followed by six-hour checks. Targets are
+optional; source prices are shown even above the target. Watch settings refine product/fulfillment criteria
+and alerts. Enabled search providers can search and read retailer sources without a reasoning model;
+an optional model adds query refinement and interaction handoffs. Direct HTTPS product links also work.
 
-- Model: `AGORA_WATCH_MODEL_PROVIDER=gemini` uses `AGORA_WATCH_SEARCH_MODEL=gemini-2.5-flash` and
+- Optional model: `AGORA_WATCH_MODEL_PROVIDER=gemini` uses `AGORA_WATCH_SEARCH_MODEL=gemini-2.5-flash` and
   `AGORA_WATCH_SEARCH_API_KEY` (legacy name; falls back to `AGORA_GEMINI_API_KEY`). Alternatively set
   `AGORA_WATCH_MODEL_PROVIDER=openai-compatible`, `AGORA_OPENAI_BASE_URL` and `AGORA_OPENAI_MODEL`
   for a reachable tool-calling model; `AGORA_OPENAI_API_KEY` is optional for local servers.
@@ -215,8 +216,8 @@ response. Default limits include 12 provider attempts per watch run and 25 secon
 quotas; production capacity may need keys. An optional `google` provider preserves grounded Google search
 when explicitly listed and a Gemini key is present. The model provider need not be Gemini.
 
-Phone model credentials do not power background searches. An unavailable background model and an
-unconfigured search route produce distinct `discovery_status` values; APNs is independent of both.
+Phone model credentials do not power background searches. `discovery_status` reports `available` when
+a usable search route is configured and `search_not_configured` otherwise; APNs is independent.
 If `/v1/watches` returns 404, deploy the watch backend first; setting a key cannot add a missing endpoint.
 One bounded controller chooses searches, reads and foreground interaction handoffs from returned evidence.
 Search-source metadata establishes URLs; merchant Product/Offer structured data establishes prices. Unsupported pages,

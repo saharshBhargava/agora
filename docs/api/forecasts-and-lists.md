@@ -22,6 +22,7 @@ populated account; ordinary hosted users do not receive those legacy histories. 
 - [Run-outs](#run-outs)
 - [Forecast on the item detail](#forecast-on-the-item-detail)
 - [Shopping lists](#shopping-lists)
+- [Automatic background replenishment](#automatic-background-replenishment)
 - [Generating lists from run-outs](#generating-lists-from-run-outs)
 - [Errors](#errors)
 - [Security notes](#security-notes)
@@ -118,6 +119,28 @@ output for the fixtures in `tests/test_forecast_core.py` (viewed on Friday 16 Oc
 - `Not enough history to forecast jam yet. Scan it a couple more times.`
 
 ## Run-outs
+
+### Native consumption predictions
+
+Home's **Running low** carousel includes active items forecast to run out within seven days, plus recorded
+zero quantities and items below their restock levels. Recorded zeroes come first, followed by predicted
+run-outs in date order and threshold-only items. A restock level is not required for predictions. Lists
+and the inventory list use the same prioritization. Estimates say **May run out in N days** or **May have
+run out**; only a recorded zero is labeled **Out of stock**. Low-confidence estimates are labeled on Home.
+
+Tapping a Home item opens its detail, which shows the forecast date/range, daily consumption, estimated
+remaining stock, confidence, evidence and explanation. Typical-use priors are explicitly distinguished
+from personal consumption history. Predictions never overwrite recorded inventory quantities.
+
+The native foreground inventory refresh loads run-outs every 30 seconds, and pull-to-refresh does the
+same. A quantity update immediately invalidates the previous prediction; new results are accepted only
+when their last observation time and quantity match the current item. Account/household changes clear
+predictions and reject late responses. An unavailable endpoint falls back to recorded stock with a notice.
+The existing backend worker and demo forecast seed/backfill supply the data; no migration or new stored
+data is introduced. Rebuild the iOS app to use this integration.
+
+Gemini and other configured chat models receive these same evidence-backed estimates through
+`shopping_context`; see [chat forecast context](chat-additions.md#consumption-forecast-context).
 
 ### `GET /v1/forecasts/runouts?within=7d`
 
@@ -527,3 +550,69 @@ Captured examples:
   `list.created`, `list.updated` (field names and status), `list.item_added` (actor `agent` for agent lines),
   `list.item_updated` (field names), `list.item_removed`, `list.generated` (window and counts).
 - SSE events carry only `{household_id, type, id}`. Clients refetch through the API.
+
+## Item imagery
+
+Shopping-list items expose an `image_path` for the shared [item image API](item-images.md). Linked entries
+inherit their inventory image unless a user selects an override. Image discovery does not block saves.
+
+
+## Chat additions (MVP)
+
+Chat can add items to existing open lists. It reads current household lists first and asks which list
+when the destination is ambiguous; list creation remains in the Lists screen. Explicit user requests save
+without another approval. Existing items are not merged and quantities are not changed.
+
+`POST /v1/lists/{list_id}/items` now accepts an optional `Idempotency-Key`; chat always sends it.
+The same user/key/body returns the original 201 response, even after that list is closed. Reusing the key
+for a different body returns 422 `idempotency_key_reused`. Concurrent retries serialize. With a key,
+a case/whitespace-normalized duplicate title returns 409 `already_on_list`, including checked items.
+Legacy requests without a key retain their existing behavior. Normal household authorization, audits and
+live-sync events still apply. A network failure is an uncertain save: check Lists before retrying.
+
+
+## Automatic background replenishment
+
+The worker maintains store-grouped shopping lists without an open app or chat request. It queues
+`lists.replenish` after forecast jobs (including confirmed scans, manual stock readings, and item/store
+preference edits), at worker startup, and through the existing six-hour sweep at 00/06/12/18 UTC.
+No extra recurring schedule or model credentials are needed. Gemini and other native chat providers
+receive the persisted lists, store labels, sources, checked status and item explanations through
+`shopping_context`; the server determines stock needs and writes the lists.
+
+Eligibility: active items with a known observation no older than 30 days, and either recorded zero,
+quantity below `par_level`, or a forecast within seven days. A forecast must match the latest recorded
+observation time **and** quantity. Unknown quantities, future observations, archived items and stale
+forecast evidence do not create needs. Prior-based forecasts retain their uncertainty in the explanation.
+
+Store selection uses the item's preferred merchant, then its last purchase merchant, then a `Groceries`
+list with no assigned store. Saved stores are not evidence of product availability. Generated open lists
+are reused; no duplicate unchecked inventory links or normalized titles are added across open lists.
+Low-stock quantities top up from the recorded quantity to the restock level; otherwise use a typical
+restock amount or one. Each amount is bounded to 1–1,000, lists to 200 lines and households to 50 open
+lists. When capacity is reached, further needs wait for the next run.
+
+Automatic lines update their quantity, explanation and store from new evidence. Restocking or archiving
+inventory removes no-longer-needed automatic lines. Editing a line's title, quantity, unit or note, or
+changing its list's store, transfers those lines to user control: future runs preserve them. Checking,
+deleting or completing/archiving a linked list records a dismissal against the current stock observation;
+background runs cannot recreate that item until a newer observation arrives. Checking a list line does
+not update inventory quantities. Active wishlist snoozes, recent rejections (30 days) and recent
+purchases/removals (7 days) also suppress automatic additions. Explicit `POST /v1/lists/generate` retains
+its on-demand semantics and can add a need again when requested.
+
+Paused users do not execute replenishment; household sweeps choose an unpaused member, preferring the
+owner. Runs use that member's row-level security, serialize with list edits/generation, publish
+`list.updated`, and audit added/removed counts without personal content. Queued work coalesces, while
+an observation received during a running job queues a follow-up. Native lists refresh every 30 seconds
+while foregrounded and when the app returns to the foreground.
+
+Migration `0020_automatic_replenishment.sql` adds an internal automatic-ownership flag and household-scoped
+dismissals, including existing checked/completed-list decisions. It is additive and compatible with the
+previous backend. The designated demo gets a store-linked detergent restock and a dismissed rice example
+through an idempotent backfill; ordinary accounts receive no seeded data.
+
+Local end-to-end verification uses a disposable database and actual API/worker:
+`AGORA_TEST_DATABASE_URL=postgresql://localhost/postgres uv run python -m tests.support.ios_inventory_server`
+from `backend/`, followed by the Xcode `InventoryLiveTests` suite. The server binds only loopback port
+18765 and removes its database on exit. These tests do not call a live Gemini model.
