@@ -305,6 +305,9 @@ async def approve_intent(intent_id: UUID, request: Request, user: Principal = Cu
     ``approved`` and the on-device agent may go ahead. Repeating an approval is a no-op."""
     async with request.app.state.db.scoped(user.user_id) as conn:
         row = await _locked(conn, intent_id, user.user_id)
+        # Same household lock as propose: serialize checkout with concurrent policy decisions so both
+        # cannot slip under a budget/velocity cap while the other is mid-charge.
+        await _lock_household(conn, row["household_id"])
         if row["status"] in ("approved", "executing", "succeeded", "failed", "outcome_unknown"):
             return await _load(conn, intent_id, user.user_id)  # already approved, by the user or by policy
         if row["status"] != "proposed":
