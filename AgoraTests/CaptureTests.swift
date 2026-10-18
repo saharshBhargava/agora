@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 import UIKit
 import PDFKit
 @testable import Agora
@@ -79,5 +80,169 @@ extension CaptureTests {
         XCTAssertNotEqual(first?.id, capture.id)
         XCTAssertEqual(library.items.first?.id, capture.id)
         XCTAssertNotNil(MediaLibrary.thumbnail(library.url(for: capture)))
+    }
+}
+
+extension CaptureTests {
+    func testScanQueueReviewsPhotosAndVideosInOrderAndLeavesDocumentsInLibrary() {
+        let photo = CaptureItem(id: UUID(), kind: .image, filename: "photo.jpg", createdAt: Date())
+        let video = CaptureItem(id: UUID(), kind: .video, filename: "video.mov", createdAt: Date())
+        let pdf = CaptureItem(id: UUID(), kind: .document, filename: "document.pdf", createdAt: Date())
+        var queue = ScanReviewQueue()
+        queue.enqueue([photo, pdf, video, photo])
+        XCTAssertEqual(queue.next()?.id, photo.id)
+        XCTAssertEqual(queue.next()?.id, video.id)
+        XCTAssertNil(queue.next())
+        queue.enqueue([photo, video]); queue.clear()
+        XCTAssertNil(queue.next(), "Closing a batch or switching accounts must abandon automatic review")
+    }
+
+    func testRecentScanStatusDistinguishesPendingRejectedConfirmedAndOtherAccounts() {
+        let household = UUID()
+        var item = CaptureItem(id: UUID(), kind: .image, filename: "photo.jpg", createdAt: Date())
+        XCTAssertEqual(item.scanStatus(accountID: "alice", householdID: household), "Needs review")
+        var saved = SavedRecognition(key: UUID(), accountID: "alice", householdID: household, capturedAt: Date(),
+            mediaKind: "photos", model: "fixture", locationID: nil, merchantID: nil, purchasedOn: nil, items: [])
+        item.recognition = saved
+        XCTAssertEqual(item.scanStatus(accountID: "alice", householdID: household), "Check save status")
+        saved.rejected = true; item.recognition = saved
+        XCTAssertEqual(item.scanStatus(accountID: "alice", householdID: household), "Needs review")
+        saved.rejected = false; saved.recognitionID = UUID(); item.recognition = saved
+        XCTAssertEqual(item.scanStatus(accountID: "alice", householdID: household), "Added to inventory")
+        XCTAssertEqual(item.scanStatus(accountID: "bob", householdID: household), "Saved review in another household or account")
+        XCTAssertEqual(item.scanStatus(accountID: "alice", householdID: UUID()), "Saved review in another household or account")
+    }
+}
+
+@MainActor
+private final class ScanGoogle: GoogleCalendarAuthorizing {
+    var configurationIssue: String?
+    var account: GoogleCalendarAccount? = .init(id: "scan-alice", email: "scan@example.com", scopes: GoogleCalendarAuthorization.scopes)
+    func restore() async throws -> GoogleCalendarAccount? { account }
+    func connect() async throws -> GoogleCalendarAccount { account! }
+    func accessToken(for accountID: String) async throws -> String { "unused" }
+    func idToken(for accountID: String) async throws -> String { "scan-fixture" }
+    func signOut() { account = nil }
+    func disconnect() async throws { account = nil }
+}
+
+private final class ScanHTTP: URLProtocol {
+    static var handler: ((URLRequest) -> (Int, [String: Any]))!
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let (status, body) = Self.handler(request)
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
+        let data = request.url!.path.hasSuffix("/inventory") ? Data("[]".utf8) : try! JSONSerialization.data(withJSONObject: body)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+@MainActor
+private final class ScanRecognition: InventoryRecognizing {
+    func recognize(file: URL, kind: CaptureItem.Kind, progress: @escaping @MainActor (CaptionProgress) -> Void,
+                   cleanupNotice: @escaping @MainActor (String) -> Void) async throws -> [RecognizedItem] {
+        [.init(name: "Organic whole milk", category: "Dairy", unit: "cartons", quantity: 2, confidence: 0.95),
+         .init(name: "Jar of pasta sauce", category: "Pantry", unit: "jars", quantity: 1, confidence: 0.4)]
+    }
+}
+
+extension CaptureTests {
+    func testScanReviewAndConfirmationRenderWithConfirmedMetadataOnly() async throws {
+        let directory = try fixtureDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let household = UUID(), resultID = UUID()
+        let calendar = CalendarConnection(authorization: ScanGoogle()); await calendar.refresh()
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [ScanHTTP.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel(); ScanHTTP.handler = nil }
+        let api = AgoraClient(calendar: calendar, baseURL: URL(string: "https://scan.example"), http: session)
+        let inventory = InventoryStore(api: api, calendar: calendar)
+        var saves = 0
+        ScanHTTP.handler = { request in
+            if request.url!.path.hasSuffix("/me") {
+                return (200, ["households": [["id": household.uuidString, "name": "Home", "locations": []]]])
+            }
+            if request.httpMethod == "POST" {
+                saves += 1
+                XCTAssertTrue(request.url!.path.hasSuffix("/inventory/recognitions"))
+                XCTAssertNotNil(request.value(forHTTPHeaderField: "Idempotency-Key"))
+                return (201, ["recognition_id": resultID.uuidString, "items": [
+                    ["id": UUID().uuidString, "household_id": household.uuidString,
+                     "display_name": "Organic whole milk", "unit": "cartons", "quantity": 2, "status": "active"]]])
+            }
+            return (200, [:])
+        }
+        await inventory.refresh()
+        XCTAssertEqual(inventory.householdID, household)
+        let suite = "scan-render-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(keychainService: suite, defaults: defaults)
+        let library = MediaLibrary(directory: directory.appendingPathComponent("library"))
+        let photo = directory.appendingPathComponent("milk.jpg")
+        try XCTUnwrap(UIImage(named: "Item-milk")?.jpegData(compressionQuality: 0.9)).write(to: photo)
+        let imported = await library.add(file: photo, kind: .image)
+        let item = try XCTUnwrap(imported)
+        var queue = ScanReviewQueue(); queue.enqueue([item])
+        let reviewItem = try XCTUnwrap(queue.next())
+        let controller = RecognitionController()
+        controller.generateIfNeeded(item: reviewItem, file: library.url(for: reviewItem), settings: settings,
+                                    store: inventory, provider: ScanRecognition())
+        for _ in 0..<100 where controller.busy { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.drafts.count, 2)
+        XCTAssertEqual(saves, 0, "Import and recognition must not save inventory without confirmation")
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene); window.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
+        defer { window.isHidden = true; previous?.makeKeyAndVisible() }
+        func capture<V: View>(_ view: V, name: String, scrollToBottom: Bool = false) async throws {
+            let host = UIHostingController(rootView: view.tint(.teal))
+            window.rootViewController = host; window.makeKeyAndVisible()
+            host.view.frame = window.bounds; host.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(400))
+            if scrollToBottom {
+                func findScroll(_ view: UIView) -> UIScrollView? {
+                    if let scroll = view as? UIScrollView { return scroll }
+                    return view.subviews.lazy.compactMap(findScroll).first
+                }
+                let scroll = try XCTUnwrap(findScroll(host.view))
+                scroll.setContentOffset(CGPoint(x: 0, y: max(0, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)), animated: false)
+                try await Task.sleep(for: .milliseconds(200))
+            }
+            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
+            }
+            let path = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("scan-\(name).png")
+            try XCTUnwrap(image.pngData()).write(to: path)
+            print("Scan screenshot: \(path.path)")
+            let attachment = XCTAttachment(image: image); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+        }
+        try await capture(CaptureView(settings: settings, inventory: inventory, library: library), name: "landing")
+        try await capture(CaptureView(settings: settings, inventory: inventory, library: library)
+            .environment(\.dynamicTypeSize, .accessibility1), name: "landing-large")
+        try await capture(RecognitionView(item: item, url: library.url(for: item), settings: settings, store: inventory,
+                                         library: library, controller: controller), name: "review")
+        try await capture(RecognitionView(item: item, url: library.url(for: item), settings: settings, store: inventory,
+                                         library: library, controller: controller).environment(\.dynamicTypeSize, .accessibility1), name: "review-large")
+        try await capture(RecognitionView(item: item, url: library.url(for: item), settings: settings, store: inventory,
+                                         library: library, controller: controller).environment(\.dynamicTypeSize, .accessibility1),
+                          name: "review-large-items", scrollToBottom: true)
+        controller.drafts[1].included = false
+        await controller.save(item: item, store: inventory, library: library)
+        XCTAssertTrue(controller.completed, controller.message ?? "Save failed")
+        XCTAssertEqual(saves, 1)
+        let saved = try XCTUnwrap(library.items.first?.recognition)
+        XCTAssertEqual(saved.items.count, 1)
+        XCTAssertEqual(saved.items[0].displayName, "Organic whole milk")
+        XCTAssertEqual(saved.recognitionID, resultID)
+        XCTAssertTrue(inventory.activeItems.contains { $0.displayName == "Organic whole milk" && $0.quantity == 2 })
+        XCTAssertFalse(saved.body.keys.contains("media"))
+        try await capture(RecognitionView(item: item, url: library.url(for: item), settings: settings, store: inventory,
+                                         library: library, controller: controller, onScanMore: {}), name: "success")
+        await controller.save(item: item, store: inventory, library: library)
+        XCTAssertEqual(saves, 1, "The confirmation must not allow a second save")
     }
 }

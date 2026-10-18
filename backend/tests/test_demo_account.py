@@ -87,6 +87,21 @@ async def test_demo_account_covers_every_feature_table(demo_app):
                          "(see CLAUDE.md), or list the table in NO_DEMO_DATA with a reason")
 
 
+async def test_demo_backfills_missing_inventory_image_without_web_search(demo_app):
+    app, client = demo_app
+    headers = await demo_headers(client)
+    items = (await client.get("/v1/inventory", headers=headers)).json()
+    item = items[0]
+    async with app.state.db.system() as conn:
+        await conn.execute("DELETE FROM item_images WHERE kind='inventory' AND item_id=$1", UUID(item["id"]))
+    await ensure_demo_account(app.state.db, app.state.settings)
+    await ensure_demo_account(app.state.db, app.state.settings)
+    result = (await client.get("/" + item["image_path"], headers=headers)).json()
+    assert result["status"] == "ready" and result["match_status"] == "demo"
+    assert result["asset"]["match_kind"] == "representative"
+    assert result["asset"]["source_url"] is None
+
+
 async def test_demo_account_looks_real_and_is_full(demo_app):
     _, client = demo_app
     headers = await demo_headers(client)

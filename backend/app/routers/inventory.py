@@ -9,6 +9,7 @@ from app.auth import CurrentUser, Principal
 from app.db import audit, notify
 from app.errors import Problem, not_found
 from app.inventory_ops import create_item, record_observation, sync_purchase_origins
+from app.item_images import ensure_inventory_images
 from app.merchants import MERCHANT_REF, ref, require_merchant
 from app.routers.account import require_household
 from app.schemas import (
@@ -61,6 +62,7 @@ async def list_items(request: Request, household_id: UUID | None = None, locatio
                      include_archived: bool = False, user: Principal = CurrentUser) -> list[ItemOut]:
     async with request.app.state.db.scoped(user.user_id) as conn:
         household_id = await require_household(conn, household_id, user.user_id)
+        await ensure_inventory_images(conn, household_id)
         rows = await conn.fetch(
             ITEM_SELECT + """WHERE i.household_id = $1 AND ($2::uuid IS NULL OR i.location_id = $2)
                               AND ($3 OR i.status = 'active') ORDER BY i.category NULLS LAST, i.display_name""",

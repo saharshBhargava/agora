@@ -182,6 +182,19 @@ expands for multiline text, with 16 points of bottom padding to separate it from
 Validation: four focused provider/schema simulator tests passed in the isolated chat checkout; the
 shared working checkout built successfully. Live authenticated inference remains unverified.
 
+## Shared-browser price fallback — local integration
+
+`ChatWorkspace.watchBrowser` uses the existing `ChatWorkspace.browser`; it must not instantiate a separate
+web view. `WatchRefresh` refreshes active work and invokes the runner only in the foreground. The server
+must return a pending `browser_fallback` after its normal research has finished. Claim/result endpoints
+require authentication, idempotency keys and the current run/criteria version. See the
+[price-watch contract](api/price-watches.md#final-fallback-in-the-shared-chat-browser).
+
+Keep Chat/human ownership and account invalidation in place. Browser evidence is a persisted price
+comparison with a visible source/disclosure, not a verified offer alert. The designated demo does not run
+this fallback. Migration 0019 and a rebuilt native app are required; local tests do not establish production
+availability. No extra hosting service or model credentials are needed for this native reader.
+
 
 ## Chat additions MVP
 
@@ -190,3 +203,36 @@ items. Reads and saves use the shared authenticated stores, and confirmed result
 An ambiguous list/destination is clarified; existing items are reported without changing quantities.
 The tools, retry/error behavior and built-in demo examples are documented in
 [chat additions](api/chat-additions.md). No list creation or browser/photo extraction is included.
+
+## Capture and scan review — native source, October 18, 2026
+
+Capture now starts with **Scan items**, **Choose photos**, an Import menu and **Scan a shelf** for video.
+The native camera retains its Use Photo / Retake confirmation. Camera captures and imported photos/videos
+enter the same automatic identification and explicit inventory-review flow. Multiple imports are reviewed
+one at a time with Review next scan or Skip to next scan; closing the batch leaves the media in Recent scans.
+PDFs remain viewable documents and are not sent for inventory recognition.
+
+Review keeps the captured media, progress and model/media disclosures visible. Item rows expose selection
+and quantity, with name/category/unit/existing-item matching under Edit details. Low-confidence items show
+Check this item. Store entry remains optional and usable during identification; date and storage location
+are expandable. A persistent Add N items to inventory button retains the existing metadata-only, idempotent
+save. Unconfirmed saves show Check save status; successful saves offer View inventory and Scan more.
+Updating an existing inventory item records the observed total rather than incrementing its quantity.
+
+Recent scans shows Needs review, Check save status or Added to inventory from existing local recognition
+records. Saved reviews remain bound to their original account and household. Media/captions/sharing remain
+available from each scan's menu. Unsaved recognition edits are not persisted by closing review; reopening
+identifies the original media again. No API, schema or demo-data changes are needed for this UI flow.
+
+## Consumption predictions — native source, October 18, 2026
+
+Running low now includes items predicted to run out within seven days even without a restock level.
+Item details show the estimated date/range, daily use, remaining quantity and confidence, distinguishing
+typical-use assumptions from personal history. Home, Lists and inventory share prioritization; recorded
+zeroes stay labeled Out of stock, while predictions use uncertain wording. The existing forecast API,
+worker and demo history are reused. A rebuilt app is required; no backend deployment is needed.
+
+Gemini and other configured chat providers receive these predictions when reading `shopping_context`.
+They explain the backend's consumption estimate rather than generating an unsupported rate or date.
+See [the forecast contract](api/forecasts-and-lists.md#native-consumption-predictions) for freshness and
+fallback behavior. The built-in demo chat retains its existing grammar.

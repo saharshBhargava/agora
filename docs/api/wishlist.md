@@ -539,6 +539,11 @@ existing suggestion POST. Model output cannot set target prices through that UI 
 acceptance to join the active wishlist. Live retailer prices and automatic purchase execution are outside
 this feature.
 
+## Item imagery
+
+Wishlist items and suggestions expose an `image_path` for the shared [item image API](item-images.md). Linked entries
+inherit their inventory image unless a user selects an override. Image discovery does not block saves.
+
 
 ## Explicit additions from chat
 

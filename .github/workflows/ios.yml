@@ -35,10 +35,15 @@ jobs:
             -only-testing:AgoraTests/CalendarAuthTests \
             -only-testing:AgoraTests/CalendarToolTests \
             -only-testing:AgoraTests/CalendarAgentTests \
+            -only-testing:AgoraTests/CaptureTests \
+            -only-testing:AgoraTests/InventoryTests \
             -only-testing:AgoraTests/ShoppingTests \
+            -only-testing:AgoraTests/ItemImageTests \
             -only-testing:AgoraTests/WatchTests \
+            -only-testing:AgoraTests/WatchBrowserTests \
             -only-testing:AgoraTests/TripPlannerTests \
             -only-testing:AgoraTests/TripStoreTests \
+            -only-testing:AgoraTests/TripTests \
             -only-testing:AgoraTests/AgoraClientTests > build-test.log 2>&1 || { tail -n 160 build-test.log; exit 1; }
       - name: Capture onboarding screen
         run: |

@@ -85,6 +85,7 @@ final class ShoppingStore: ObservableObject {
         let row = try await api.fetch(original.map { "v1/wishlist/\($0.id)" } ?? "v1/wishlist", as: WishlistItem.self,
             method: original == nil ? "POST" : "PATCH", body: try draft.body(householdID: householdID, editing: original != nil))
         try check(version); update(row)
+        await watches.refresh()
     }
     func act(_ item: WishlistItem, action: String, body: [String: Any]? = nil) async {
         guard !busy, item.householdId == householdID else { return }
@@ -95,6 +96,7 @@ final class ShoppingStore: ObservableObject {
             let row = try await api.fetch(path, as: WishlistItem.self,
                                           method: action == "remove" ? "DELETE" : "POST", body: body)
             try check(version); update(row)
+            await watches.refresh()
         } catch { if context == version, !Task.isCancelled { self.error = InventoryStore.message(error) } }
     }
     func feedback(_ item: WishlistItem, rating: String) async {
@@ -179,10 +181,24 @@ final class ShoppingStore: ObservableObject {
             let stock = try await api.fetch("v1/inventory", as: [InventoryItem].self,
                 query: [.init(name: "household_id", value: householdID.uuidString)])
             try check(version)
+            let runouts = try? await api.fetch("v1/forecasts/runouts", as: InventoryRunouts.self, query: [
+                .init(name: "household_id", value: householdID.uuidString), .init(name: "within", value: "7d")
+            ])
+            try check(version)
+            let forecastsAvailable = runouts?.householdId == householdID && runouts?.withinDays == 7
+            let forecasts: [[String: Any]] = forecastsAvailable ? (runouts?.runouts ?? []).compactMap { entry in
+                guard entry.item.householdId == householdID,
+                      let item = stock.first(where: { $0.id == entry.item.id }),
+                      entry.forecast.matches(item), entry.forecast.runsOutSoon() else { return nil }
+                return ["item_id": item.id.uuidString, "name": item.displayName, "unit": item.unit,
+                        "forecast": entry.forecast.modelContext]
+            } : []
             let lists = try await trips?.listsForChat() ?? []
             try check(version)
             contextTaskID = taskID
-            return ["feedback": feedback.foundation, "shopping_lists": lists.map { list -> [String: Any] in
+            return ["feedback": feedback.foundation, "runout_forecasts": forecasts, "runout_window_days": 7,
+                    "runout_forecast_status": forecastsAvailable ? "available" : "unavailable",
+                    "shopping_lists": lists.map { list -> [String: Any] in
                 ["id": list.id.uuidString, "name": list.name, "items": list.items.map { ["title": $0.title, "quantity": $0.quantity] as [String: Any] }]
             }, "inventory": stock.prefix(100).map { item -> [String: Any] in
                 ["id": item.id.uuidString, "name": item.displayName, "quantity": item.quantity as Any? ?? NSNull(),

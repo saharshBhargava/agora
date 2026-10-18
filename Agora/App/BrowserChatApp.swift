@@ -31,7 +31,9 @@ struct BrowserChatApp: App {
                 .background { InventoryRefresh(store: workspace.inventory) }
                 .background { ShoppingRefresh(store: workspace.shopping) }
                 .background { TripRefresh(store: workspace.trips) }
+                .background { WatchRefresh(store: workspace.shopping.watches) }
             }
+            .background { ItemImageSessionSync(store: workspace.images, inventory: workspace.inventory) }
             .tint(.teal)
             .sheet(isPresented: Binding(get: { push.openWatchID != nil && workspace.calendar.connected },
                                        set: { if !$0 { push.openWatchID = nil } })) {
@@ -39,6 +41,7 @@ struct BrowserChatApp: App {
                     NavigationStack { WatchDetailView(store: workspace.shopping.watches, watchID: id) }
                 }
             }
+            .environment(\.itemImages, workspace.images)
             .background { PushSessionSync(calendar: workspace.calendar, api: workspace.api) }
             .background { WatchBrowserReviewNavigation(store: workspace.shopping.watches, selectedTab: $selectedTab) }
             .onOpenURL { url in
@@ -75,6 +78,8 @@ final class ChatWorkspace: ObservableObject {
     let inventory: InventoryStore
     let shopping: ShoppingStore
     let trips: TripStore
+    let images: ItemImageStore
+    let watchBrowser: WatchBrowserRunner
     init() {
         AppLog.event(.app, "workspace.created")
         let settings = SettingsStore(); self.settings = settings
@@ -83,6 +88,7 @@ final class ChatWorkspace: ObservableObject {
         let calendar = CalendarConnection(demoBaseURL: origin); self.calendar = calendar
         settings.demoCalendar = calendar
         api = AgoraClient(calendar: calendar)
+        images = ItemImageStore(api: api, calendar: calendar)
         calendar.beforeSignOut = { [weak api] in
             if let api { await PushNotifications.shared.signOut(api: api) }
         }
@@ -90,6 +96,12 @@ final class ChatWorkspace: ObservableObject {
         shopping = ShoppingStore(api: api, inventory: inventory)
         trips = TripStore(api: api, inventory: inventory, calendar: calendar)
         agent = AgentCoordinator(settings: settings, browser: browser, calendar: calendar, shopping: shopping, trips: trips)
+        let agent = agent
+        watchBrowser = WatchBrowserRunner(api: api, browser: browser, store: shopping.watches) { [weak agent, weak calendar] in
+            calendar?.connected == true && calendar?.isDemoAccount == false && agent?.running == false
+        }
+        let runner = watchBrowser
+        shopping.watches.browserFallbackHandler = { [weak runner] watch in await runner?.check(watch) }
         shopping.watches.browserReviewHandler = { [weak self] url in
             guard let self, self.calendar.connected, self.inventory.accountID == self.calendar.accountID else {
                 throw BrowserError("account_changed", "Sign in again before opening this browser review.")
@@ -122,6 +134,22 @@ final class ChatWorkspace: ObservableObject {
     }
 }
 
+private struct WatchRefresh: View {
+    @ObservedObject var store: WatchStore
+    @Environment(\.scenePhase) private var phase
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0)
+            .task(id: "\(store.context)-\(phase == .active)-\(store.hasPendingWork)") {
+                guard phase == .active, store.canUse else { return }
+                while !Task.isCancelled {
+                    await store.refresh(poll: false)
+                    await store.runBrowserFallbacks()
+                    do { try await Task.sleep(for: .seconds(store.hasPendingWork ? 5 : 30)) } catch { return }
+                }
+            }
+    }
+}
+
 private struct TripRefresh: View {
     @ObservedObject var store: TripStore
     @Environment(\.scenePhase) private var phase
@@ -147,7 +175,7 @@ private struct InventoryRefresh: View {
                 // Refresh on foreground/household changes and periodically while the app is open.
                 // Shared state also updates immediately after every successful local mutation.
                 while !Task.isCancelled {
-                    await store.refresh()
+                    await store.refreshWithForecasts()
                     do { try await Task.sleep(for: .seconds(30)) } catch { return }
                 }
             }
@@ -178,6 +206,35 @@ private struct WatchBrowserReviewNavigation: View {
                 guard request != nil, store.canUse else { return }
                 PushNotifications.shared.openWatchID = nil
                 selectedTab = .chat
+            }
+    }
+}
+
+struct ItemImageSessionSync: View {
+    @ObservedObject var store: ItemImageStore
+    @ObservedObject var inventory: InventoryStore
+    @Environment(\.scenePhase) private var phase
+
+    private struct LoadKey: Hashable {
+        let context: String
+        let references: [ItemImageReference]
+        let active: Bool
+    }
+
+    var body: some View {
+        let references = inventory.items.map {
+            ItemImageReference(kind: "inventory", id: $0.id, name: $0.displayName, category: $0.category)
+        }
+        Color.clear.frame(width: 0, height: 0)
+            .onChange(of: inventory.context, initial: true) { _, context in
+                store.reset(context: context.uuidString)
+            }
+            .task(id: LoadKey(context: store.context, references: references, active: phase == .active)) {
+                guard phase == .active, !references.isEmpty else { return }
+                while !Task.isCancelled {
+                    await store.prefetch(references)
+                    do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                }
             }
     }
 }

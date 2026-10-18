@@ -15,83 +15,28 @@ struct HomeView: View {
     private var inventoryError: String? { store.error }
 
     private var lowItems: [InventoryItem] {
-        inventory.filter(\.isRunningLow).sorted {
-            if $0.quantity == $1.quantity {
-                return $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
-            }
-            return ($0.quantity ?? 0) < ($1.quantity ?? 0)
-        }
+        store.runningLowItems
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 32) {
                     scanCard
-
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 16)], alignment: .leading, spacing: 16) {
-                        lowStockCard
-                        dashboardCard(title: "Wishlist", subtitle: "Good finds, at your price.", symbol: "heart", tint: .purple) {
-                            if shopping.active.isEmpty {
-                                Text("Save something you want and set a target price.").font(.subheadline).foregroundStyle(.secondary)
-                            }
-                            ForEach(shopping.active.prefix(3)) { item in
-                                HStack {
-                                    Text(item.title).font(.subheadline)
-                                    Spacer()
-                                    if let price = item.targetLabel { Text(price).font(.caption).foregroundStyle(.secondary) }
-                                }
-                            }
-                            NavigationLink("View wishlist") {
-                                ShoppingView(store: shopping, settings: settings)
-                                    .toolbar(.visible, for: .navigationBar)
-                            }
-                        }
-                        dashboardCard(title: "Suggested for you", subtitle: "A few thoughtful additions.", symbol: "sparkles", tint: .teal) {
-                            if shopping.suggestions.isEmpty {
-                                Text("Review replenishment suggestions or find ideas based on your inventory.").font(.subheadline).foregroundStyle(.secondary)
-                            }
-                            ForEach(shopping.suggestions.prefix(2)) { item in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(item.title).font(.subheadline.weight(.semibold))
-                                    if let reason = item.rationale { Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
-                                }
-                            }
-                            if let error = shopping.error { Text(error).font(.caption).foregroundStyle(.secondary) }
-                            NavigationLink("View suggestions") {
-                                ShoppingView(store: shopping, settings: settings, selection: "suggestions")
-                                    .toolbar(.visible, for: .navigationBar)
-                            }
-                        }
-                        dashboardCard(title: "Upcoming trips", subtitle: "Make room for your next run.", symbol: "calendar", tint: .blue) {
-                            if trips.trips.contains(where: { $0.isUncertain }) {
-                                Label("A trip needs its Calendar status checked.", systemImage: "exclamationmark.circle")
-                                    .font(.caption).foregroundStyle(.orange)
-                            }
-                            ForEach(trips.trips.filter { $0.status == "scheduled" && ($0.endDate ?? .distantPast) > Date() }
-                                .sorted { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }.prefix(2)) { trip in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(trip.title).font(.subheadline.weight(.semibold))
-                                    if let start = trip.startDate {
-                                        Text(start, format: .dateTime.weekday().hour().minute())
-                                            .font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                            if let error = trips.error { Text(error).font(.caption).foregroundStyle(.secondary) }
-                            NavigationLink("Shopping lists & trips") { tripsDestination }
-                                .accessibilityIdentifier("homeShoppingTrips")
-                        }
-                    }
+                        .padding(.horizontal, 20)
+                    wishlistSection
+                    lowStockSection
+                    suggestionsSection
+                    tripsSection
                 }
-                .padding(20)
+                .padding(.vertical, 20)
                 .frame(maxWidth: 900, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
             .background(Color(uiColor: .systemGroupedBackground))
             .safeAreaInset(edge: .top, spacing: 0) { topBar }
             .toolbar(.hidden, for: .navigationBar)
-            .refreshable { await store.refresh(); await shopping.refresh(); await trips.refresh() }
+            .refreshable { await store.refreshWithForecasts(); await shopping.refresh(); await trips.refresh() }
         }
     }
 
@@ -167,78 +112,225 @@ struct HomeView: View {
         .accessibilityIdentifier("homeScanItems")
     }
 
-    private var lowStockCard: some View {
-        dashboardCard(title: "Running low", subtitle: "Catch the essentials before they run out.", symbol: "basket", tint: .orange) {
-            if loading && inventory.isEmpty && inventoryError == nil {
-                ProgressView("Checking your inventory…").font(.subheadline)
-            } else if let inventoryError {
-                Text(inventoryError).font(.subheadline).foregroundStyle(.secondary)
-                Button("Try again") { Task { await store.refresh() } }
-                    .disabled(loading)
-            } else if inventory.isEmpty {
-                Text("Your inventory is empty.").font(.subheadline.weight(.semibold))
-                Text("Items below their restock levels will appear here once your inventory is set up.")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            } else if lowItems.isEmpty {
-                Text("No items below their restock levels.").font(.subheadline.weight(.semibold))
-                Text("Items need a quantity and a restock level to be checked.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+    private var wishlistSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader("Wishlist", linkLabel: "View wishlist") {
+                ShoppingView(store: shopping, settings: settings)
+                    .toolbar(.visible, for: .navigationBar)
+            }
+            if shopping.loading && shopping.active.isEmpty {
+                ProgressView("Loading wishlist…").padding(.horizontal, 20)
+            } else if shopping.active.isEmpty {
+                sectionMessage("Save something you want and set a target price.")
             } else {
-                ForEach(lowItems.prefix(4)) { item in
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.displayName).font(.subheadline.weight(.semibold))
-                            if let threshold = item.parLevel {
-                                Text("Restock below \(threshold.formatted()) \(item.unit)")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                        if let quantity = item.quantity {
-                            Text(quantity == 0 ? "Out of stock" : "\(quantity.formatted()) left")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(quantity == 0 ? Color.red : Color.primary)
-                                .multilineTextAlignment(.trailing)
+                ItemCarousel {
+                    ForEach(shopping.active) { item in
+                        ItemCarouselItem(title: item.title, detail: item.targetLabel.map { "Target \($0)" }) { size in
+                            ItemThumbnail(kind: "wishlist", id: item.id, name: item.title,
+                                          category: item.category, size: size)
                         }
                     }
-                    .padding(.vertical, 4)
-                }
-                if lowItems.count > 4 {
-                    Text("And \(lowItems.count - 4) more running low")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            NavigationLink("View inventory") {
+            if let error = shopping.error { sectionMessage(error) }
+        }
+    }
+
+    private var suggestionsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader("Suggested for you", linkLabel: "View suggestions") {
+                ShoppingView(store: shopping, settings: settings, selection: "suggestions")
+                    .toolbar(.visible, for: .navigationBar)
+            }
+            if shopping.loading && shopping.suggestions.isEmpty {
+                ProgressView("Loading suggestions…").padding(.horizontal, 20)
+            } else if shopping.suggestions.isEmpty {
+                sectionMessage("Review replenishment suggestions or find ideas based on your inventory.")
+            } else {
+                ItemCarousel {
+                    ForEach(shopping.suggestions) { item in
+                        ItemCarouselItem(title: item.title, detail: item.rationale) { size in
+                            ItemThumbnail(kind: "wishlist", id: item.id, name: item.title,
+                                          category: item.category, size: size)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var upcomingTrips: [TripRecord] {
+        trips.trips.filter { $0.status == "scheduled" && ($0.endDate ?? .distantPast) > Date() }
+            .sorted { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
+    }
+
+    private var tripsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader("Upcoming trips", linkLabel: "Shopping lists & trips", identifier: "homeShoppingTrips") {
+                tripsDestination
+            }
+            if !upcomingTrips.isEmpty {
+                ItemCarousel {
+                    ForEach(upcomingTrips) { trip in
+                        NavigationLink { tripsDestination } label: {
+                            ItemCarouselItem(title: trip.title,
+                                             detail: trip.startDate?.formatted(.dateTime.weekday().hour().minute())) { size in
+                                // Trips have no product image; use a date medallion in the same circular layout.
+                                VStack(spacing: 2) {
+                                    if let date = trip.startDate {
+                                        Text(date, format: .dateTime.month(.abbreviated))
+                                            .font(.caption.weight(.semibold))
+                                        Text(date, format: .dateTime.day())
+                                            .font(.title.weight(.semibold))
+                                    } else {
+                                        Image(systemName: "calendar").font(.title)
+                                    }
+                                }
+                                .foregroundStyle(.blue)
+                                .frame(width: size, height: size)
+                                .background(Color.blue.opacity(0.08))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            } else if trips.loading {
+                ProgressView("Loading trips…").padding(.horizontal, 20)
+            } else {
+                sectionMessage("Plan a shopping trip from your lists.")
+            }
+            if trips.trips.contains(where: { $0.isUncertain }) {
+                Label("A trip needs its Calendar status checked.", systemImage: "exclamationmark.circle")
+                    .font(.caption).foregroundStyle(.orange).padding(.horizontal, 20)
+            }
+            if let error = trips.error { sectionMessage(error) }
+        }
+    }
+
+    private var lowStockSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader("Running low", linkLabel: "View inventory") {
                 InventoryListView(store: store)
                     .toolbar(.visible, for: .navigationBar)
             }
-                .font(.subheadline.weight(.semibold))
-            NavigationLink("Plan a restock trip") { tripsDestination }
-                .font(.subheadline.weight(.semibold))
-        }
-    }
-
-    private func dashboardCard<Content: View>(title: String, subtitle: String, symbol: String, tint: Color,
-                                               @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: symbol)
-                    .font(.title3)
-                    .foregroundStyle(tint)
-                    .frame(width: 42, height: 42)
-                    .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.headline).accessibilityAddTraits(.isHeader)
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            sectionMessage("Predicted to run out within 7 days, out of stock, or below your restock level.")
+            if loading && inventory.isEmpty && inventoryError == nil {
+                ProgressView("Checking your inventory…").padding(.horizontal, 20)
+            } else if let inventoryError {
+                sectionMessage(inventoryError)
+                Button("Try again") { Task { await store.refreshWithForecasts() } }
+                    .disabled(loading).padding(.horizontal, 20)
+            } else if inventory.isEmpty {
+                sectionMessage("Add items and scan them over time to predict when you’ll need more.")
+            } else if lowItems.isEmpty {
+                if store.forecastsLoading { ProgressView("Checking consumption…").padding(.horizontal, 20) }
+                else { sectionMessage("No upcoming run-outs found. Keep quantities up to date to improve predictions.") }
+            } else {
+                ItemCarousel {
+                    ForEach(lowItems) { item in
+                        NavigationLink {
+                            InventoryDetailView(store: store, itemID: item.id)
+                                .toolbar(.visible, for: .navigationBar)
+                        } label: {
+                            ItemCarouselItem(title: item.displayName,
+                                             detail: store.stockSummary(item),
+                                             supportingText: store.forecast(for: item)?.confidence == "low" ? "Low confidence" : nil,
+                                             detailColor: item.quantity == 0 ? .red : .secondary) { size in
+                                ItemThumbnail(kind: "inventory", id: item.id, name: item.displayName,
+                                              category: item.category, size: size)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityValue(store.forecast(for: item)?.evidenceLabel ?? "Recorded stock level")
+                    }
                 }
             }
-            content()
-            Spacer(minLength: 0)
+            if let error = store.forecastError { sectionMessage(error) }
+            NavigationLink("Plan a restock trip") { tripsDestination }
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 20)
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
     }
 
+    private func sectionHeader<Destination: View>(_ title: String, linkLabel: String, identifier: String = "",
+                                                  @ViewBuilder destination: () -> Destination) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(title)
+                .font(.title3.weight(.bold))
+                .accessibilityAddTraits(.isHeader)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            NavigationLink(destination: destination) {
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel(linkLabel)
+            .accessibilityIdentifier(identifier)
+        }
+        .padding(.leading, 20)
+        .padding(.trailing, 8)
+    }
+
+    private func sectionMessage(_ message: String) -> some View {
+        Text(message).font(.subheadline).foregroundStyle(.secondary).padding(.horizontal, 20)
+    }
+}
+
+/// Each category keeps its own scroll position and snaps to the nearest item.
+struct ItemCarousel<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            // Measure every label so longer names and Dynamic Type can set the row height.
+            HStack(alignment: .top, spacing: 20) {
+                content
+            }
+            .scrollTargetLayout()
+        }
+        .contentMargins(.horizontal, 20, for: .scrollContent)
+        .scrollTargetBehavior(.viewAligned)
+        .scrollIndicators(.hidden)
+    }
+}
+
+struct ItemCarouselItem<Artwork: View>: View {
+    let title: String
+    var detail: String?
+    var supportingText: String? = nil
+    var detailColor: Color = .secondary
+    @ViewBuilder var artwork: (CGFloat) -> Artwork
+    @ScaledMetric(relativeTo: .body) private var imageSize: CGFloat = 90
+    @ScaledMetric(relativeTo: .body) private var itemWidth: CGFloat = 120
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        VStack(spacing: 10) {
+            artwork(imageSize)
+                .frame(width: imageSize, height: imageSize)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: Circle())
+                .clipShape(Circle())
+                .contentShape(Circle())
+            VStack(spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
+                if let detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(detailColor)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                }
+                if let supportingText {
+                    Text(supportingText).font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(width: itemWidth, alignment: .top)
+        .accessibilityElement(children: .combine)
+    }
 }

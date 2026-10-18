@@ -115,6 +115,44 @@ final class ShoppingTests: XCTestCase {
         XCTAssertNil(patch["household_id"])
     }
 
+    func testShoppingContextGivesGeminiGroundedConsumptionForecasts() async throws {
+        var observed = stock
+        observed["observed_at"] = "2026-10-18T12:00:00Z"
+        let date = ISO8601DateFormatter().string(from: Date().addingTimeInterval(2 * 86_400))
+        let forecast: [String: Any] = ["computed_at": "2026-10-18T12:01:00Z", "method": "blended",
+            "status": "runs_out", "confidence": "low", "rate_per_day": 0.5, "qty_now": 1,
+            "last_quantity": 1, "last_observed_at": "2026-10-18T12:00:00Z", "runout_at": date,
+            "n_obs": 3, "span_days": 4, "explanation": "Estimated from history and typical use."]
+        let response: [String: Any] = ["household_id": household.uuidString, "within_days": 7,
+                                      "runouts": [["item": observed, "forecast": forecast]]]
+        ShoppingHTTP.handler = { request in
+            if request.url!.path.hasSuffix("/inventory") { return (200, [observed]) }
+            if request.url!.path.hasSuffix("/runouts") { return (200, response) }
+            return (200, [:])
+        }
+        let call = try ShoppingCall(["name": "shopping_context", "args": [:]])
+        let result = try await shopping.execute(call, taskID: UUID())
+        XCTAssertEqual(result["runout_forecast_status"] as? String, "available")
+        let forecasts = try XCTUnwrap(result["runout_forecasts"] as? [[String: Any]])
+        XCTAssertEqual(forecasts.count, 1)
+        XCTAssertEqual(forecasts.first?["item_id"] as? String, inventoryID.uuidString)
+        let facts = try XCTUnwrap(forecasts.first?["forecast"] as? [String: Any])
+        XCTAssertEqual(facts["runout_at"] as? String, date)
+        XCTAssertEqual(facts["confidence"] as? String, "low")
+        XCTAssertEqual(facts["rate_per_day"] as? Double, 0.5)
+        XCTAssertEqual(facts["method"] as? String, "blended")
+
+        ShoppingHTTP.handler = { request in
+            if request.url!.path.hasSuffix("/runouts") { return (503, ["title": "unavailable"]) }
+            if request.url!.path.hasSuffix("/inventory") { return (200, [observed]) }
+            return (200, [:])
+        }
+        let fallback = try await shopping.execute(call, taskID: UUID())
+        XCTAssertEqual(fallback["runout_forecast_status"] as? String, "unavailable")
+        XCTAssertTrue((fallback["runout_forecasts"] as? [Any])?.isEmpty == true)
+        XCTAssertEqual((fallback["inventory"] as? [Any])?.count, 1)
+    }
+
     func testWishlistSaveAcceptSnoozePurchaseAndFeedback204() async throws {
         var saved = row
         ShoppingHTTP.handler = { request in
@@ -147,6 +185,23 @@ final class ShoppingTests: XCTestCase {
         let rated = try decoder.decode(WishlistItem.self, from: JSONSerialization.data(withJSONObject: saved))
         await shopping.feedback(rated, rating: "up")
         XCTAssertNil(shopping.error)
+    }
+
+    func testSavingWishlistReloadsAutomaticWatchesWithoutSeparateActivation() async throws {
+        var saved = row; saved["status"] = "active"
+        var requests: [String] = []
+        ShoppingHTTP.handler = { request in
+            requests.append("\(request.httpMethod ?? "GET") \(request.url!.path)")
+            if request.url!.path == "/v1/watches" {
+                return (200, ["watches": [], "search_available": true, "discovery_available": true])
+            }
+            return (201, saved)
+        }
+        var draft = WishlistDraft(); draft.title = "Coffee filters"
+        try await shopping.save(draft)
+        XCTAssertEqual(requests, ["POST /v1/wishlist", "GET /v1/watches"])
+        XCTAssertTrue(shopping.watches.hasLoadedCapabilities)
+        XCTAssertNil(shopping.watches.error)
     }
 
     func testInventoryPollDoesNotResetShoppingAndSignOutDiscardsInflightRead() async throws {
@@ -399,6 +454,29 @@ final class ShoppingTests: XCTestCase {
         }
         let api = AgoraClient(calendar: calendar, baseURL: URL(string: "https://shopping.example.com"), http: session)
         let trips = TripStore(api: api, inventory: inventory, calendar: calendar)
+        let market = UUID()
+        func list(_ name: String, store: [String: Any]?, titles: [String]) -> [String: Any] {
+            ["id": UUID().uuidString, "household_id": household.uuidString, "name": name,
+             "merchant": store as Any? ?? NSNull(), "status": "open", "source": "manual",
+             "open_count": titles.count, "updated_at": "2026-10-18T09:00:00Z",
+             "items": titles.map { ["id": UUID().uuidString, "title": $0, "quantity": 1, "checked": false] }]
+        }
+        let fixtureLists = [
+            list("Weekly groceries", store: ["id": market.uuidString, "name": "Whole Foods", "locality": "Downtown"],
+                 titles: ["Oat milk", "Free-range eggs", "Sourdough bread", "Coffee beans"]),
+            list("Household essentials", store: ["id": UUID().uuidString, "name": "Target"],
+                 titles: ["Laundry detergent", "Paper towels", "Dish soap"]),
+            list("Weekend top-up", store: ["id": market.uuidString, "name": "Whole Foods", "locality": "Downtown"], titles: []),
+            list("Pick up anywhere", store: nil, titles: ["Batteries"])
+        ]
+        let previousHandler = ShoppingHTTP.handler!
+        ShoppingHTTP.handler = { request in
+            if request.url?.path == "/v1/lists" { return (200, fixtureLists) }
+            return previousHandler(request)
+        }
+        await trips.refresh()
+        XCTAssertNil(trips.error)
+        XCTAssertEqual(trips.lists.count, 4)
         let lists = UIHostingController(rootView: ListsView(inventory: inventory, shopping: shopping, settings: settings, trips: trips))
         window.rootViewController = lists; window.makeKeyAndVisible()
         lists.view.frame = window.bounds; lists.view.layoutIfNeeded()
@@ -411,6 +489,32 @@ final class ShoppingTests: XCTestCase {
         print("Lists screenshot: \(path.path)")
         let attachment = XCTAttachment(image: image); attachment.name = "Lists overview"; attachment.lifetime = .keepAlways
         add(attachment)
+        func scrollViews(_ view: UIView) -> [UIScrollView] {
+            (view as? UIScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews)
+        }
+        let vertical = try XCTUnwrap(scrollViews(lists.view).first { $0.contentSize.height > $0.bounds.height })
+        vertical.setContentOffset(CGPoint(x: 0, y: 580), animated: false)
+        try await Task.sleep(for: .milliseconds(200))
+        let storesImage = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
+        }
+        let storesPath = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("lists-stores.png")
+        try XCTUnwrap(storesImage.pngData()).write(to: storesPath)
+        print("Lists stores screenshot: \(storesPath.path)")
+        let storesAttachment = XCTAttachment(image: storesImage); storesAttachment.name = "Lists by store"
+        storesAttachment.lifetime = .keepAlways; add(storesAttachment)
+        let accessible = UIHostingController(rootView: ListsView(inventory: inventory, shopping: shopping, settings: settings, trips: trips)
+            .environment(\.dynamicTypeSize, .accessibility3))
+        window.rootViewController = accessible; accessible.view.frame = window.bounds; accessible.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(300))
+        let largeImage = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
+        }
+        let largePath = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("lists-large-text.png")
+        try XCTUnwrap(largeImage.pngData()).write(to: largePath)
+        print("Lists large text screenshot: \(largePath.path)")
+        let largeAttachment = XCTAttachment(image: largeImage); largeAttachment.name = "Lists large text"
+        largeAttachment.lifetime = .keepAlways; add(largeAttachment)
         await calendar.signOut()
         let home = UIHostingController(rootView: HomeView(selectedTab: .constant(.home), store: inventory, shopping: shopping, settings: settings, trips: trips))
         home.loadViewIfNeeded(); home.view.layoutIfNeeded(); XCTAssertNotNil(home.view)

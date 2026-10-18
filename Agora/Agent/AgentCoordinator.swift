@@ -90,6 +90,7 @@ final class AgentCoordinator: ObservableObject {
         guard (try? userMessage.byteCount()) ?? Int.max < 1_400_000 else {
             messages.append(ChatMessage(role: "notice", text: "These attachments are too large to send together. Remove an attachment or choose smaller images.")); return false
         }
+        browser.cancelPriceResearch()
         browser.policy = settings.policy
         messages.append(ChatMessage(role: "user", text: text, attachments: attachments))
         if conversations.current.title == "New chat" { conversations.current.title = String((text.isEmpty ? attachments.first?.name ?? "Attachments" : text).prefix(48)) }
@@ -110,6 +111,7 @@ final class AgentCoordinator: ObservableObject {
         approval = nil; let reply = approvalReply; approvalReply = nil; reply?.resume(returning: allowed)
     }
     func stop(reason: String = "Stopped. The browser is still available.", paused: Bool = false) {
+        browser.cancelPriceResearch()
         AppLog.$taskID.withValue(generation.uuidString) { AppLog.event(.agent, paused ? "task.paused" : "task.stopped", count: running ? 1 : 0) }
         let old = generation, wasRunning = running
         let uncertainCalendar = calendarMutationInFlight == old
