@@ -66,7 +66,7 @@ function resolveWish(run: Run, chip: Chip): Run {
 }
 
 export function createRun(
-  shopper: Omit<Person, 'isShopper' | 'authorizedCents' | 'authId'>,
+  shopper: Omit<Person, 'isShopper' | 'authorizedCents' | 'authId' | 'approvalCode'>,
   store: string,
   payoutPan: string,
   now: number,
@@ -77,7 +77,7 @@ export function createRun(
     state: 'open',
     store,
     shopperId: shopper.id,
-    people: [{ ...shopper, isShopper: true, authorizedCents: null, authId: null, payoutPan }],
+    people: [{ ...shopper, isShopper: true, authorizedCents: null, authId: null, approvalCode: null, payoutPan }],
     chips: [],
     taxRate: 0,
     lastCallEndsAt: null,
@@ -94,10 +94,10 @@ export function join(run: Run, p: Person): Run | Err<'cart closed'> {
   return { ...run, people: exists ? run.people.map((x) => (x.id === p.id ? p : x)) : [...run.people, p] };
 }
 
-export function setAuthorization(run: Run, personId: string, authorizedCents: number, authId: string): Run {
+export function setAuthorization(run: Run, personId: string, authorizedCents: number, authId: string, approvalCode: string | null = null): Run {
   let next: Run = {
     ...run,
-    people: run.people.map((p) => (p.id === personId ? { ...p, authorizedCents, authId } : p)),
+    people: run.people.map((p) => (p.id === personId ? { ...p, authorizedCents, authId, approvalCode: approvalCode ?? p.approvalCode } : p)),
   };
   for (const c of run.chips) next = refreshOverCap(next, c.id);
   return next;

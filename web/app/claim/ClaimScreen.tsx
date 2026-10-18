@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import { ApiError } from '@/lib/api-error';
 import { useRun } from '@/lib/socket';
 import { formatCents } from '@/lib/money';
 import { myShare } from '@/lib/share';
@@ -32,6 +33,11 @@ export default function ClaimScreen() {
   useEffect(() => {
     if (unknown) router.replace(`/join?run=${encodeURIComponent(runId)}`);
   }, [unknown, router, runId]);
+
+  const noPerson = !!runId && !personId;
+  useEffect(() => {
+    if (noPerson) router.replace(`/join?run=${encodeURIComponent(runId)}`);
+  }, [noPerson, router, runId]);
 
   useEffect(() => {
     if (!errorEvent) return;
@@ -73,7 +79,7 @@ export default function ClaimScreen() {
       await api.raise(runId, personId, cap + RAISE_STEP_CENTS);
       setOverCap(null);
     } catch (e) {
-      if (e instanceof Error && e.message === 'raise off') setRaiseOff(true);
+      if (e instanceof ApiError && e.status === 403) setRaiseOff(true);
       else setNotice(e instanceof Error ? e.message : 'Could not raise your cap');
     } finally {
       setBusy(false);

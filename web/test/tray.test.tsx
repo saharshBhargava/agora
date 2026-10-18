@@ -17,7 +17,7 @@ import { Tray } from '@/components/Tray';
 import { Grid } from '@/components/Grid';
 
 const p = (id: string, initial: string): Person => ({
-  id, name: initial, initial, isShopper: false, authorizedCents: 4000, authId: null, payoutPan: null,
+  id, name: initial, initial, isShopper: false, authorizedCents: 4000, authId: null, approvalCode: null, payoutPan: null,
 });
 const people = [p('a', 'A'), p('b', 'B')];
 const mk = (o: Partial<ChipT>): ChipT => ({

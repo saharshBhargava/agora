@@ -44,6 +44,8 @@ export type Person = {
   isShopper: boolean;
   authorizedCents: number | null;
   authId: string | null;
+  /** Approval code from the authorization (or the latest incremental one). */
+  approvalCode: string | null;
   payoutPan: string | null;
 };
 

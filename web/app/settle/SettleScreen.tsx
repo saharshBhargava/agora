@@ -91,6 +91,7 @@ export default function SettleScreen() {
           receipt={run.receipt}
           chips={run.chips}
           canFix={isShopper && run.state === 'receipt'}
+          busy={busy}
           onFix={(i, target) => void act(() => api.fixReceiptLine(runId, i, target))}
         />
       )}

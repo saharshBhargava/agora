@@ -9,10 +9,12 @@ export function ReceiptMatch({
   chips,
   canFix,
   onFix,
+  busy = false,
 }: {
   receipt: ReceiptState;
   chips: Chip[];
   canFix: boolean;
+  busy?: boolean;
   onFix: (lineIndex: number, target: { chipId: string } | 'mine') => void;
 }) {
   const [pairing, setPairing] = useState<number | null>(null);
@@ -45,6 +47,7 @@ export function ReceiptMatch({
                 <div className="receipt-actions">
                   {pairing === i ? (
                     <select
+                      disabled={busy}
                       aria-label={`Pair ${line.text} with`}
                       defaultValue=""
                       onChange={(e) => {
@@ -56,9 +59,9 @@ export function ReceiptMatch({
                       {free.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   ) : (
-                    <button type="button" className="btn btn-secondary" onClick={() => setPairing(i)}>Pair…</button>
+                    <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setPairing(i)}>Pair…</button>
                   )}
-                  <button type="button" className="btn btn-secondary" onClick={() => onFix(i, 'mine')}>Mine</button>
+                  <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => onFix(i, 'mine')}>Mine</button>
                 </div>
               )}
               {unmatched && !canFix && <span className="muted">Unmatched</span>}

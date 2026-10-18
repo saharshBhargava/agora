@@ -4,7 +4,7 @@ import { Ring } from '@/components/Ring';
 import type { Person } from '@/lib/types';
 
 const p = (id: string, initial: string): Person => ({
-  id, name: initial, initial, isShopper: false, authorizedCents: 4000, authId: null, payoutPan: null,
+  id, name: initial, initial, isShopper: false, authorizedCents: 4000, authId: null, approvalCode: null, payoutPan: null,
 });
 const people = ['A', 'B', 'C', 'D', 'E'].map((x) => p(x.toLowerCase(), x));
 

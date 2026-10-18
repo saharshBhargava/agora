@@ -1,3 +1,4 @@
+import { ApiError } from './api-error';
 import type { Chip, ReceiptState, Run } from './types';
 
 export const TEST_CARD = { number: '4111111111111111', expMonth: 12, expYear: 2031 };
@@ -14,7 +15,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((body as { error?: string }).error ?? `request failed (${res.status})`);
+  if (!res.ok) throw new ApiError((body as { error?: string }).error ?? `request failed (${res.status})`, res.status);
   return body as T;
 }
 

@@ -16,7 +16,7 @@ const chip = (id: string, name: string, priceCents: number | null) => ({
 });
 const get = (run: Run, id: string): Chip => run.chips.find((c) => c.id === id)!;
 const person = (id: string, authorizedCents = 4000) => ({
-  id, name: id, initial: id.toUpperCase(), isShopper: false, authorizedCents, authId: `auth-${id}`, payoutPan: null,
+  id, name: id, initial: id.toUpperCase(), isShopper: false, authorizedCents, authId: `auth-${id}`, approvalCode: '888888', payoutPan: null,
 });
 
 function seeded(): Run {

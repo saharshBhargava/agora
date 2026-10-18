@@ -11,8 +11,8 @@ const run = (o: Partial<Run> = {}): Run => ({
   id: 'r1', state: 'open', store: 'Costco', shopperId: 'shop', taxRate: 0, lastCallEndsAt: null,
   receipt: null, settle: {}, payout: null,
   people: [
-    { id: 'shop', name: 'Sam', initial: 'S', isShopper: true, authorizedCents: null, authId: null, payoutPan: null },
-    { id: 'a', name: 'A', initial: 'A', isShopper: false, authorizedCents: 4000, authId: 'x', payoutPan: null },
+    { id: 'shop', name: 'Sam', initial: 'S', isShopper: true, authorizedCents: null, authId: null, approvalCode: null, payoutPan: null },
+    { id: 'a', name: 'A', initial: 'A', isShopper: false, authorizedCents: 4000, authId: 'x', approvalCode: null, payoutPan: null },
   ],
   chips: [chip({ claimers: ['a'], overCap: ['a'] })],
   ...o,
@@ -31,6 +31,7 @@ vi.mock('@/components/Board', async (orig) => {
   return { Board: (p: Parameters<typeof mod.Board>[0]) => { boardProps = p; return mod.Board(p); } };
 });
 
+import { ApiError } from '@/lib/api-error';
 import ClaimScreen from '@/app/claim/ClaimScreen';
 
 const mk = (r: Run, extra: Record<string, unknown> = {}) => {
@@ -45,6 +46,12 @@ beforeEach(() => {
 test('tray chip shows the over-cap badge text when overCap includes me', () => {
   render(<ClaimScreen />);
   expect(screen.getByText('Raise your cap or leave')).toBeInTheDocument();
+});
+
+test('redirects to /join when the person param is missing', () => {
+  search = 'run=r1';
+  render(<ClaimScreen />);
+  expect(replace).toHaveBeenCalledWith('/join?run=r1');
 });
 
 test('redirects to /join when the person is not in the run', () => {
@@ -62,7 +69,7 @@ test('over-cap drop shows the toast; Raise to $60.00 posts cap + $20', async () 
 });
 
 test('a 403 from raise hides the action and says it is off', async () => {
-  raise.mockRejectedValueOnce(new Error('raise off'));
+  raise.mockRejectedValueOnce(new ApiError('raise off', 403));
   render(<ClaimScreen />);
   act(() => boardProps.onOverCap?.(chip({ id: 'towels', name: 'Towels' })));
   fireEvent.click(screen.getByRole('button', { name: 'Raise to $60.00' }));

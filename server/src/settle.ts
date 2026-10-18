@@ -103,9 +103,9 @@ export function fixReceiptLine(run: Run, lineIndex: number, target: { chipId: st
   return priceFromReceipt(run, { ...receipt, matches, unmatchedLines, ...(mine.length > 0 || receipt.mine ? { mine } : {}) });
 }
 
-const fresh = (shareCents: number): PersonSettle => ({
+const fresh = (shareCents: number, approvalCode: string | null = null): PersonSettle => ({
   step: 'joined', shareCents, capturedCents: 0, releasedCents: 0, owedCents: 0,
-  approvalCode: null, captureId: null, error: null,
+  approvalCode, captureId: null, error: null,
 });
 
 const isTerminal = (s: PersonSettle | undefined): boolean =>
@@ -124,7 +124,7 @@ export async function settle(
   const shares = sharesFor(cur);
 
   const write = async (id: string, patch: Partial<PersonSettle>, authorizedCents?: number): Promise<void> => {
-    const prev = cur.settle[id] ?? fresh(shares.get(id) ?? 0);
+    const prev = cur.settle[id] ?? fresh(shares.get(id) ?? 0, cur.people.find((x) => x.id === id)?.approvalCode ?? null);
     cur = {
       ...cur,
       settle: { ...cur.settle, [id]: { ...prev, ...patch } },

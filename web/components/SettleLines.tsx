@@ -19,7 +19,7 @@ export function SettleLines({ run, canRetry, onRetry, busy }: { run: Run; canRet
           line = canRetry ? (
             <button type="button" className="btn" disabled={busy} onClick={onRetry}>Retry</button>
           ) : (
-            <span>Retry</span>
+            <span className="muted">Didn't go through, the shopper will retry</span>
           );
         } else {
           line = <span className="muted">Settling…</span>;

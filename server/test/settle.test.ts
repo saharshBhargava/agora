@@ -16,7 +16,7 @@ const chip = (id: string, name: string, priceCents: number | null) => ({
 });
 const get = (run: Run, id: string): Chip => run.chips.find((c) => c.id === id)!;
 const person = (id: string, authorizedCents = 4000) => ({
-  id, name: id, initial: id.toUpperCase(), isShopper: false, authorizedCents, authId: `auth-${id}`, payoutPan: null,
+  id, name: id, initial: id.toUpperCase(), isShopper: false, authorizedCents, authId: `auth-${id}`, approvalCode: '888888', payoutPan: null,
 });
 
 /** a and b split eggs; b also takes towels. Locked, ready for a receipt. */
@@ -167,6 +167,8 @@ describe('settle', () => {
     expect(out.settle.b).toMatchObject({ step: 'captured', capturedCents: 2835, captureId: 'cap-auth-b' });
     expect(out.payout?.amountCents).toBe(3271);
     expect(persisted.length).toBeGreaterThan(4);
+    expect(out.settle.a.approvalCode).toBe('888888');
+    expect(out.settle.b.approvalCode).toBe('888888');
   });
   it('releases claims on unmatched chips before computing shares', async () => {
     const lockedR = lockedRun();

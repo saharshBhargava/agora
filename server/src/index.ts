@@ -123,9 +123,9 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
       const res = store.update(run.id, (r) => {
         const joined = joinRun(r, {
           id: personId, name, initial: (name.trim()[0] ?? '?').toUpperCase(), isShopper: false,
-          authorizedCents: null, authId: null, payoutPan: null,
+          authorizedCents: null, authId: null, approvalCode: null, payoutPan: null,
         });
-        return 'error' in joined ? joined : setAuthorization(joined, personId, auth.authorizedCents, auth.authId);
+        return 'error' in joined ? joined : setAuthorization(joined, personId, auth.authorizedCents, auth.authId, auth.approvalCode);
       });
       if ('error' in res) return fail(reply, res.error);
       return { personId, auth };
@@ -153,7 +153,7 @@ export async function buildServer(deps: Deps): Promise<FastifyInstance> {
         return reply.code(502).send({ error: 'payments unavailable' });
       }
       if (auth.status !== 'AUTHORIZED') return reply.code(409).send({ error: 'declined' });
-      const res = store.update(run.id, (r) => setAuthorization(r, personId, auth.authorizedCents, authId));
+      const res = store.update(run.id, (r) => setAuthorization(r, personId, auth.authorizedCents, authId, auth.approvalCode));
       if ('error' in res) return fail(reply, res.error);
       return auth;
     },

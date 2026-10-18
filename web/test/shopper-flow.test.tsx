@@ -10,7 +10,7 @@ const chip: Chip = {
 const run: Run = {
   id: 'r1', state: 'open', store: 'Costco', shopperId: 'shop', taxRate: 0, lastCallEndsAt: null,
   receipt: null, settle: {}, payout: null,
-  people: [{ id: 'shop', name: 'Sam', initial: 'S', isShopper: true, authorizedCents: null, authId: null, payoutPan: null }],
+  people: [{ id: 'shop', name: 'Sam', initial: 'S', isShopper: true, authorizedCents: null, authId: null, approvalCode: null, payoutPan: null }],
   chips: [chip],
 };
 const send = vi.fn(() => true);

@@ -14,9 +14,9 @@ const base = (o: Partial<Run> = {}): Run => ({
   id: 'r1', state: 'settled', store: 'Costco', shopperId: 'shop', taxRate: 0, lastCallEndsAt: null,
   receipt: null, settle: {}, payout: null,
   people: [
-    { id: 'shop', name: 'Sam', initial: 'S', isShopper: true, authorizedCents: null, authId: null, payoutPan: null },
-    { id: 'a', name: 'A', initial: 'A', isShopper: false, authorizedCents: 4000, authId: 'x', payoutPan: null },
-    { id: 'b', name: 'B', initial: 'B', isShopper: false, authorizedCents: 4000, authId: 'y', payoutPan: null },
+    { id: 'shop', name: 'Sam', initial: 'S', isShopper: true, authorizedCents: null, authId: null, approvalCode: null, payoutPan: null },
+    { id: 'a', name: 'A', initial: 'A', isShopper: false, authorizedCents: 4000, authId: 'x', approvalCode: null, payoutPan: null },
+    { id: 'b', name: 'B', initial: 'B', isShopper: false, authorizedCents: 4000, authId: 'y', approvalCode: null, payoutPan: null },
   ],
   chips: [chip('eggs', 'Eggs'), chip('milk', 'Milk', { state: 'unmatched' })],
   ...o,
@@ -66,6 +66,30 @@ test('partlySettled shows the badge and Retry that confirms again', async () => 
   expect(screen.getByText('Partly settled')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   await waitFor(() => expect(api.confirm).toHaveBeenCalledWith('r1', 'shop'));
+});
+
+test('a claimer sees a plain note instead of a Retry button on failure', () => {
+  search = 'run=r1&person=a';
+  mk(base({ state: 'partlySettled', settle: { a: ps({ step: 'failed', error: 'x' }) } }));
+  render(<SettleScreen />);
+  expect(screen.getByText("Didn't go through, the shopper will retry")).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+});
+
+test('Pair and Mine are disabled while a fix is in flight', async () => {
+  let release!: () => void;
+  api.fixReceiptLine.mockImplementationOnce(() => new Promise((r) => { release = () => r({}); }));
+  mk(base({
+    state: 'receipt',
+    receipt: { lines: [{ text: 'MILK', cents: 429, quantity: 1, isTax: false }], matches: [], unmatchedLines: [0] },
+  }));
+  render(<SettleScreen />);
+  fireEvent.click(screen.getByRole('button', { name: 'Mine' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Mine' })).toBeDisabled());
+  expect(screen.getByRole('button', { name: /Pair/ })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Mine' }));
+  expect(api.fixReceiptLine).toHaveBeenCalledTimes(1);
+  release();
 });
 
 test('claimer sees the settle page read-only', () => {

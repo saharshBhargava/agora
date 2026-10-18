@@ -3,7 +3,7 @@ import { expect, test, vi } from 'vitest';
 import { Board } from '@/components/Board';
 import type { Chip as ChipT, Person } from '@/lib/types';
 
-const p = (id: string): Person => ({ id, name: id.toUpperCase(), initial: id.toUpperCase(), isShopper: false, authorizedCents: 4000, authId: null, payoutPan: null });
+const p = (id: string): Person => ({ id, name: id.toUpperCase(), initial: id.toUpperCase(), isShopper: false, authorizedCents: 4000, authId: null, approvalCode: null, payoutPan: null });
 const people = [p('a'), p('b')];
 const mk = (o: Partial<ChipT>): ChipT => ({
   id: 'c', name: 'Item', priceCents: 100, priceSource: 'sticker', photoUrl: null, region: null, quantity: 1,

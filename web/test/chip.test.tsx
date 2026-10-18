@@ -4,7 +4,7 @@ import { Chip } from '@/components/Chip';
 import type { Chip as ChipT, Person } from '@/lib/types';
 
 const p = (id: string, initial: string): Person => ({
-  id, name: initial, initial, isShopper: false, authorizedCents: 4000, authId: null, payoutPan: null,
+  id, name: initial, initial, isShopper: false, authorizedCents: 4000, authId: null, approvalCode: null, payoutPan: null,
 });
 const people = [p('a', 'A'), p('b', 'B')];
 const base: ChipT = {
