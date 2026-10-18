@@ -41,6 +41,6 @@ Run on the real iPhone with the debug launch (`-DibsAutoShop YES -DibsDebugCrops
 |---|---|---|
 | P1 | Coke vs Coke Zero vs Diet Coke | Correct variant named |
 | P2 | Zucchini vs cucumber, loose produce | Correct produce named, priced per each |
-| P3 | An item QFC doesn't carry | "No price found · Add price" within about 15 s |
+| P3 | An item QFC doesn't carry | Row shows after 5 s with "Finding price…", then "No price found · Add price" within about 15 s |
 | P4 | Gemini rate-limited or offline for a moment | Item retried and added once the service is back, not lost |
 | P5 | Store prices | Prices match QFC University Village |
