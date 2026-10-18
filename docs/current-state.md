@@ -1,6 +1,6 @@
 # Current state — mandatory read before resuming work
 
-## Chat-created shopping lists — local implementation, October 18, 2026
+## Chat-created shopping lists — deployed October 18, 2026
 
 Gemini and OpenAI-compatible chat agents now receive `shopping_list_create` after household loading.
 Explicit creation requests read fresh shopping context, create a named unassigned list and use its saved
@@ -12,7 +12,13 @@ the grammar `Create a shopping list called Weekend`, followed by its existing on
 requests, preserving older unkeyed forms. Account changes and Stop invalidate pending native work;
 unconfirmed writes require checking Lists. No migration is needed. Demo seed/backfill adds a Sunday
 farmers market list with apples and sourdough once, preserving later renames and archiving.
-Backend deployment and a rebuilt app are required; these changes have not been released.
+PR [#43](https://github.com/saharshBhargava/agora/pull/43) merged as
+`a1aaa409f02b1f53e40369442a086f7fb3428f10`. All PR checks passed, including both database suites,
+Docker, upgrade/rollback rehearsal and the iOS simulator. Main backend CI and the
+[deployment](https://github.com/saharshBhargava/agora/actions/runs/39143675223) passed.
+Public `/readyz` verified that exact running commit, TimescaleDB enabled, migration 0020 and no pending
+migrations. The backend is live; the native chat tool requires rebuilding the iOS app. No production
+reset or manual test writes were performed.
 
 Validation: **696 backend tests**, Ruff and **150 selected simulator tests passed**, including the iOS CI
 suites, both provider schema/continuation checks and the real local API chat-create/add/reload flow.
