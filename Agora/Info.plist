@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Agora uses speech recognition to turn your spoken message into an editable draft.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Agora connects to the model server you configure on your local network.</string>
     <key>NSAppTransportSecurity</key>

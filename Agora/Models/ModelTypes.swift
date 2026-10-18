@@ -40,6 +40,28 @@ indirect enum ModelJSON: Codable, Equatable {
     var object: [String: ModelJSON]? { if case .object(let value) = self { return value }; return nil }
 }
 
+extension ModelJSON {
+    /// Gemini declarations use uppercase primitive names; preserve property names and enum values.
+    static func standardSchema(_ schema: ModelJSON) -> ModelJSON {
+        switch schema {
+        case .array(let values): return .array(values.map(standardSchema))
+        case .object(let values):
+            var result: [String: ModelJSON] = [:]
+            for (key, value) in values {
+                if key == "type", case .string(let type) = value { result[key] = .string(type.lowercased()) }
+                else if key == "properties", case .object(let properties) = value { result[key] = .object(properties.mapValues(standardSchema)) }
+                else if ["$defs", "definitions", "patternProperties", "dependentSchemas"].contains(key), case .object(let schemas) = value { result[key] = .object(schemas.mapValues(standardSchema)) }
+                else if key == "type", case .array(let types) = value { result[key] = .array(types.map { if case .string(let name) = $0 { return .string(name.lowercased()) }; return $0 }) }
+                else if ["items", "additionalProperties", "anyOf", "allOf", "oneOf", "not", "prefixItems", "if", "then", "else", "contains", "propertyNames", "unevaluatedProperties"].contains(key) { result[key] = standardSchema(value) }
+                else { result[key] = value }
+            }
+            return .object(result)
+        default: return schema
+        }
+    }
+
+}
+
 enum ModelProviderKind: String, Codable, CaseIterable, Identifiable {
     case builtin
     case gemini

@@ -1,11 +1,6 @@
 import SwiftUI
 import Combine
 
-struct ChatMessage: Identifiable {
-    let id = UUID()
-    let role: String
-    let text: String
-}
 struct ActionApproval: Identifiable {
     let id = UUID()
     let title: String
@@ -14,18 +9,30 @@ struct ActionApproval: Identifiable {
 
 @MainActor
 final class AgentCoordinator: ObservableObject {
-    @Published var messages: [ChatMessage] = []
+    let conversations = ConversationStore()
+    @Published var messages: [ChatMessage] = [] { didSet { conversations.current.messages = messages } }
     @Published private(set) var running = false
     @Published private(set) var paused = false
     @Published private(set) var status = "Ready"
-    @Published private(set) var approval: ActionApproval?
+    @Published private(set) var approval: ActionApproval? {
+        didSet {
+            guard let approval else { return }
+            let row = ChatMessage(role: "approval", text: "")
+            row.approval = ChatApprovalRecord(id: approval.id, title: approval.title, detail: approval.detail)
+            messages.append(row)
+        }
+    }
     let browser: BrowserSession
     private let settings: SettingsStore
     private let calendar: CalendarConnection?
     private let shopping: ShoppingStore?
     private let executor: BrowserToolExecutor
     private let repository = TaskRepository()
-    private var history: [ModelMessage] = []
+    private var history: [ModelMessage] {
+        get { conversations.current.history }
+        set { conversations.current.history = newValue }
+    }
+    private var accountSubscription: AnyCancellable?
     private var settingsSubscription: AnyCancellable?
     private var task: Task<Void, Never>?
     private var generation = UUID()
@@ -45,24 +52,42 @@ final class AgentCoordinator: ObservableObject {
             self.history.removeAll()
             if !self.messages.isEmpty { self.messages.append(ChatMessage(role: "notice", text: "Model settings changed. The next message starts a new conversation context.")) }
         }
+        accountSubscription = calendar?.$accountID.removeDuplicates().dropFirst().sink { [weak self] _ in
+            self?.resetConversations()
+        }
         if repository.needsRecovery {
             messages.append(ChatMessage(role: "notice", text: "The previous task was interrupted. Inspect the website or Google Calendar before retrying any action; actions are never replayed automatically."))
         }
     }
-    func send(_ text: String) {
+    @discardableResult
+    func send(_ text: String, attachments: [ChatAttachment] = []) -> Bool {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, text.utf8.count <= 16000, !running else { return }
+        guard (!text.isEmpty || !attachments.isEmpty), text.utf8.count <= 16000, attachments.count <= 4, !running else { return false }
+        if !history.isEmpty, conversations.current.modelSignature != settings.modelConfiguration.chatSignature { history.removeAll() }
         let provider: ModelClient
         do {
             if let modelClientOverride { provider = modelClientOverride }
             else if let providerOverride { provider = LegacyModelClient(providerOverride) }
             else { provider = try settings.client(for: .chat) }
         }
-        catch { AppLog.failure(.agent, "task.start_failed", error: error); messages.append(ChatMessage(role: "notice", text: error.localizedDescription)); return }
+        catch {
+            AppLog.failure(.agent, "task.start_failed", error: error)
+            let row = ChatMessage(role: "notice", text: error.localizedDescription); row.retryText = text
+            messages.append(row); return false
+        }
+        guard attachments.allSatisfy({ !$0.mimeType.hasPrefix("image/") || provider.capabilities.images }) else {
+            messages.append(ChatMessage(role: "notice", text: "This model cannot read images. Choose an image-capable model or remove the photo.")); return false
+        }
+        conversations.current.modelSignature = settings.modelConfiguration.chatSignature
+        let userMessage = ModelMessage(role: .user, content: [.text(text)] + attachments.map(\.modelContent))
+        guard (try? userMessage.byteCount()) ?? Int.max < 1_400_000 else {
+            messages.append(ChatMessage(role: "notice", text: "These attachments are too large to send together. Remove an attachment or choose smaller images.")); return false
+        }
         browser.policy = settings.policy
-        messages.append(ChatMessage(role: "user", text: text))
+        messages.append(ChatMessage(role: "user", text: text, attachments: attachments))
+        if conversations.current.title == "New chat" { conversations.current.title = String((text.isEmpty ? attachments.first?.name ?? "Attachments" : text).prefix(48)) }
         let id = UUID(); generation = id; running = true; paused = false; status = "Thinking…"
-        let initial = history + [ModelMessage(role: .user, content: [.text(text)])]
+        let initial = history + [userMessage]
         history = initial
         task = Task { [weak self] in
             await AppLog.$taskID.withValue(id.uuidString) {
@@ -70,9 +95,11 @@ final class AgentCoordinator: ObservableObject {
                 await self?.run(provider: provider, contents: initial, id: id)
             }
         }
+        return true
     }
     func resolveApproval(_ allowed: Bool) {
         if approvalReply != nil { AppLog.$taskID.withValue(generation.uuidString) { AppLog.event(.agent, allowed ? "approval.allowed" : "approval.denied") } }
+        if let id = approval?.id, let row = messages.last(where: { $0.approval?.id == id }) { row.approval?.status = allowed ? .approved : .rejected }
         approval = nil; let reply = approvalReply; approvalReply = nil; reply?.resume(returning: allowed)
     }
     func stop(reason: String = "Stopped. The browser is still available.", paused: Bool = false) {
@@ -80,7 +107,13 @@ final class AgentCoordinator: ObservableObject {
         let old = generation, wasRunning = running
         let uncertainCalendar = calendarMutationInFlight == old
         generation = UUID(); task?.cancel(); task = nil; calendarMutationInFlight = nil
-        resolveApproval(false); browser.revoke(); running = false; self.paused = paused && !uncertainCalendar
+        let expired = messages.last(where: { $0.approval?.id == approval?.id && $0.approval != nil })
+        resolveApproval(false); expired?.approval?.status = .expired
+        for row in messages {
+            row.streaming = false
+            if row.tool?.status == .running { row.tool?.status = .stopped }
+        }
+        browser.revoke(); running = false; self.paused = paused && !uncertainCalendar
         let calendarName = calendar?.isDemoAccount == true ? "Agora Calendar" : "Google Calendar"
         status = uncertainCalendar ? "A Calendar event may have been saved. Check \(calendarName) before retrying." : reason
         browser.state.status = status
@@ -89,14 +122,39 @@ final class AgentCoordinator: ObservableObject {
     }
     func newChat() {
         AppLog.event(.agent, "chat.new")
-        stop(); browser.close(); history.removeAll(); messages.removeAll(); paused = false; status = "Ready"
+        stop(); browser.close(); conversations.create(); messages = []; paused = false; status = "Ready"
+    }
+    func selectConversation(_ chat: ChatConversation) {
+        guard chat.id != conversations.current.id else { return }
+        stop(); browser.setPresentationFromUser(.hidden); conversations.select(chat); messages = chat.messages
+        paused = false; status = "Ready"
+    }
+    func deleteConversation(_ chat: ChatConversation) {
+        if chat.id == conversations.current.id { stop(); browser.close() }
+        conversations.delete(chat); messages = conversations.current.messages
+    }
+    func archiveConversation(_ chat: ChatConversation) {
+        chat.archived.toggle()
+        if chat.archived && chat.id == conversations.current.id { newChat() }
+    }
+    func resetConversations() {
+        stop(); browser.close(); conversations.reset(); messages = []; paused = false; status = "Ready"
     }
     func closeBrowser() { stop(); browser.close() }
     func resume() {
         guard !running else { return }
+        let id = UUID(); generation = id; running = true; status = "Reading the updated page"
         task = Task {
-            do { try await browser.resume(); send("Resume the task. The user may have changed the browser; obtain fresh evidence before acting.") }
-            catch { messages.append(ChatMessage(role: "notice", text: error.localizedDescription)) }
+            do {
+                try await browser.resume()
+                try Task.checkCancellation(); guard generation == id else { return }
+                running = false
+                send("Resume the task. The user may have changed the browser; obtain fresh evidence before acting.")
+            } catch {
+                guard generation == id, !Task.isCancelled else { return }
+                running = false; task = nil
+                messages.append(ChatMessage(role: "notice", text: error.localizedDescription))
+            }
         }
     }
     private func requestApproval(_ call: BrowserCall) async -> Bool {
@@ -129,12 +187,23 @@ final class AgentCoordinator: ObservableObject {
                 let schemas = BrowserCall.schemas.filter { provider.capabilities.images || $0["name"] as? String != "browser_screenshot" } + (calendar?.connected == true ? CalendarCall.schemas : []) + (shopping?.canUse == true ? ShoppingCall.schemas : [])
                 let request = ModelRequest(instructions: AgentInstructions.text, messages: contents,
                                            tools: try schemas.map { try ModelToolDefinition(legacy: $0) })
-                let response = try await provider.generate(request, onEvent: { _ in })
+                let streamingRow = ChatMessage(role: "assistant", text: "")
+                streamingRow.streaming = true
+                let response = try await provider.stream(request, onEvent: { [weak self] event in
+                    guard let self, self.generation == id, !Task.isCancelled else { return }
+                    if case .text(let value) = event {
+                        if !value.isEmpty && !self.messages.contains(where: { $0.id == streamingRow.id }) { self.messages.append(streamingRow) }
+                        streamingRow.text = value
+                    }
+                })
                 try validateModelResponse(response.message, request: request)
                 try Task.checkCancellation(); guard generation == id else { return }
                 contents.append(response.message)
                 let text = response.text
-                if !text.isEmpty { messages.append(ChatMessage(role: "assistant", text: text)) }
+                streamingRow.streaming = false
+                streamingRow.text = text
+                if !text.isEmpty && !messages.contains(where: { $0.id == streamingRow.id }) { messages.append(streamingRow) }
+                if text.isEmpty { messages.removeAll { $0.id == streamingRow.id } }
                 let calls = response.message.toolCalls
                 if calls.isEmpty {
                     AppLog.event(.agent, "task.completed")
@@ -148,6 +217,9 @@ final class AgentCoordinator: ObservableObject {
                     let raw = modelCall.raw
                     try Task.checkCancellation(); guard generation == id else { return }
                     var result: [String: Any]
+                    let toolRow = ChatMessage(role: "tool", text: "")
+                    toolRow.tool = ChatToolActivity(name: ChatToolActivity.title(modelCall.name), input: ChatToolActivity.summary(modelCall.arguments.mapValues(\.foundation)))
+                    messages.append(toolRow)
                     do {
                         if let name = raw["name"] as? String, ShoppingCall.names.contains(name) {
                             guard let shopping else { throw BrowserError("shopping_unavailable") }
@@ -181,7 +253,7 @@ final class AgentCoordinator: ObservableObject {
                                 try browser.check(epoch: epoch, lease: lease)
                                 guard document == browser.documentEpoch else { throw BrowserError("stale_reference") }
                             }
-                            status = call.name.replacingOccurrences(of: "browser_", with: "Browser: ")
+                            status = ChatToolActivity.title(call.name)
                             browser.state.status = status
                             try repository.record(task: id, operation: call.name, phase: "dispatched")
                             result = try await executor.execute(call)
@@ -194,9 +266,18 @@ final class AgentCoordinator: ObservableObject {
                         AppLog.failure(.agent, "tool.failed", error: error)
                         result = ["error": error.localizedDescription]; failures += 1
                         try repository.record(task: id, operation: raw["name"] as? String ?? "invalid_tool", phase: "failed_or_uncertain")
+                        toolRow.tool?.status = .failed; toolRow.tool?.result = error.localizedDescription
+                        if error.localizedDescription.contains("user_action_required") { paused = true }
                         if error.localizedDescription.contains("outcome_unknown") { throw error }
                     }
                     try Task.checkCancellation(); guard generation == id else { return }
+                    toolRow.tool?.status = result["error"] == nil ? .complete : .failed
+                    toolRow.tool?.result = ChatToolActivity.summary(result)
+                    if toolRow.tool?.result.isEmpty == true { toolRow.tool?.result = "The operation completed." }
+                    if paused {
+                        history = contents.dropLast().map { $0 }
+                        status = "Waiting for you"; return
+                    }
                     if let image = result.removeValue(forKey: "image") as? String, let data = Data(base64Encoded: image) {
                         images.append(.image(data, mimeType: "image/jpeg"))
                     }
@@ -210,7 +291,12 @@ final class AgentCoordinator: ObservableObject {
             guard generation == id, !Task.isCancelled else { return }
             AppLog.failure(.agent, "task.failed", error: error)
             status = error.localizedDescription
-            messages.append(ChatMessage(role: "notice", text: status))
+            for row in messages where row.streaming { row.streaming = false }
+            let row = ChatMessage(role: "notice", text: status)
+            if !status.contains("outcome_unknown") {
+                row.retryText = "Continue my previous request. First check the current state; do not repeat any completed action."
+            }
+            messages.append(row)
             try? repository.record(task: id, operation: "task", phase: status.contains("outcome_unknown") ? "outcome_unknown" : "failed")
         }
     }

@@ -10,7 +10,7 @@ struct BrowserChatApp: App {
     @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
-            CalendarGate(calendar: workspace.calendar, onDisconnect: { workspace.agent.newChat() }) {
+            CalendarGate(calendar: workspace.calendar, onDisconnect: { workspace.agent.resetConversations() }) {
                 TabView(selection: $selectedTab) {
                     HomeView(selectedTab: $selectedTab, store: workspace.inventory, shopping: workspace.shopping, settings: workspace.settings, trips: workspace.trips)
                         .tabItem { Label("Home", systemImage: "house") }
