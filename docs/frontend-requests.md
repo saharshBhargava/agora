@@ -168,17 +168,13 @@ Send `PATCH /v1/wishlist/{id}` with only the fields that changed.
 
 ## Requested frontend feature: offline demo fallback (iOS, small)
 
-**Why:** if venue internet and hosting both fail, the backend can still run on the demo Mac
-(`uv run python -m app.tools.local_demo`, see SETUP.md, Plan B). The current shared `AgoraClient` only accepts
-`https://` origins, so the app can reach a laptop backend only through a tunnel, which needs internet.
+**Status:** done on iOS. `AgoraClient.validOrigin` accepts `http://localhost`, `http://127.0.0.1`,
+`http://*.local`, and private LAN IPs in **DEBUG** builds only; Release stays HTTPS-only.
+`Info.plist` already sets `NSAllowsLocalNetworking` (and local HTTP exceptions). Simulator:
+`AGORA_API_BASE_URL = http:/$()/localhost:8000`. Phone on the same hotspot: Mac LAN IP or `.local` name.
 
-**Request (DEBUG builds only):**
-- In `AgoraAPIClient.validOrigin`, also accept `http://localhost`, `http://127.0.0.1`, and
-  `http://<mac-name>.local` / private LAN IPs when compiled with `#if DEBUG`. Release builds stay HTTPS-only.
-- Add `NSAppTransportSecurity > NSAllowsLocalNetworking = YES` to the Debug Info.plist, so ATS permits those
-  local addresses.
-- The simulator then works with `AGORA_API_BASE_URL = http:/$()/localhost:8000`. A phone on the same hotspot
-  works with the Mac's `.local` name.
+**Why:** if venue internet and hosting both fail, the backend can still run on the demo Mac
+(`uv run python -m app.tools.local_demo`, see SETUP.md, Plan B) without requiring a tunnel.
 
 Ordinary-account Google sign-in, Calendar and real model chat still need internet. The password demo uses
 its configured Agora API for login, Calendar and data, and built-in model responses. This fallback covers inventory, scans (with replay
@@ -424,3 +420,16 @@ See [backend refresh design](backend-spec.md#45-prices-deals-small-businesses).
   existing wishlist endpoints. Failed refreshes retain previous results; account/household switches clear
   shopping state and discard stale responses.
 - Price-watch checks will use the same six-hour requirement when merchant integrations are added.
+
+## Replenishment to Calendar: backend contract
+
+The backend now supports persisted trips through `GET /v1/trips`, `POST /v1/trips` and
+`PATCH /v1/trips/{id}/outcome`; see [the contract](api/replenishment-trips.md). The native planner UI is a
+separate client change. Generate per-store lists, use Calendar free/busy to propose a time, show the exact
+list and event for approval, and reserve its current list version before writing to Calendar. Use the trip
+ID as the stable Calendar request identity and report the confirmed event reference or uncertain outcome.
+
+Refetch on `trip.updated`. Display persisted trips and recover uncertain writes through read-only event
+lookup, never a new request identity. Demo recovery uses `GET /v1/demo/calendar/events/by-request?key=...`.
+Keep demo traffic on the private Calendar routes; ordinary accounts use their actual Google Calendar.
+A `409 duplicate_request` means retry the same request key after the competing transaction finishes.

@@ -18,11 +18,22 @@ final class AgoraClient {
         self.http = http ?? URLSession(configuration: config, delegate: NoCredentialRedirect(), delegateQueue: nil)
     }
 
-    private static func validOrigin(_ url: URL?) -> Bool {
-        guard let url else { return false }
-        return url.scheme == "https" && url.host != nil
-            && url.user == nil && url.password == nil
-            && url.query == nil && url.fragment == nil
+    /// Release builds require HTTPS. DEBUG also allows plain HTTP to loopback, `*.local`, and private LAN IPs (Plan B laptop demo).
+    static func validOrigin(_ url: URL?) -> Bool {
+        guard let url,
+              let scheme = url.scheme?.lowercased(),
+              let host = url.host?.lowercased(), !host.isEmpty,
+              url.user == nil, url.password == nil,
+              url.query == nil, url.fragment == nil else { return false }
+        if scheme == "https" { return true }
+        #if DEBUG
+        guard scheme == "http" else { return false }
+        let name = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        if name == "localhost" || name.hasSuffix(".localhost") || name.hasSuffix(".local") { return true }
+        return OpenAICompatibleClient.isAllowedPrivateAddress(name)
+        #else
+        return false
+        #endif
     }
 
     /// Typed JSON (`Decodable`, snake_case). Preferred for inventory and similar list/detail routes.

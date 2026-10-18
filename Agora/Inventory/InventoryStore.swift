@@ -128,6 +128,8 @@ final class InventoryStore: ObservableObject {
         let location = try await api.fetch("v1/households/\(householdID)/locations", as: InventoryLocation.self,
                                            method: "POST", body: ["name": name, "kind": kind])
         try check(version)
+        // Invalidate reads started before this write completed (same as upsert).
+        loadID = UUID(); loading = false
         if let index = households.firstIndex(where: { $0.id == householdID }) {
             households[index].locations.append(location)
         }

@@ -109,7 +109,9 @@ suggestions and agent intents need an `Idempotency-Key` header. Errors are RFC 7
 | `GET /lists`, `POST /lists`, `GET\|PATCH /lists/{id}` | Shopping lists (archived, never deleted) |
 | `POST /lists/{id}/items`, `PATCH\|DELETE /lists/{id}/items/{id}` | List lines; agent lines must carry an explanation |
 | `POST /lists/generate` | Per-store lists from upcoming run-outs (`Idempotency-Key`) |
-| `GET /events` | Server-Sent Events: `scan.updated`, `inventory.updated`, `wishlist.updated`, `forecast.updated`, `list.updated`, `agent.updated`, `budget.updated`, `spend.updated` (IDs only; refetch) |
+| `GET /trips`, `POST /trips` | Household Calendar trips; reserve a reviewed, versioned list (`Idempotency-Key`) |
+| `PATCH /trips/{id}/outcome` | Owner reports a confirmed, failed or uncertain native Calendar write |
+| `GET /events` | Server-Sent Events: `scan.updated`, `inventory.updated`, `wishlist.updated`, `forecast.updated`, `list.updated`, `trip.updated`, `agent.updated`, `budget.updated`, `spend.updated` (IDs only; refetch) |
 | `GET /audit`, `GET /audit/verify` | Your audit trail; hash-chain integrity check |
 | `GET /merchants?q=`, `POST /merchants`, `GET /merchants/{id}` | Store search and find-or-create (see [docs/api/purchased-from.md](../docs/api/purchased-from.md)) |
 | `PATCH /scans/{id}`, `PATCH /scans/{id}/detections/{id}` | Change or clear an upload's or one product's store |
@@ -402,3 +404,15 @@ at `GET /v1/wishlist/refresh-status`; `POST /v1/wishlist/refresh` runs a check o
 
 Live retailer-price monitoring remains deferred. Target prices are user preferences, not observed deals.
 The designated demo account is backfilled with refresh status without resetting existing history.
+
+### Replenishment shopping trips
+
+Migration `0015_replenishment_trips.sql` adds household-visible, owner-managed trip reservations and outcomes.
+The demo backfill links a realistic trip to its shopping list and private Calendar event without resetting
+existing history. Calendar credentials stay on the phone. The server stores reviewed event details and
+provider references, and never calls Google from these trip endpoints.
+
+See [the API contract](../docs/api/replenishment-trips.md) for concurrency, recovery, RLS and outcome rules.
+The native planner must reserve the reviewed list before creating its Calendar event, then report the outcome.
+The backend release does not include the native planner UI. No unattended server scheduling, store-hours lookup
+or route optimization is included.

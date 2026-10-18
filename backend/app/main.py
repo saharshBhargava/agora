@@ -33,6 +33,7 @@ from app.routers import (
     lists,
     merchants,
     scans,
+    trips,
     wishlist,
 )
 from app.routers.events import Broadcaster
@@ -157,7 +158,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     for router in (account.router, inventory.router, merchants.router, scans.router, events.router,
                    audit.router, calendar.router, wishlist.router, forecasts.router, lists.router,
-                   agent.router, budgets.router, demo.router):
+                   agent.router, budgets.router, demo.router, trips.router):
         app.include_router(router)
     return app
 

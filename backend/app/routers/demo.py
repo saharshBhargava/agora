@@ -1,12 +1,12 @@
 """Credential-free integrations, authorized solely by the server-owned is_demo flag."""
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 
 from app import idempotency
 from app.auth import CurrentUser, Principal
 from app.db import audit, notify
 from app.demo_account import is_demo_user
-from app.errors import Problem
+from app.errors import Problem, not_found
 from app.routers.account import require_household
 from app.routers.calendar import EventIn, TimeWindow
 
@@ -48,6 +48,27 @@ async def freebusy(body: TimeWindow, request: Request, user: Principal = Current
         return {"busy": [dict(row) for row in rows], "timezone": body.timezone}
 
 
+@router.get("/calendar/events/by-request")
+async def event_by_request(request: Request, key: str = Query(min_length=8, max_length=128),
+                           user: Principal = CurrentUser):
+    """Read-only recovery by the original Calendar request key, never by event title/time."""
+    async with request.app.state.db.scoped(user.user_id) as conn:
+        await require_demo(conn, user.user_id)
+        row = await conn.fetchrow(
+            "SELECT operation, status_code, response FROM idempotency_keys WHERE user_id = $1 AND key = $2",
+            user.user_id, key)
+        if row is None:
+            raise not_found("Calendar request")
+        if row["operation"] != "calendar.event":
+            raise Problem(409, "idempotency_key_reused", "This key belongs to a different request.")
+        response = row["response"]
+        if row["status_code"] != 201 or response.get("created") is not True or not await conn.fetchval(
+                "SELECT 1 FROM calendar_events WHERE user_id = $1 AND id::text = $2",
+                user.user_id, response.get("id")):
+            raise Problem(409, "outcome_unknown", "The original Calendar event could not be verified.")
+        return {"created": True, "id": response["id"]}
+
+
 @router.post("/calendar/events", status_code=201)
 async def create_event(body: EventIn, request: Request, user: Principal = CurrentUser):
     key = idempotency.key_from(request)
@@ -66,7 +87,8 @@ async def create_event(body: EventIn, request: Request, user: Principal = Curren
             user.user_id, household_id, body.title, body.description, body.location,
             body.start, body.end, body.timezone)
         result = {"created": True, "id": str(event_id)}
-        await idempotency.claim(conn, user.user_id, key, digest, 201, result)
+        if not await idempotency.claim(conn, user.user_id, key, digest, 201, result, operation="calendar.event"):
+            raise Problem(409, "duplicate_request", "This request key is already being processed; retry shortly.")
         await audit(conn, "calendar.event_created", actor_id=user.user_id, household_id=household_id,
                     target_type="calendar_event", target_id=event_id)
         await notify(conn, household_id, "calendar.updated", event_id)
