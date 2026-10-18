@@ -4,13 +4,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api, TEST_CARD, type JoinResult } from '@/lib/api';
 import { HeldBadge } from '@/components/HeldBadge';
 import { Avatar } from '@/components/Avatar';
-import { formatCents } from '@/lib/money';
+import { wholeCents } from '@/lib/money';
 import { isLiveChip, listNames } from '@/lib/share';
 import { runTitle, tileColor } from '@/lib/tile';
 import type { Person, Run } from '@/lib/types';
 
-/** "$40" for whole dollars, "$40.50" otherwise. */
-const heroCents = (c: number) => (c % 100 === 0 ? `$${c / 100}` : formatCents(c));
 
 function CardIcon() {
   return (
@@ -122,7 +120,7 @@ export default function JoinScreen() {
 
       <div className="join-hold">
         <span className="join-hold-label">Your hold</span>
-        <span className="money join-hold-amount">{heroCents(capCents)}</span>
+        <span className="money join-hold-amount">{wholeCents(capCents)}</span>
         <p className="join-hold-copy">
           Held on your card while the run is open. Only what you claim is captured; the rest is released when {shopperName} checks out.
         </p>

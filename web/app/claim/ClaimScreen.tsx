@@ -6,9 +6,9 @@ import { ApiError } from '@/lib/api-error';
 import { useRun } from '@/lib/socket';
 import { useCountdown } from '@/lib/countdown';
 import { useHighlight } from '@/lib/highlight';
-import { formatCents } from '@/lib/money';
+import { formatCents, wholeCents } from '@/lib/money';
 import { myShare, roomFor } from '@/lib/share';
-import { runTitle } from '@/lib/tile';
+import { runTitle, tileColor } from '@/lib/tile';
 import { Board } from '@/components/Board';
 import { AvatarStack } from '@/components/Avatar';
 import { LiveView } from '@/components/LiveView';
@@ -53,8 +53,9 @@ export default function ClaimScreen() {
 
   useEffect(() => {
     if (!overCap) return;
-    const t = setTimeout(() => setOverCap(null), 6000);
-    return () => clearTimeout(t);
+    const on = (e: KeyboardEvent) => e.key === 'Escape' && setOverCap(null);
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
   }, [overCap]);
 
   const chips = useMemo(() => (run?.chips ?? []).filter((c) => c.state !== 'removed' && !c.dropped), [run]);
@@ -84,10 +85,13 @@ export default function ClaimScreen() {
   const stack = [...others, me];
 
   const raise = async () => {
+    const chip = overCap;
     setBusy(true);
     try {
       await api.raise(runId, personId, cap + RAISE_STEP_CENTS);
       setOverCap(null);
+      // The raise was for this chip: claim it now that it fits.
+      if (chip) send({ t: 'claim', chipId: chip.id });
     } catch (e) {
       if (e instanceof ApiError && e.status === 403) setRaiseOff(true);
       else setNotice(e instanceof Error ? e.message : 'Could not raise your cap');
@@ -119,9 +123,9 @@ export default function ClaimScreen() {
           <span className="money share-big">{formatCents(trayTotal)}</span>
         </div>
         {me.authorizedCents !== null && (
-          <div className={`share-side${room < 0 ? ' share-over' : ''}`} data-testid="held">
+          <div className={`share-side${room < 0 || overCap ? ' share-over' : ''}`} data-testid="held">
             <div><strong>{formatCents(me.authorizedCents)}</strong> held</div>
-            <div><strong>{formatCents(room)}</strong> room left</div>
+            <div><strong className="room-num">{formatCents(room)}</strong> room left</div>
             {me.approvalCode && <div className="mono">auth {me.approvalCode}</div>}
           </div>
         )}
@@ -160,14 +164,35 @@ export default function ClaimScreen() {
       />
 
       {overCap && (
-        <div className="toast claim-toast" role="status">
-          <span>{raiseOff ? 'Raising your cap is off for this run' : 'Over your cap. Raise it?'}</span>
-          {!raiseOff && (
-            <button type="button" className="toast-action" disabled={busy} onClick={raise}>
-              Raise to {formatCents(cap + RAISE_STEP_CENTS)}
-            </button>
-          )}
-          <button type="button" className="toast-action" onClick={dismissOver}>Dismiss</button>
+        <div className="sheet-backdrop sheet-backdrop-light" onClick={dismissOver}>
+          <div className="sheet overcap" role="dialog" aria-label="Over your cap" onClick={(e) => e.stopPropagation()}>
+            <div className="overcap-item">
+              <span className="overcap-thumb" style={{ '--tile': tileColor(overCap.id) } as React.CSSProperties} aria-hidden="true">
+                {overCap.photoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={overCap.photoUrl} alt="" />
+                ) : overCap.name.charAt(0)}
+              </span>
+              <span className="overcap-text">
+                <strong>{overCap.name}</strong>
+                <span className="muted">
+                  {overCap.priceCents === null ? 'Price not known yet' : formatCents(overCap.priceCents)} · more than your {formatCents(Math.max(0, room))} room
+                </span>
+              </span>
+            </div>
+            {raiseOff ? (
+              <p className="overcap-title">Raising your cap is off for this run</p>
+            ) : (
+              <>
+                <p className="overcap-title">Over your cap. Raise it to {wholeCents(cap + RAISE_STEP_CENTS)}?</p>
+                <p className="join-hold-copy">Your hold grows by {wholeCents(RAISE_STEP_CENTS)}. Only what you claim is captured.</p>
+                <button type="button" className="btn" disabled={busy} onClick={raise}>
+                  Raise to {wholeCents(cap + RAISE_STEP_CENTS)} and claim
+                </button>
+              </>
+            )}
+            <button type="button" className="btn btn-sm btn-ghost" onClick={dismissOver}>Not now</button>
+          </div>
         </div>
       )}
       {notice && !overCap && <div className="toast" role="status"><span>{notice}</span></div>}

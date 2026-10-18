@@ -60,19 +60,31 @@ test('redirects to /join when the person is not in the run', () => {
   expect(replace).toHaveBeenCalledWith('/join?run=r1');
 });
 
-test('over-cap drop shows the toast; Raise to $60.00 posts cap + $20', async () => {
+test('over-cap drop opens the sheet; Raise to $60 and claim posts cap + $20, then claims', async () => {
+  render(<ClaimScreen />);
+  act(() => boardProps.onOverCap?.(chip({ id: 'towels', name: 'Towels', priceCents: 3500 })));
+  const sheet = screen.getByRole('dialog', { name: 'Over your cap' });
+  expect(sheet).toHaveTextContent('Over your cap. Raise it to $60?');
+  expect(sheet).toHaveTextContent('$35.00 · more than your $31.28 room');
+  fireEvent.click(screen.getByRole('button', { name: 'Raise to $60 and claim' }));
+  await waitFor(() => expect(raise).toHaveBeenCalledWith('r1', 'a', 6000));
+  await waitFor(() => expect(send).toHaveBeenCalledWith({ t: 'claim', chipId: 'towels' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+test('Not now closes the over-cap sheet without raising', () => {
   render(<ClaimScreen />);
   act(() => boardProps.onOverCap?.(chip({ id: 'towels', name: 'Towels' })));
-  expect(screen.getByText('Over your cap. Raise it?')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Raise to $60.00' }));
-  await waitFor(() => expect(raise).toHaveBeenCalledWith('r1', 'a', 6000));
+  fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(raise).not.toHaveBeenCalled();
 });
 
 test('a 403 from raise hides the action and says it is off', async () => {
   raise.mockRejectedValueOnce(new ApiError('raise off', 403));
   render(<ClaimScreen />);
   act(() => boardProps.onOverCap?.(chip({ id: 'towels', name: 'Towels' })));
-  fireEvent.click(screen.getByRole('button', { name: 'Raise to $60.00' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Raise to $60 and claim' }));
   expect(await screen.findByText('Raising your cap is off for this run')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Raise to/ })).toBeNull();
 });
