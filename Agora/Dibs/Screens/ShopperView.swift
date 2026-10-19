@@ -38,6 +38,8 @@ struct ShopperView: View {
     /// "Removed 2% Milk · Undo · 5s" (the shared UndoToast).
     @State private var toast: Toast?
     @State private var kept: Set<String> = []
+    /// "Counted twice?" cards the shopper kept or undid (`ShopperLogic.countKey`).
+    @State private var handledCounts: Set<String> = []
     @State private var notice: String?
     @State private var busy = false
     @State private var actionError: String?
@@ -227,6 +229,8 @@ struct ShopperView: View {
         let chips = run?.chips ?? []
         let rows = ShopperLogic.rows(chips, now: clock)
         let dupes = ShopperLogic.duplicates(chips, kept: kept, now: clock)
+        let counted = ShopperLogic.countedAgain(chips, handled: handledCounts, now: Date())
+            .filter { ShopperLogic.canAdjustQuantity($0, runState: run?.state) }
         let people = run?.people ?? []
         let cover = ShopperLogic.coverage(people: people, chips: chips)
         return VStack(spacing: 0) {
@@ -238,6 +242,15 @@ struct ShopperView: View {
                         DuplicateCard(chip: chip,
                                       onKeep: { kept.insert(chip.id) },
                                       onRemove: { remove(chip) })
+                    }
+                    ForEach(counted) { chip in
+                        DuplicateCard(chip: chip, title: "Counted twice?", line: ShopperLogic.countedAgainLine(chip),
+                                      keepTitle: "Keep ×\(chip.quantity)", removeTitle: ShopperLogic.countedAgainUndoTitle(chip),
+                                      onKeep: { handledCounts.insert(ShopperLogic.countKey(chip)) },
+                                      onRemove: {
+                                          handledCounts.insert(ShopperLogic.countKey(chip))
+                                          setQuantity(chip, to: chip.quantity - 1)
+                                      })
                     }
                     if rows.isEmpty {
                         Text("Nothing in the cart yet.")

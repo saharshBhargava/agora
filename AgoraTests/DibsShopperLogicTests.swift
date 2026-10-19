@@ -230,6 +230,32 @@ final class DibsShopperLogicTests: XCTestCase {
         XCTAssertTrue(ShopperLogic.duplicates(run.chips, kept: []).isEmpty)
     }
 
+    func testCountedTwiceCardShowsAfterTheCameraCountsAgainUntilHandled() throws {
+        let seen = 1_792_293_600_000.0
+        let now = Date(timeIntervalSince1970: seen / 1000 + 10)
+        var milk = Chip(id: "milk", name: "2% Milk", priceCents: 429, quantity: 2, state: .open, addedAt: seen - 60_000)
+        milk.lastSeenAt = seen
+        let once = Chip(id: "eggs", name: "Eggs", priceCents: 872, quantity: 2, state: .open, addedAt: seen)
+        XCTAssertEqual(ShopperLogic.countedAgain([milk, once], handled: [], now: now).map(\.id), ["milk"])
+        XCTAssertEqual(ShopperLogic.countedAgainLine(milk), "2% Milk showed up again, now ×2")
+        XCTAssertEqual(ShopperLogic.countedAgainUndoTitle(milk), "Just 1")
+        // Keep or undo hides this count.
+        XCTAssertTrue(ShopperLogic.countedAgain([milk], handled: [ShopperLogic.countKey(milk)], now: now).isEmpty)
+        // A later count of the same chip asks again.
+        var third = milk
+        third.quantity = 3
+        third.lastSeenAt = seen + 5_000
+        XCTAssertEqual(ShopperLogic.countedAgain([third], handled: [ShopperLogic.countKey(milk)], now: now).map(\.id), ["milk"])
+        XCTAssertEqual(ShopperLogic.countedAgainUndoTitle(third), "Make it ×2")
+        // Back at 1, removed, or long ago: no card.
+        var undone = milk
+        undone.quantity = 1
+        var removed = milk
+        removed.state = .removed
+        XCTAssertTrue(ShopperLogic.countedAgain([undone, removed], handled: [], now: now).isEmpty)
+        XCTAssertTrue(ShopperLogic.countedAgain([milk], handled: [], now: now.addingTimeInterval(600)).isEmpty)
+    }
+
     func testNoDuplicateCardWhenTheOriginalIsGone() throws {
         var run = try fixture()
         run.chips.append(Chip(id: "ghost", name: "Milk", priceCents: 429, state: .open, duplicateOf: "deleted-chip", addedAt: 5))

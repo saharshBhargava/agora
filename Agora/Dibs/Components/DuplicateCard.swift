@@ -1,8 +1,13 @@
 import SwiftUI
 
-/// "Added twice?" for a chip the server flagged with `duplicateOf` (web .dupe card).
+/// "Added twice?" for a chip the server flagged with `duplicateOf` (web .dupe card), and "Counted twice?"
+/// for a chip the camera counted again, whose second button takes the count back.
 struct DuplicateCard: View {
     let chip: Chip
+    var title = "Added twice?"
+    var line: String?
+    var keepTitle = "Keep both"
+    var removeTitle = "Remove one"
     let onKeep: () -> Void
     let onRemove: () -> Void
 
@@ -11,10 +16,10 @@ struct DuplicateCard: View {
             HStack(spacing: 12) {
                 CartThumb(chip: chip, size: 40, radius: 10)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Added twice?")
+                    Text(title)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(Color.ink)
-                    Text(ShopperLogic.duplicateLine(chip))
+                    Text(line ?? ShopperLogic.duplicateLine(chip))
                         .font(.system(size: 14))
                         .foregroundStyle(Color.muted)
                 }
@@ -22,14 +27,14 @@ struct DuplicateCard: View {
             }
             HStack(spacing: 8) {
                 Button(action: onKeep) {
-                    Text("Keep both")
+                    Text(keepTitle)
                         .foregroundStyle(Color.ink)
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .background(Color.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.ink))
                 }
                 Button(action: onRemove) {
-                    Text("Remove one")
+                    Text(removeTitle)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .background(Color.ink, in: RoundedRectangle(cornerRadius: 14, style: .continuous))

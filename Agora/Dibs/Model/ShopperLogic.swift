@@ -202,6 +202,28 @@ enum ShopperLogic {
 
     static func duplicateLine(_ chip: Chip) -> String { "\(chip.name) showed up again" }
 
+    /// How long the "Counted twice?" card stays up after the camera counts an item again.
+    static let countedAgainFor: TimeInterval = 120
+
+    /// One count of one chip: a later count of the same chip asks again.
+    static func countKey(_ chip: Chip) -> String { "\(chip.id)@\(Int(chip.lastSeenAt ?? 0))" }
+
+    /// Chips the camera just counted again (×2 and up, from `lastSeenAt`), minus the counts the shopper
+    /// kept or undid. With MERGE_DUPLICATES the server counts instead of flagging, so this is the
+    /// "Added twice?" card's replacement: it can take the count back.
+    static func countedAgain(_ chips: [Chip], handled: Set<String>, now: Date) -> [Chip] {
+        chips.filter { c in
+            guard let seen = c.lastSeenAt, c.quantity > 1, c.state != .removed, c.state != .wish, !c.dropped else { return false }
+            return now.timeIntervalSince1970 - seen / 1000 < countedAgainFor && !handled.contains(countKey(c))
+        }
+    }
+
+    static func countedAgainLine(_ chip: Chip) -> String { "\(chip.name) showed up again, now ×\(chip.quantity)" }
+
+    static func countedAgainUndoTitle(_ chip: Chip) -> String {
+        chip.quantity - 1 <= 1 ? "Just 1" : "Make it ×\(chip.quantity - 1)"
+    }
+
     // MARK: removals
 
     /// Chips that just turned `.removed` (by this phone, the camera watcher or anyone), so each gets
